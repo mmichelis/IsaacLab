@@ -15,17 +15,44 @@ This script demonstrates how to work with the deformable object and interact wit
 
 """Launch Isaac Sim Simulator first."""
 
-
+import os
 import argparse
+import subprocess
 
 from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on interacting with a deformable object.")
+parser.add_argument(
+    "--total_time",
+    type=float,
+    default=5.0,
+    help="Total simulation time in seconds.",
+)
+parser.add_argument(
+    "--dt",
+    type=float,
+    default=1.0/60,
+    help="Simulation timestep.",
+)
+parser.add_argument(
+    "--video_fps",
+    type=int,
+    default=60,
+    help="FPS for the output video if --save is enabled.",
+)
+parser.add_argument(
+    "--save",
+    action="store_true",
+    default=False,
+    help="Save the data from camera.",
+)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
+if args_cli.save:
+    args_cli.enable_cameras = True
 
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
@@ -37,9 +64,39 @@ import torch
 import warp as wp
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
 
+import omni.replicator.core as rep
+
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.sim import SimulationContext
+from isaaclab.sensors.camera import Camera, CameraCfg
+from isaaclab.utils import convert_dict_to_backend
+
+# from isaaclab.assets import DeformableObject, DeformableObjectCfg
+# For now import PhysX implementation for testing.
+from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
+
+
+def define_sensor() -> Camera:
+    """Defines the camera sensor to add to the scene."""
+    # Setup camera sensor
+    # In contrast to the ray-cast camera, we spawn the prim at these locations.
+    # This means the camera sensor will be attached to these prims.
+    sim_utils.create_prim("/World/OriginCamera", "Xform", translation=[0.0, 0.0, 0.0])
+    camera_cfg = CameraCfg(
+        prim_path="/World/OriginCamera/CameraSensor",
+        update_period=1.0/args_cli.video_fps,
+        height=480,
+        width=640,
+        data_types=["rgb",],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
+        ),
+    )
+    # Create camera
+    camera = Camera(cfg=camera_cfg)
+
+    return camera
 
 
 def design_scene():
@@ -50,6 +107,9 @@ def design_scene():
     # Lights
     cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.8, 0.8, 0.8))
     cfg.func("/World/Light", cfg)
+
+    # Create a dictionary for the scene entities
+    scene_entities = {}
 
     # Create separate groups called "Origin1", "Origin2", "Origin3"
     # Each group will have a robot in it
@@ -70,20 +130,44 @@ def design_scene():
         debug_vis=True,
     )
     cube_object = DeformableObject(cfg=cfg)
+    scene_entities["cube_object"] = cube_object
+
+    # Sensors
+    if args_cli.save:
+        camera = define_sensor()
+        scene_entities["camera"] = camera
 
     # return the scene information
-    scene_entities = {"cube_object": cube_object}
     return scene_entities, origins
 
 
-def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, DeformableObject], origins: torch.Tensor):
+def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: torch.Tensor, output_dir: str):
     """Runs the simulation loop."""
     # Extract scene entities
     # note: we only do this here for readability. In general, it is better to access the entities directly from
     #   the dictionary. This dictionary is replaced by the InteractiveScene class in the next tutorial.
-    cube_object = entities["cube_object"]
+    cube_object: DeformableObject = entities["cube_object"]
+
+    # Write camera outputs
+    if args_cli.save:
+        camera: Camera = entities["camera"]
+
+        # Create replicator writer
+        rep_writer = rep.BasicWriter(
+            output_dir=output_dir,
+            frame_padding=0,
+            rgb=True,
+        )
+        # Camera positions, targets, orientations
+        camera_positions = torch.tensor([[2.5, 2.5, 2.5]], device=sim.device)
+        camera_targets = torch.tensor([[0.0, 0.0, 0.25]], device=sim.device)
+        camera.set_world_poses_from_view(camera_positions, camera_targets)
+
+
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
+    assert sim_dt <= 1.0 / args_cli.video_fps, "Simulation timestep must be smaller than the inverse of the video FPS to save frames properly."
+    num_steps = int(args_cli.total_time / sim_dt)
     sim_time = 0.0
     count = 0
 
@@ -91,9 +175,9 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
     nodal_kinematic_target = wp.to_torch(cube_object.data.nodal_kinematic_target).clone()
 
     # Simulate physics
-    while simulation_app.is_running():
+    for t in range(num_steps):
         # reset
-        if count % 250 == 0:
+        if sim_time > 2.5:
             # reset counters
             sim_time = 0.0
             count = 0
@@ -121,7 +205,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
 
         # update the kinematic target for cubes at index 0 and 3
         # we slightly move the cube in the z-direction by picking the vertex at index 0
-        nodal_kinematic_target[[0, 3], 0, 2] += 0.001
+        nodal_kinematic_target[[0, 3], 0, 2] += 0.2 * sim_dt
         # set vertex at index 0 to be kinematically constrained
         # 0: constrained, 1: free
         nodal_kinematic_target[[0, 3], 0, 3] = 0.0
@@ -137,15 +221,27 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
         count += 1
         # update buffers
         cube_object.update(sim_dt)
+        if args_cli.save:
+            camera.update(sim_dt)
+
         # print the root position
-        if count % 50 == 0:
-            print(f"Root position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
+        if t % args_cli.video_fps == 0:
+            print(f"Time {t*sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
+
+        # Extract camera data
+        if args_cli.save:
+            if camera.data.output["rgb"] is not None:
+                cam_data = convert_dict_to_backend(camera.data.output, backend="numpy")
+                rep_writer.write({
+                    "annotators": {"rgb": {"render_product": {"data": cam_data["rgb"][0]}}},
+                    "trigger_outputs": {"on_time": camera.frame[0]}
+                })
 
 
 def main():
     """Main function."""
     # Load kit helper
-    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
+    sim_cfg = sim_utils.SimulationCfg(dt=args_cli.dt, device=args_cli.device)
     sim = SimulationContext(sim_cfg)
     # Set main camera
     sim.set_camera_view(eye=[3.0, 0.0, 1.0], target=[0.0, 0.0, 0.5])
@@ -157,8 +253,20 @@ def main():
     # Now we are ready!
     print("[INFO]: Setup complete...")
     # Run the simulator
-    run_simulator(sim, scene_entities, scene_origins)
-
+    camera_output = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "camera")
+    run_simulator(sim, scene_entities, scene_origins, camera_output)
+    # Store video if saving frames
+    if args_cli.save:
+        video_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "output.mp4")
+        fps = args_cli.video_fps
+        subprocess.run([
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-framerate", str(fps),
+            "-i", os.path.join(camera_output, "rgb_%d_0.png"),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            video_path,
+        ], check=True)
+        print(f"[INFO]: Video saved to {video_path}")
 
 if __name__ == "__main__":
     # run the main function
