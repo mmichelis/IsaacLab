@@ -92,6 +92,9 @@ class DeformableBodyMaterialCfg(PhysicsMaterialCfg):
     density: float | None = None
     """The material density. Defaults to None, in which case the simulation decides the default density."""
 
+    static_friction: float = 0.25
+    """The static friction. Defaults to 0.25."""
+
     dynamic_friction: float = 0.25
     """The dynamic friction. Defaults to 0.25."""
 
@@ -112,7 +115,7 @@ class DeformableBodyMaterialCfg(PhysicsMaterialCfg):
     elasticity_damping: float = 0.005
     """The elasticity damping for the deformable material. Defaults to 0.005."""
 
-    damping_scale: float = 1.0
+    damping_scale: float = 1.0 # DEPRECATED since change from SoftBodyMaterialView to DefrmableMaterialView
     """The damping scale for the deformable material. Defaults to 1.0.
 
     A scale of 1 corresponds to default damping. A value of 0 will only apply damping to certain motions leading

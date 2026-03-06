@@ -882,7 +882,8 @@ def define_deformable_body_properties(
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
 
     # traverse the prim and get the mesh
-    matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
+    # TODO: currently we only allow volume deformables (TetMesh), if surface deformable we want the prim type to be Mesh.
+    matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
     # check if the mesh is valid
     if len(matching_prims) == 0:
         raise ValueError(f"Could not find any mesh in '{prim_path}'. Please check asset.")
@@ -897,9 +898,10 @@ def define_deformable_body_properties(
     # get deformable-body USD prim
     mesh_prim = matching_prims[0]
     # ensure PhysX deformable body API is applied
-    mesh_applied = mesh_prim.GetAppliedSchemas()
-    if "PhysxDeformableBodyAPI" not in mesh_applied:
-        mesh_prim.AddAppliedSchema("PhysxDeformableBodyAPI")
+    # mesh_applied = mesh_prim.GetAppliedSchemas()
+    # if "PhysxDeformableBodyAPI" not in mesh_applied:
+    #     mesh_prim.AddAppliedSchema("PhysxDeformableBodyAPI")
+
     # set deformable body properties
     modify_deformable_body_properties(mesh_prim.GetPrimPath(), cfg, stage)
 
@@ -958,8 +960,8 @@ def modify_deformable_body_properties(
     # check if the prim is valid and has the deformable-body API
     if not deformable_body_prim.IsValid():
         return False
-    if "PhysxDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
-        return False
+    # if "PhysxDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
+    #     return False
 
     # convert to dict
     cfg = cfg.to_dict()
@@ -983,19 +985,26 @@ def modify_deformable_body_properties(
             "self_collision_filter_distance",
         ]
     }
+    # TODO: These all belong somewhere, I need to figure out the concrete schema API locations. 
     from omni.physx.scripts import deformableUtils as deformable_utils
 
-    status = deformable_utils.add_physx_deformable_body(stage, prim_path=prim_path, **attr_kwargs)
+    # mesh_prim.AddAppliedSchema("PhysxDeformableBodyAPI") # Deprecated
+
+    # status = deformable_utils.add_physx_deformable_body(stage, prim_path=prim_path, **attr_kwargs)
+    status = deformable_utils.set_physics_volume_deformable_body(stage, prim_path)
     # check if the deformable body was successfully added
     if not status:
         return False
 
     # ensure PhysX deformable API is applied (set when add_physx_deformable_body runs; apply if missing)
-    deformable_applied = deformable_body_prim.GetAppliedSchemas()
-    if "PhysxCollisionAPI" not in deformable_applied:
-        deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
-    if "PhysxDeformableAPI" not in deformable_applied:
-        deformable_body_prim.AddAppliedSchema("PhysxDeformableAPI")
+    # deformable_applied = deformable_body_prim.GetAppliedSchemas()
+    # if "PhysxCollisionAPI" not in deformable_applied:
+    #     deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
+    # if "PhysxDeformableAPI" not in deformable_applied:
+    #     deformable_body_prim.AddAppliedSchema("PhysxDeformableAPI")
+
+    deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
+    # deformable_body_prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI") # Optional
 
     # set into PhysX API (prim attributes: physxCollision:* for rest/contact offset, physxDeformable:* for rest)
     for attr_name, value in cfg.items():

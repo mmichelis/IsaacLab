@@ -116,16 +116,24 @@ def spawn_deformable_body_material(prim_path: str, cfg: physics_materials_cfg.De
         raise ValueError(f"A prim already exists at path: '{prim_path}' but is not a material.")
     # ensure PhysX deformable body material API is applied
     applied = prim.GetAppliedSchemas()
-    if "PhysxDeformableBodyMaterialAPI" not in applied:
-        prim.AddAppliedSchema("PhysxDeformableBodyMaterialAPI")
+    if "OmniPhysicsDeformableMaterialAPI" not in applied: # TODO: check surface vs volume deformable
+        prim.AddAppliedSchema("OmniPhysicsDeformableMaterialAPI")
+    if "PhysxDeformableMaterialAPI" not in applied:
+        prim.AddAppliedSchema("PhysxDeformableMaterialAPI")
 
     # convert to dict
     cfg = cfg.to_dict()
     del cfg["func"]
-    # set into PhysX API (prim attributes: physxDeformableBodyMaterial:*)
+    # set base attributes into OmniPhysics API
+    for attr_name in ["static_friction", "dynamic_friction", "density", "youngs_modulus", "poissons_ratio"]:
+        value = cfg.pop(attr_name, None)
+        safe_set_attribute_on_usd_prim(
+            prim, f"omniphysics:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+        )
+    # set extras into PhysX API (prim attributes: physxDeformableMaterial:*)
     for attr_name, value in cfg.items():
         safe_set_attribute_on_usd_prim(
-            prim, f"physxDeformableBodyMaterial:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+            prim, f"physxDeformableMaterial:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
         )
     # return the prim
     return prim
