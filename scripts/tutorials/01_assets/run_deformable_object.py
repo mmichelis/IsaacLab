@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser(description="Tutorial on interacting with a def
 parser.add_argument(
     "--total_time",
     type=float,
-    default=5.0,
+    default=4.0,
     help="Total simulation time in seconds.",
 )
 parser.add_argument(
@@ -177,7 +177,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
     # Simulate physics
     for t in range(num_steps):
         # reset
-        if sim_time > 2.5:
+        if sim_time > 4.0:
             # reset counters
             sim_time = 0.0
             count = 0
@@ -204,11 +204,12 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
             print("[INFO]: Resetting object state...")
 
         # update the kinematic target for cubes at index 0 and 3
+        kinematic_cubes = [0, 3]
         # we slightly move the cube in the z-direction by picking the vertex at index 0
-        nodal_kinematic_target[[0, 3], 0, 2] += 0.2 * sim_dt
+        nodal_kinematic_target[kinematic_cubes, 0, 2] += 0.2 * sim_dt
         # set vertex at index 0 to be kinematically constrained
         # 0: constrained, 1: free
-        nodal_kinematic_target[[0, 3], 0, 3] = 0.0
+        nodal_kinematic_target[kinematic_cubes, 0, 3] = 0.0
         # write kinematic target to simulation
         cube_object.write_nodal_kinematic_target_to_sim_index(nodal_kinematic_target)
 
@@ -227,6 +228,10 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         # print the root position
         if t % args_cli.video_fps == 0:
             print(f"Time {t*sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
+            print(f"Cube 0 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[0].mean(0)}")
+            print(f"Cube 1 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[1].mean(0)}")
+            print(f"Cube 2 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[2].mean(0)}")
+            print(f"Cube 3 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[3].mean(0)}")
 
         # Extract camera data
         if args_cli.save:

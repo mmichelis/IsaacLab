@@ -328,25 +328,57 @@ def _spawn_mesh_geom_from_mesh(
     geom_prim_path = prim_path + "/geometry"
     mesh_prim_path = geom_prim_path + "/mesh"
 
-    # create the mesh prim
-    mesh_prim = create_prim(
-        mesh_prim_path,
-        prim_type="Mesh",
-        scale=scale,
-        attributes={
+    # deformable will create a volumetric mesh, otherwise a surface mesh is used
+    if cfg.deformable_props is not None:
+        # convert surface trimesh to volumetric tet mesh for deformables
+        import tetgen
+        from collections import Counter
+
+        tet = tetgen.TetGen(mesh.vertices, mesh.faces)
+        tet_vertices, tet_elements, _, _ = tet.tetrahedralize()
+
+        # extract surface faces: triangles belonging to exactly one tetrahedron
+        face_count = Counter()
+        unique_faces = {}
+        for elem in tet_elements:
+            # TODO: Check if order matters
+            for i, j, k in [(0, 2, 1), (1, 2, 3), (0, 1, 3), (0, 3, 2)]:
+                key = tuple(sorted([elem[i], elem[j], elem[k]]))
+                face_count[key] += 1
+                unique_faces[key] = (elem[i], elem[j], elem[k])
+        surface_faces = np.array([unique_faces[k] for k, c in face_count.items() if c == 1])
+
+        prim_type = "TetMesh"
+        attributes = {
+            "points": tet_vertices,
+            "tetVertexIndices": tet_elements.flatten(),
+            "surfaceFaceVertexIndices": surface_faces.flatten(),
+        }
+    else:
+        prim_type = "Mesh"
+        attributes = {
             "points": mesh.vertices,
             "faceVertexIndices": mesh.faces.flatten(),
             "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
             "subdivisionScheme": "bilinear",
-        },
+        }
+
+    # create the mesh prim
+    mesh_prim = create_prim(
+        mesh_prim_path,
+        prim_type=prim_type,
+        scale=scale,
+        attributes=attributes,
         stage=stage,
     )
+
 
     # note: in case of deformable objects, we need to apply the deformable properties to the mesh prim.
     #   this is different from rigid objects where we apply the properties to the parent prim.
     if cfg.deformable_props is not None:
         # apply mass properties
         if cfg.mass_props is not None:
+            # TODO: will the deformable not set the mass automatically from the density?
             schemas.define_mass_properties(mesh_prim_path, cfg.mass_props, stage=stage)
         # apply deformable body properties
         schemas.define_deformable_body_properties(mesh_prim_path, cfg.deformable_props, stage=stage)
