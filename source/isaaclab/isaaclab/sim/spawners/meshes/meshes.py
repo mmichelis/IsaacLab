@@ -343,10 +343,9 @@ def _spawn_mesh_geom_from_mesh(
             stage=stage,
         )
     else:
-        # create all the paths we need for clarity
+        # create all the paths we need for clarity, we use the same mesh for simulation and collision
         render_mesh_prim_path = prim_path + "/RenderMesh"
         sim_mesh_prim_path = prim_path + "/SimulationMesh"
-        col_mesh_prim_path = prim_path + "/CollisionMesh"
         
         # create the mesh prim
         render_mesh_prim = create_prim(
