@@ -140,3 +140,21 @@ class MeshConeCfg(MeshCfg):
     """Height of the v (in m)."""
     axis: Literal["X", "Y", "Z"] = "Z"
     """Axis of the cone. Defaults to "Z"."""
+
+
+@configclass
+class MeshRectangleCfg(MeshCfg):
+    """Configuration parameters for a 2D rectangle mesh prim with deformable properties.
+
+    See :meth:`spawn_mesh_rectangle` for more information.
+    """
+
+    func: Callable | str = "{DIR}.meshes:spawn_mesh_rectangle"
+
+    size: tuple[float, float] = MISSING
+    """Size of the rectangle (in m)."""
+    nx: int = 1
+    """Number of vertices along the x-axis."""
+    ny: int = 1
+    """Number of vertices along the y-axis."""
+

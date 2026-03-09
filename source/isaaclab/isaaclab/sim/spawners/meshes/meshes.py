@@ -256,6 +256,48 @@ def spawn_mesh_cone(
     return stage.GetPrimAtPath(prim_path)
 
 
+@clone
+def spawn_mesh_rectangle(
+    prim_path: str,
+    cfg: meshes_cfg.MeshRectangleCfg,
+    translation: tuple[float, float, float] | None = None,
+    orientation: tuple[float, float, float, float] | None = None,
+    **kwargs,
+) -> Usd.Prim:
+    """Create a USD-Mesh 2D rectangle prim with the given attributes.
+
+    .. note::
+        This function is decorated with :func:`clone` that resolves prim path into list of paths
+        if the input prim path is a regex pattern. This is done to support spawning multiple assets
+        from a single and cloning the USD prim at the given path expression.
+
+    Args:
+        prim_path: The prim path or pattern to spawn the asset at. If the prim path is a regex pattern,
+            then the asset is spawned at all the matching prim paths.
+        cfg: The configuration instance.
+        translation: The translation to apply to the prim w.r.t. its parent prim. Defaults to None, in which case
+            this is set to the origin.
+        orientation: The orientation in (x, y, z, w) to apply to the prim w.r.t. its parent prim. Defaults to None,
+            in which case this is set to identity.
+        **kwargs: Additional keyword arguments, like ``clone_in_fabric``.
+
+    Returns:
+        The created prim.
+
+    Raises:
+        ValueError: If a prim already exists at the given path.
+    """
+    # create a trimesh box
+    box = trimesh.creation.box(cfg.size)
+
+    # obtain stage handle
+    stage = get_current_stage()
+    # spawn the rectangle as a mesh
+    _spawn_mesh_geom_from_mesh(prim_path, cfg, box, translation, orientation, None, stage=stage)
+    # return the prim
+    return stage.GetPrimAtPath(prim_path)
+
+
 """
 Helper functions.
 """
