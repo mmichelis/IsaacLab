@@ -880,30 +880,35 @@ def define_deformable_body_properties(
     # check if prim path is valid
     if not prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
+    # check if prim has deformable body applied on it
+    if "OmniPhysicsDeformableBodyAPI" not in prim.GetAppliedSchemas():
+        raise ValueError(f"Prim path '{prim_path}' does not have the deformable body schema applied.")
 
-    # traverse the prim and get the mesh
+    # traverse the prim and get the collision mesh
     # TODO: currently we only allow volume deformables (TetMesh), if surface deformable we want the prim type to be Mesh.
-    matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
-    # check if the mesh is valid
-    if len(matching_prims) == 0:
-        raise ValueError(f"Could not find any mesh in '{prim_path}'. Please check asset.")
-    if len(matching_prims) > 1:
-        # get list of all meshes found
-        mesh_paths = [p.GetPrimPath() for p in matching_prims]
-        raise ValueError(
-            f"Found multiple meshes in '{prim_path}': {mesh_paths}."
-            " Deformable body schema can only be applied to one mesh."
-        )
+    # matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
+    # # check if the mesh is valid
+    # if len(matching_prims) == 0:
+    #     raise ValueError(f"Could not find any mesh in '{prim_path}'. Please check asset.")
+    # if len(matching_prims) > 1:
+    #     # get list of all meshes found
+    #     mesh_paths = [p.GetPrimPath() for p in matching_prims]
+    #     raise ValueError(
+    #         f"Found multiple meshes in '{prim_path}': {mesh_paths}."
+    #         " Deformable body schema can only be applied to one mesh."
+    #     )
 
     # get deformable-body USD prim
-    mesh_prim = matching_prims[0]
+    # mesh_prim = matching_prims[0]
     # ensure PhysX deformable body API is applied
     # mesh_applied = mesh_prim.GetAppliedSchemas()
-    # if "PhysxDeformableBodyAPI" not in mesh_applied:
-    #     mesh_prim.AddAppliedSchema("PhysxDeformableBodyAPI")
+
+    # TODO: Make this general for engines besides PhysX
+    if "PhysxBaseDeformableBodyAPI" not in prim.GetAppliedSchemas():
+        prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI")
 
     # set deformable body properties
-    modify_deformable_body_properties(mesh_prim.GetPrimPath(), cfg, stage)
+    modify_deformable_body_properties(prim_path, cfg, stage)
 
 
 @apply_nested
@@ -960,8 +965,32 @@ def modify_deformable_body_properties(
     # check if the prim is valid and has the deformable-body API
     if not deformable_body_prim.IsValid():
         return False
-    # if "PhysxDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
-    #     return False
+    # TODO: Make this general for engines besides PhysX
+    deformable_applied_schemas = deformable_body_prim.GetAppliedSchemas()
+    if "PhysxBaseDeformableBodyAPI" not in deformable_applied_schemas:
+        return False
+    if "OmniPhysicsBodyAPI" not in deformable_applied_schemas:
+        return False
+
+    # get collision prim
+    matching_prims = get_all_matching_child_prims(prim_path, lambda p: "PhysicsCollisionAPI" in p.GetAppliedSchemas())
+    # check if the mesh is valid
+    if len(matching_prims) == 0:
+        raise ValueError(f"Could not find any collision mesh in '{prim_path}'. Please check asset.")
+    if len(matching_prims) > 1:
+        # get list of all meshes found
+        mesh_paths = [p.GetPrimPath() for p in matching_prims]
+        raise ValueError(
+            f"Found multiple collision meshes in '{prim_path}': {mesh_paths}."
+            " Deformable body schema can only be applied to one mesh."
+        )
+    col_prim = matching_prims[0]
+
+    # ensure PhysX collision API is applied on the collision mesh
+    # TODO: Specific to PhysX
+    if "PhysxCollisionAPI" not in col_prim.GetAppliedSchemas():
+        col_prim.AddAppliedSchema("PhysxCollisionAPI")
+
 
     # convert to dict
     cfg = cfg.to_dict()
@@ -991,47 +1020,33 @@ def modify_deformable_body_properties(
     # mesh_prim.AddAppliedSchema("PhysxDeformableBodyAPI") # Deprecated
 
     # status = deformable_utils.add_physx_deformable_body(stage, prim_path=prim_path, **attr_kwargs)
-    status = deformable_utils.set_physics_volume_deformable_body(stage, prim_path)
+    # status = deformable_utils.set_physics_volume_deformable_body(stage, prim_path)
     # check if the deformable body was successfully added
-    if not status:
-        return False
-    
-    # ensure PhysX deformable API is applied (set when add_physx_deformable_body runs; apply if missing)
-    deformable_applied = deformable_body_prim.GetAppliedSchemas()
-    if "PhysxDeformableBodyAPI" not in deformable_applied:
-        deformable_body_prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI") # TODO: This will contain all the solverPositionIterationCount, linearDamping, settlingThreshold, etc.
-
-    for attr_name in ["solver_position_iteration_count", "linear_damping", "max_linear_velocity", "settling_damping", "settling_threshold", "sleep_threshold", "max_depenetration_velocity", "self_collision", "self_collision_filter_distance", "enable_speculative_ccd", "disable_gravity"]:
-        value = cfg.pop(attr_name, None)
-        safe_set_attribute_on_usd_prim(
-            deformable_body_prim, f"physxDeformableBody:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
-        )
+    # if not status:
+    #     return False
         
-    # ensure OmniPhysics API is applied
-    if "OmniPhysicsBodyAPI" not in deformable_applied:
-        deformable_body_prim.AddAppliedSchema("OmniPhysicsBodyAPI")
 
-    for attr_name in ["kinematic_enabled", "deformable_body_enabled"]:
-        value = cfg.pop(attr_name, None)
-        safe_set_attribute_on_usd_prim(
-            deformable_body_prim, f"omniphysics:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
-        )
-
-    if "PhysxCollisionAPI" not in deformable_applied:
-        deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
-    # if "PhysxDeformableAPI" not in deformable_applied:
-    #     deformable_body_prim.AddAppliedSchema("PhysxDeformableAPI")
-
-    # set into PhysX API (prim attributes: physxCollision:* for rest/contact offset, physxDeformable:* for rest)
+    # set into PhysX API (collision prim attributes: physxCollision:* for rest/contact offset, physxDeformable:* for rest on deformable prim)
     for attr_name, value in cfg.items():
         if attr_name in ["rest_offset", "contact_offset"]:
             safe_set_attribute_on_usd_prim(
-                deformable_body_prim, f"physxCollision:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+                col_prim, f"physxCollision:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+            )
+        elif attr_name in ["kinematic_enabled", "deformable_body_enabled"]:
+            safe_set_attribute_on_usd_prim(
+                deformable_body_prim, f"omniphysics:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
             )
         else:
             safe_set_attribute_on_usd_prim(
-                deformable_body_prim, f"physxDeformable:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+                deformable_body_prim, f"physxDeformableBody:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
             )
+
+    # explicit:
+    # for attr_name in ["solver_position_iteration_count", "linear_damping", "max_linear_velocity", "settling_damping", "settling_threshold", "sleep_threshold", "max_depenetration_velocity", "self_collision", "self_collision_filter_distance", "enable_speculative_ccd", "disable_gravity"]:
+    #     value = cfg.pop(attr_name, None)
+    #     safe_set_attribute_on_usd_prim(
+    #         deformable_body_prim, f"physxDeformableBody:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+    #     )
 
     # success
     return True
