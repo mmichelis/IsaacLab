@@ -966,25 +966,25 @@ def modify_deformable_body_properties(
     # convert to dict
     cfg = cfg.to_dict()
     # set into deformable body API
-    attr_kwargs = {
-        attr_name: cfg.pop(attr_name)
-        for attr_name in [
-            "kinematic_enabled",
-            "collision_simplification",
-            "collision_simplification_remeshing",
-            "collision_simplification_remeshing_resolution",
-            "collision_simplification_target_triangle_count",
-            "collision_simplification_force_conforming",
-            "simulation_hexahedral_resolution",
-            "solver_position_iteration_count",
-            "vertex_velocity_damping",
-            "sleep_damping",
-            "sleep_threshold",
-            "settling_threshold",
-            "self_collision",
-            "self_collision_filter_distance",
-        ]
-    }
+    # attr_kwargs = {
+    #     attr_name: cfg.pop(attr_name)
+    #     for attr_name in [
+    #         "kinematic_enabled",
+    #         "collision_simplification",
+    #         "collision_simplification_remeshing",
+    #         "collision_simplification_remeshing_resolution",
+    #         "collision_simplification_target_triangle_count",
+    #         "collision_simplification_force_conforming",
+    #         "simulation_hexahedral_resolution",
+    #         "solver_position_iteration_count",
+    #         "vertex_velocity_damping",
+    #         "sleep_damping",
+    #         "sleep_threshold",
+    #         "settling_threshold",
+    #         "self_collision",
+    #         "self_collision_filter_distance",
+    #     ]
+    # }
     # TODO: These all belong somewhere, I need to figure out the concrete schema API locations. 
     from omni.physx.scripts import deformableUtils as deformable_utils
 
@@ -995,16 +995,32 @@ def modify_deformable_body_properties(
     # check if the deformable body was successfully added
     if not status:
         return False
-
+    
     # ensure PhysX deformable API is applied (set when add_physx_deformable_body runs; apply if missing)
-    # deformable_applied = deformable_body_prim.GetAppliedSchemas()
-    # if "PhysxCollisionAPI" not in deformable_applied:
-    #     deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
+    deformable_applied = deformable_body_prim.GetAppliedSchemas()
+    if "PhysxDeformableBodyAPI" not in deformable_applied:
+        deformable_body_prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI") # TODO: This will contain all the solverPositionIterationCount, linearDamping, settlingThreshold, etc.
+
+    for attr_name in ["solver_position_iteration_count", "linear_damping", "max_linear_velocity", "settling_damping", "settling_threshold", "sleep_threshold", "max_depenetration_velocity", "self_collision", "self_collision_filter_distance", "enable_speculative_ccd", "disable_gravity"]:
+        value = cfg.pop(attr_name, None)
+        safe_set_attribute_on_usd_prim(
+            deformable_body_prim, f"physxDeformableBody:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+        )
+        
+    # ensure OmniPhysics API is applied
+    if "OmniPhysicsBodyAPI" not in deformable_applied:
+        deformable_body_prim.AddAppliedSchema("OmniPhysicsBodyAPI")
+
+    for attr_name in ["kinematic_enabled", "deformable_body_enabled"]:
+        value = cfg.pop(attr_name, None)
+        safe_set_attribute_on_usd_prim(
+            deformable_body_prim, f"omniphysics:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+        )
+
+    if "PhysxCollisionAPI" not in deformable_applied:
+        deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
     # if "PhysxDeformableAPI" not in deformable_applied:
     #     deformable_body_prim.AddAppliedSchema("PhysxDeformableAPI")
-
-    deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
-    # deformable_body_prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI") # Optional
 
     # set into PhysX API (prim attributes: physxCollision:* for rest/contact offset, physxDeformable:* for rest)
     for attr_name, value in cfg.items():
