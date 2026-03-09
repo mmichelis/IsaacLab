@@ -342,41 +342,11 @@ def _spawn_mesh_geom_from_mesh(
             },
             stage=stage,
         )
-    # deformable will create a volumetric mesh, otherwise a surface mesh is used
     else:
         # create all the paths we need for clarity
-        sim_mesh_prim_path = prim_path + "/sim_mesh"
-        render_mesh_prim_path = sim_mesh_prim_path + "/render_mesh"
-
-        # convert surface trimesh to volumetric tet mesh for deformables
-        import tetgen
-        # from collections import Counter
-
-        tet = tetgen.TetGen(mesh.vertices, mesh.faces)
-        tet_vertices, tet_elements, _, _ = tet.tetrahedralize()
-
-        # extract surface faces: triangles belonging to exactly one tetrahedron
-        # face_count = Counter()
-        # unique_faces = {}
-        # for elem in tet_elements:
-        #     # TODO: Check if order matters
-        #     for i, j, k in [(0, 2, 1), (1, 2, 3), (0, 1, 3), (0, 3, 2)]:
-        #         key = tuple(sorted([elem[i], elem[j], elem[k]]))
-        #         face_count[key] += 1
-        #         unique_faces[key] = (elem[i], elem[j], elem[k])
-        # surface_faces = np.array([unique_faces[k] for k, c in face_count.items() if c == 1])
-
-        mesh_prim = create_prim(
-            sim_mesh_prim_path,
-            prim_type="TetMesh",
-            scale=scale,
-            attributes={
-                "points": tet_vertices,
-                "tetVertexIndices": tet_elements.flatten(),
-            },
-            stage=stage,
-        )
-
+        render_mesh_prim_path = prim_path + "/RenderMesh"
+        sim_mesh_prim_path = prim_path + "/SimulationMesh"
+        col_mesh_prim_path = prim_path + "/CollisionMesh"
         
         # create the mesh prim
         render_mesh_prim = create_prim(
@@ -392,21 +362,26 @@ def _spawn_mesh_geom_from_mesh(
             stage=stage,
         )
 
+        from omni.physx.scripts import deformableUtils
+        from omni.physx import get_physx_cooking_interface
 
-        # bind pose of render mesh to sim mesh for deformable objects
-        purposesAttrName = "deformablePose:default:omniphysics:purposes"
-        pointsAttrName = "deformablePose:default:omniphysics:points"
-        mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
-        if mesh_prim.HasAPI("OmniPhysicsDeformablePoseAPI", "default"):
-            mesh_prim.GetAttribute(purposesAttrName).Set(["bindPose"])
-            mesh_prim.GetAttribute(pointsAttrName).Set(mesh_prim.GetAttribute("points").Get())
+        success = deformableUtils.create_auto_volume_deformable_hierarchy(
+            stage=stage,
+            root_prim_path=prim_path,
+            simulation_tetmesh_path=sim_mesh_prim_path,
+            collision_tetmesh_path=sim_mesh_prim_path,
+            cooking_src_mesh_path=render_mesh_prim_path,
+            simulation_hex_mesh_enabled=False,
+            cooking_src_simplification_enabled=False,
+            set_visibility_with_guide_purpose=True,
+        )
+        if not success:
+            raise RuntimeError("Failed to create deformable hierarchy from the given mesh.")
 
-        render_mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
-        if render_mesh_prim.HasAPI("OmniPhysicsDeformablePoseAPI", "default"):
-            render_mesh_prim.GetAttribute(purposesAttrName).Set(["bindPose"])
-            render_mesh_prim.GetAttribute(pointsAttrName).Set(render_mesh_prim.GetAttribute("points").Get())
+        # generate tet mesh for deformable object
+        get_physx_cooking_interface().cook_auto_deformable_body(prim_path)
 
-        mesh_prim_path = sim_mesh_prim_path
+        mesh_prim_path = prim_path
 
     # note: in case of deformable objects, we need to apply the deformable properties to the mesh prim.
     #   this is different from rigid objects where we apply the properties to the parent prim.
