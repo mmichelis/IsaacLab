@@ -64,6 +64,9 @@ import torch
 import warp as wp
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 import omni.replicator.core as rep
 
 import isaaclab.sim as sim_utils
@@ -175,6 +178,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
     nodal_kinematic_target = wp.to_torch(cube_object.data.nodal_kinematic_target).clone()
 
     # Simulate physics
+    com_traj = []
     for t in range(num_steps):
         # reset
         if sim_time > 4.0:
@@ -225,6 +229,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         if args_cli.save:
             camera.update(sim_dt)
 
+        com_traj.append(wp.to_torch(cube_object.data.nodal_pos_w).mean(1).cpu().numpy())
         # print the root position
         if t % args_cli.video_fps == 0:
             print(f"Time {t*sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
@@ -232,6 +237,18 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
             print(f"Cube 1 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[1].mean(0)}")
             print(f"Cube 2 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[2].mean(0)}")
             print(f"Cube 3 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[3].mean(0)}")
+
+            trajectories = np.stack(com_traj, axis=1)
+            time_axis = np.arange(trajectories.shape[1]) * sim_dt
+            fig, ax = plt.subplots(figsize=(4, 3))
+            for i in range(4):
+                ax.plot(time_axis, trajectories[i, :, 2], label=f"Cube {i}")
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Z Position (m)")
+            ax.legend()
+            ax.grid()
+            fig.savefig(os.path.join(output_dir, f"com_trajectory.png"), dpi=300, bbox_inches="tight")
+            plt.close(fig)
 
         # Extract camera data
         if args_cli.save:
