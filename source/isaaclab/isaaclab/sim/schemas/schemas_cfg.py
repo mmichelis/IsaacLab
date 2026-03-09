@@ -323,7 +323,7 @@ class DeformableBodyPropertiesCfg:
         the properties and leave the rest as-is.
     """
 
-    deformable_enabled: bool | None = None
+    deformable_body_enabled: bool | None = None
     """Enables deformable body."""
 
     kinematic_enabled: bool = False

@@ -328,50 +328,85 @@ def _spawn_mesh_geom_from_mesh(
     geom_prim_path = prim_path + "/geometry"
     mesh_prim_path = geom_prim_path + "/mesh"
 
+    # create the mesh prim
+    if cfg.deformable_props is None:
+        mesh_prim = create_prim(
+            mesh_prim_path,
+            prim_type="Mesh",
+            scale=scale,
+            attributes={
+                "points": mesh.vertices,
+                "faceVertexIndices": mesh.faces.flatten(),
+                "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
+                "subdivisionScheme": "bilinear",
+            },
+            stage=stage,
+        )
     # deformable will create a volumetric mesh, otherwise a surface mesh is used
-    if cfg.deformable_props is not None:
+    else:
+        # create all the paths we need for clarity
+        sim_mesh_prim_path = prim_path + "/sim_mesh"
+        render_mesh_prim_path = sim_mesh_prim_path + "/render_mesh"
+
         # convert surface trimesh to volumetric tet mesh for deformables
         import tetgen
-        from collections import Counter
+        # from collections import Counter
 
         tet = tetgen.TetGen(mesh.vertices, mesh.faces)
         tet_vertices, tet_elements, _, _ = tet.tetrahedralize()
 
         # extract surface faces: triangles belonging to exactly one tetrahedron
-        face_count = Counter()
-        unique_faces = {}
-        for elem in tet_elements:
-            # TODO: Check if order matters
-            for i, j, k in [(0, 2, 1), (1, 2, 3), (0, 1, 3), (0, 3, 2)]:
-                key = tuple(sorted([elem[i], elem[j], elem[k]]))
-                face_count[key] += 1
-                unique_faces[key] = (elem[i], elem[j], elem[k])
-        surface_faces = np.array([unique_faces[k] for k, c in face_count.items() if c == 1])
+        # face_count = Counter()
+        # unique_faces = {}
+        # for elem in tet_elements:
+        #     # TODO: Check if order matters
+        #     for i, j, k in [(0, 2, 1), (1, 2, 3), (0, 1, 3), (0, 3, 2)]:
+        #         key = tuple(sorted([elem[i], elem[j], elem[k]]))
+        #         face_count[key] += 1
+        #         unique_faces[key] = (elem[i], elem[j], elem[k])
+        # surface_faces = np.array([unique_faces[k] for k, c in face_count.items() if c == 1])
 
-        prim_type = "TetMesh"
-        attributes = {
-            "points": tet_vertices,
-            "tetVertexIndices": tet_elements.flatten(),
-            "surfaceFaceVertexIndices": surface_faces.flatten(),
-        }
-    else:
-        prim_type = "Mesh"
-        attributes = {
-            "points": mesh.vertices,
-            "faceVertexIndices": mesh.faces.flatten(),
-            "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
-            "subdivisionScheme": "bilinear",
-        }
+        mesh_prim = create_prim(
+            sim_mesh_prim_path,
+            prim_type="TetMesh",
+            scale=scale,
+            attributes={
+                "points": tet_vertices,
+                "tetVertexIndices": tet_elements.flatten(),
+            },
+            stage=stage,
+        )
 
-    # create the mesh prim
-    mesh_prim = create_prim(
-        mesh_prim_path,
-        prim_type=prim_type,
-        scale=scale,
-        attributes=attributes,
-        stage=stage,
-    )
+        
+        # create the mesh prim
+        render_mesh_prim = create_prim(
+            render_mesh_prim_path,
+            prim_type="Mesh",
+            scale=scale,
+            attributes={
+                "points": mesh.vertices,
+                "faceVertexIndices": mesh.faces.flatten(),
+                "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
+                "subdivisionScheme": "bilinear",
+            },
+            stage=stage,
+        )
 
+
+        # bind pose of render mesh to sim mesh for deformable objects
+        purposesAttrName = "deformablePose:default:omniphysics:purposes"
+        pointsAttrName = "deformablePose:default:omniphysics:points"
+        mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
+        if mesh_prim.HasAPI("OmniPhysicsDeformablePoseAPI", "default"):
+            mesh_prim.GetAttribute(purposesAttrName).Set(["bindPose"])
+            mesh_prim.GetAttribute(pointsAttrName).Set(mesh_prim.GetAttribute("points").Get())
+
+        render_mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
+        if render_mesh_prim.HasAPI("OmniPhysicsDeformablePoseAPI", "default"):
+            render_mesh_prim.GetAttribute(purposesAttrName).Set(["bindPose"])
+            render_mesh_prim.GetAttribute(pointsAttrName).Set(render_mesh_prim.GetAttribute("points").Get())
+
+        mesh_prim_path = sim_mesh_prim_path
 
     # note: in case of deformable objects, we need to apply the deformable properties to the mesh prim.
     #   this is different from rigid objects where we apply the properties to the parent prim.
