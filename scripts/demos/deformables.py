@@ -101,8 +101,8 @@ def define_sensor() -> Camera:
     camera_cfg = CameraCfg(
         prim_path="/World/OriginCamera/CameraSensor",
         update_period=1.0/args_cli.video_fps,
-        height=480,
-        width=640,
+        height=600,
+        width=800,
         data_types=["rgb",],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
@@ -129,7 +129,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
 
     # spawn a red cone
     cfg_sphere = sim_utils.MeshSphereCfg(
-        radius=0.25,
+        radius=0.5,
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=sim_utils.DeformableBodyMaterialCfg(),
@@ -148,7 +148,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
-        radius=0.15,
+        radius=0.35,
         height=0.5,
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
         visual_material=sim_utils.PreviewSurfaceCfg(),
@@ -181,7 +181,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         # randomize the young modulus (somewhere between a Silicone 30 and Silicone 70)
         obj_cfg.physics_material.youngs_modulus = random.uniform(0.7e6, 3.3e6)
         # randomize the poisson's ratio
-        obj_cfg.physics_material.poissons_ratio = random.uniform(0.25, 0.5)
+        obj_cfg.physics_material.poissons_ratio = random.uniform(0.25, 0.45)
         # randomize the color
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
         # spawn the object
@@ -294,6 +294,14 @@ def main():
             "-i", os.path.join(camera_output, "rgb_%d_0.png"),
             "-c:v", "libx264", "-pix_fmt", "yuv420p",
             video_path,
+        ], check=True)
+        # Also generate gif for quick preview
+        gif_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "output.gif")
+        subprocess.run([
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-i", video_path,
+            "-vf", "fps=15,scale=320:-1:flags=lanczos",
+            gif_path,
         ], check=True)
         print(f"[INFO]: Video saved to {video_path}")
 
