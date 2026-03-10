@@ -121,3 +121,27 @@ class DeformableBodyMaterialCfg(PhysicsMaterialCfg):
     A scale of 1 corresponds to default damping. A value of 0 will only apply damping to certain motions leading
     to special effects that look similar to water filled soft bodies.
     """
+
+
+@configclass
+class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg):
+    """Physics material parameters for surface deformable bodies, extending on :class:`DeformableBodyMaterialCfg` with additional parameters for surface deformable bodies.
+
+    See :meth:`spawn_deformable_body_material` for more information.
+
+    """
+
+    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
+
+    surface_thickness: float = 0.0
+    """The thickness of the deformable body's surface. Defaults to 0.0."""
+
+    surface_stretch_stiffness: float = 0.0
+    """The stretch stiffness of the deformable body's surface. Defaults to 0.0."""
+
+    surface_shear_stiffness: float = 0.0
+    """The shear stiffness of the deformable body's surface. Defaults to 0.0."""
+
+    surface_bend_stiffness: float = 0.0
+    """The bend stiffness of the deformable body's surface. Defaults to 0.0."""
+
