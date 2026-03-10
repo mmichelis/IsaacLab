@@ -89,8 +89,8 @@ def define_sensor() -> Camera:
     camera_cfg = CameraCfg(
         prim_path="/World/OriginCamera/CameraSensor",
         update_period=1.0/args_cli.video_fps,
-        height=480,
-        width=640,
+        height=800,
+        width=800,
         data_types=["rgb",],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
@@ -121,46 +121,17 @@ def design_scene():
         sim_utils.create_prim(f"/World/Origin{i}", "Xform", translation=origin)
 
     # Deformable Object
-    cube_asset_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "cube_deformable.usda")
-    if os.path.exists(cube_asset_path):
-        print(f"[INFO]: Found existing Cube Asset USD at {cube_asset_path}. Loading from USD to skip cooking...")
-        cube_asset_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "cube_deformable.usda")
-        cfg = DeformableObjectCfg(
-            prim_path="/World/Origin.*/Cube",
-            spawn=sim_utils.UsdFileCfg(
-                usd_path=cube_asset_path,
-                deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
-            ),
-            init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
-            debug_vis=True,
-        )
-    else:
-        cfg = DeformableObjectCfg(
-            prim_path="/World/Origin.*/Cube",
-            spawn=sim_utils.MeshCuboidCfg(
-                size=(0.2, 0.2, 0.2),
-                deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-                physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
-            ),
-            init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
-            debug_vis=True,
-        )
-
-        # Export just the Cube subtree (one instance) as a standalone USD for fast reloading.
-        # Uses Sdf.CopySpec on the flattened stage to capture all layer opinions (including cooked tet data).
-        import omni.usd
-        from pxr import Usd, Sdf
-        src_stage = omni.usd.get_context().get_stage()
-        flat_layer = src_stage.Flatten()
-        out_usd = os.path.join(os.path.dirname(os.path.realpath(__file__)), "cube_deformable.usda")
-        new_stage = Usd.Stage.CreateNew(out_usd) or Usd.Stage.Open(out_usd)
-        new_stage.GetRootLayer().Clear()
-        Sdf.CopySpec(flat_layer, Sdf.Path("/World/Origin0/Cube"), new_stage.GetRootLayer(), Sdf.Path("/Cube"))
-        new_stage.SetDefaultPrim(new_stage.GetPrimAtPath("/Cube"))
-        new_stage.GetRootLayer().Save()
-        print(f"[INFO]: Exported Cube subtree to {out_usd}")
-
+    cfg = DeformableObjectCfg(
+        prim_path="/World/Origin.*/Cube",
+        spawn=sim_utils.MeshCuboidCfg(
+            size=(0.2, 0.2, 0.2),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+        ),
+        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
+        debug_vis=True,
+    )
     
     cube_object = DeformableObject(cfg=cfg)
     scene_entities["cube_object"] = cube_object
@@ -192,8 +163,8 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
             rgb=True,
         )
         # Camera positions, targets, orientations
-        camera_positions = torch.tensor([[2.5, 2.5, 2.5]], device=sim.device)
-        camera_targets = torch.tensor([[0.0, 0.0, 0.25]], device=sim.device)
+        camera_positions = torch.tensor([[2., 2., 2.]], device=sim.device)
+        camera_targets = torch.tensor([[0.0, 0.0, 0.75]], device=sim.device)
         camera.set_world_poses_from_view(camera_positions, camera_targets)
 
 
@@ -210,8 +181,8 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
     # Simulate physics
     com_traj = []
     for t in range(num_steps):
-        # reset
-        if sim_time > 4.0:
+        # reset at start and after N seconds
+        if sim_time == 0.0 or sim_time > 3.0:
             # reset counters
             sim_time = 0.0
             count = 0
@@ -277,7 +248,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
             ax.set_ylabel("Z Position (m)")
             ax.legend()
             ax.grid()
-            fig.savefig(os.path.join(output_dir, f"com_trajectory.png"), dpi=300, bbox_inches="tight")
+            fig.savefig(os.path.join(os.path.dirname(output_dir), f"com_trajectory.png"), dpi=300, bbox_inches="tight")
             plt.close(fig)
 
         # Extract camera data
