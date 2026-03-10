@@ -82,9 +82,6 @@ from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
 
 def define_sensor() -> Camera:
     """Defines the camera sensor to add to the scene."""
-    # Setup camera sensor
-    # In contrast to the ray-cast camera, we spawn the prim at these locations.
-    # This means the camera sensor will be attached to these prims.
     sim_utils.create_prim("/World/OriginCamera", "Xform", translation=[0.0, 0.0, 0.0])
     camera_cfg = CameraCfg(
         prim_path="/World/OriginCamera/CameraSensor",
@@ -96,7 +93,6 @@ def define_sensor() -> Camera:
             focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
         ),
     )
-    # Create camera
     camera = Camera(cfg=camera_cfg)
 
     return camera
@@ -114,7 +110,7 @@ def design_scene():
     # Create a dictionary for the scene entities
     scene_entities = {}
 
-    # Create separate groups called "Origin1", "Origin2", "Origin3"
+    # Create separate groups called "Origin0", "Origin1", ...
     # Each group will have a robot in it
     origins = [[0.25, 0.25, 0.0], [-0.25, 0.25, 0.0], [0.25, -0.25, 0.0], [-0.25, -0.25, 0.0]]
     for i, origin in enumerate(origins):
@@ -288,6 +284,14 @@ def main():
             "-i", os.path.join(camera_output, "rgb_%d_0.png"),
             "-c:v", "libx264", "-pix_fmt", "yuv420p",
             video_path,
+        ], check=True)
+        # Also generate gif for quick preview
+        gif_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "output.gif")
+        subprocess.run([
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-i", video_path,
+            "-vf", "fps=15,scale=320:-1:flags=lanczos",
+            gif_path,
         ], check=True)
         print(f"[INFO]: Video saved to {video_path}")
 
