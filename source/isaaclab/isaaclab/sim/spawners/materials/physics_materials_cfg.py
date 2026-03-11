@@ -145,3 +145,6 @@ class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg):
     surface_bend_stiffness: float = 0.0
     """The bend stiffness of the deformable body's surface. Defaults to 0.0."""
 
+    bend_damping: float = 0.0
+    """The bend damping for the deformable body's surface. Defaults to 0.0."""
+
