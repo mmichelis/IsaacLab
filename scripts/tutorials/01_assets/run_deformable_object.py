@@ -138,7 +138,7 @@ def design_scene():
         spawn=sim_utils.MeshSquareCfg(
             size=0.5,
             resolution=(3, 3),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.01, contact_offset=0.02),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.5, 0.1)),
             physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
