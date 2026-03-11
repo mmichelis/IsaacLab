@@ -80,6 +80,8 @@ class DeformableObject(AssetBase):
         super().__init__(cfg)
         # Register custom vec6f type for nodal state validation.
         self._DTYPE_TO_TORCH_TRAILING_DIMS = {**self._DTYPE_TO_TORCH_TRAILING_DIMS, vec6f: (6,)}
+        # initialize deformable type to None, should be set to either surface or volume on initialization
+        self._deformable_type: str | None = None
 
     """
     Properties
@@ -377,6 +379,9 @@ class DeformableObject(AssetBase):
             env_ids: Environment indices. If None, then all indices are used.
             full_data: Whether to expect full data. Defaults to False.
         """
+        if self._deformable_type != "volume":
+            raise ValueError("Kinematic targets can only be set for volume deformable bodies.")
+        
         # resolve env_ids
         env_ids = self._resolve_env_ids(env_ids)
         if full_data:
@@ -571,7 +576,6 @@ class DeformableObject(AssetBase):
             if len(material_paths) > 0:
                 for mat_path in material_paths:
                     mat_prim = root_prim.GetStage().GetPrimAtPath(mat_path)
-                    # TODO: surface deformable requires different check OmniPhysicsSurfaceDeformableMaterialAPI
                     if "OmniPhysicsDeformableMaterialAPI" in mat_prim.GetAppliedSchemas():
                         material_prim = mat_prim
                         break
@@ -588,11 +592,20 @@ class DeformableObject(AssetBase):
         root_prim_path = root_prim.GetPath().pathString
         root_prim_path_expr = self.cfg.prim_path + root_prim_path[len(template_prim_path) :]
         # -- object view
-        self._root_physx_view = self._physics_sim_view.create_volume_deformable_body_view(root_prim_path_expr.replace(".*", "*"))
+        self._deformable_type = "surface" if root_prim.HasAPI("OmniPhysicsSurfaceDeformableSimAPI") else "volume"
+        if self._deformable_type == "surface":
+            # surface deformable
+            self._root_physx_view = self._physics_sim_view.create_surface_deformable_body_view(root_prim_path_expr.replace(".*", "*"))
+        else:
+            # volume deformable
+            self._root_physx_view = self._physics_sim_view.create_volume_deformable_body_view(root_prim_path_expr.replace(".*", "*"))
 
         # Return if the asset is not found
         if self._root_physx_view._backend is None:
             raise RuntimeError(f"Failed to create deformable body at: {self.cfg.prim_path}. Please check PhysX logs.")
+        # Check validity of deformables in view
+        if not self._root_physx_view.check():
+            raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
 
         # resolve material path back into regex expression
         if material_prim is not None:
@@ -661,20 +674,22 @@ class DeformableObject(AssetBase):
             device=self.device,
         )
 
-        # kinematic targets — allocate our own buffer and copy from PhysX
-        kinematic_raw = self.root_view.get_simulation_nodal_kinematic_targets()  # (N, V, 4) float32
-        kinematic_view = kinematic_raw.view(wp.vec4f).reshape((self.num_instances, self.max_sim_vertices_per_body))
-        self._data.nodal_kinematic_target = wp.zeros(
-            (self.num_instances, self.max_sim_vertices_per_body), dtype=wp.vec4f, device=self.device
-        )
-        wp.copy(self._data.nodal_kinematic_target, kinematic_view)
-        # set all nodes as non-kinematic targets by default (flag = 1.0)
-        wp.launch(
-            set_kinematic_flags_to_one,
-            dim=(self.num_instances * self.max_sim_vertices_per_body,),
-            inputs=[self._data.nodal_kinematic_target.reshape((self.num_instances * self.max_sim_vertices_per_body,))],
-            device=self.device,
-        )
+        # kinematic targets (only for volume deformables, surface deformables do not support kinematic targets)
+        if self._deformable_type == "volume":
+            # kinematic targets — allocate our own buffer and copy from PhysX
+            kinematic_raw = self.root_view.get_simulation_nodal_kinematic_targets()  # (N, V, 4) float32
+            kinematic_view = kinematic_raw.view(wp.vec4f).reshape((self.num_instances, self.max_sim_vertices_per_body))
+            self._data.nodal_kinematic_target = wp.zeros(
+                (self.num_instances, self.max_sim_vertices_per_body), dtype=wp.vec4f, device=self.device
+            )
+            wp.copy(self._data.nodal_kinematic_target, kinematic_view)
+            # set all nodes as non-kinematic targets by default (flag = 1.0)
+            wp.launch(
+                set_kinematic_flags_to_one,
+                dim=(self.num_instances * self.max_sim_vertices_per_body,),
+                inputs=[self._data.nodal_kinematic_target.reshape((self.num_instances * self.max_sim_vertices_per_body,))],
+                device=self.device,
+            )
 
     """
     Internal simulation callbacks.
