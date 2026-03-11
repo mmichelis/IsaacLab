@@ -16,7 +16,7 @@ from pxr import Usd, UsdPhysics
 from isaaclab.sim import schemas
 from isaaclab.sim.utils import bind_physics_material, bind_visual_material, clone, create_prim, get_current_stage
 
-from ..materials import DeformableBodyMaterialCfg, RigidBodyMaterialCfg
+from ..materials import SurfaceDeformableBodyMaterialCfg, DeformableBodyMaterialCfg, RigidBodyMaterialCfg
 
 if TYPE_CHECKING:
     from . import meshes_cfg
@@ -257,14 +257,14 @@ def spawn_mesh_cone(
 
 
 @clone
-def spawn_mesh_rectangle(
+def spawn_mesh_square(
     prim_path: str,
-    cfg: meshes_cfg.MeshRectangleCfg,
+    cfg: meshes_cfg.MeshSquareCfg,
     translation: tuple[float, float, float] | None = None,
     orientation: tuple[float, float, float, float] | None = None,
     **kwargs,
 ) -> Usd.Prim:
-    """Create a USD-Mesh 2D rectangle prim with the given attributes.
+    """Create a USD-Mesh 2D square prim with the given attributes.
 
     .. note::
         This function is decorated with :func:`clone` that resolves prim path into list of paths
@@ -287,13 +287,15 @@ def spawn_mesh_rectangle(
     Raises:
         ValueError: If a prim already exists at the given path.
     """
-    # create a trimesh box
-    box = trimesh.creation.box(cfg.size)
+    # create a 2D triangle mesh grid
+    from omni.physx.scripts import deformableUtils
+    vertices, faces = deformableUtils.create_triangle_mesh_square(cfg.resolution[0], cfg.resolution[1], scale=cfg.size)
+    grid = trimesh.Trimesh(vertices=vertices, faces=np.array(faces).reshape(-1,3), process=False)
 
     # obtain stage handle
     stage = get_current_stage()
-    # spawn the rectangle as a mesh
-    _spawn_mesh_geom_from_mesh(prim_path, cfg, box, translation, orientation, None, stage=stage)
+    # spawn the square as a mesh
+    _spawn_mesh_geom_from_mesh(prim_path, cfg, grid, translation, orientation, None, stage=stage)
     # return the prim
     return stage.GetPrimAtPath(prim_path)
 
@@ -371,7 +373,8 @@ def _spawn_mesh_geom_from_mesh(
     mesh_prim_path = geom_prim_path + "/mesh"
 
     # create the mesh prim
-    if cfg.deformable_props is None:
+    if cfg.deformable_props is None or isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg):
+        # non-deformables and surface deformables
         mesh_prim = create_prim(
             mesh_prim_path,
             prim_type="Mesh",
@@ -385,10 +388,11 @@ def _spawn_mesh_geom_from_mesh(
             stage=stage,
         )
     else:
+        # volume deformable
         # create all the paths we need for clarity, we use the same mesh for simulation and collision
         render_mesh_prim_path = prim_path + "/RenderMesh"
         sim_mesh_prim_path = prim_path + "/SimulationMesh"
-        
+
         # create the mesh prim
         render_mesh_prim = create_prim(
             render_mesh_prim_path,
@@ -429,7 +433,6 @@ def _spawn_mesh_geom_from_mesh(
     if cfg.deformable_props is not None:
         # apply mass properties
         if cfg.mass_props is not None:
-            # TODO: will the deformable not set the mass automatically from the density?
             schemas.define_mass_properties(mesh_prim_path, cfg.mass_props, stage=stage)
         # apply deformable body properties
         schemas.define_deformable_body_properties(mesh_prim_path, cfg.deformable_props, stage=stage)
