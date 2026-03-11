@@ -116,7 +116,7 @@ def design_scene():
     for i, origin in enumerate(origins):
         sim_utils.create_prim(f"/World/Origin{i}", "Xform", translation=origin)
 
-    # Deformable Object
+    # 3D Deformable Object
     cfg = DeformableObjectCfg(
         prim_path="/World/Origin.*/Cube",
         spawn=sim_utils.MeshCuboidCfg(
@@ -131,6 +131,20 @@ def design_scene():
     
     cube_object = DeformableObject(cfg=cfg)
     scene_entities["cube_object"] = cube_object
+
+    # 2D Cloth Object
+    cfg = DeformableObjectCfg(
+        prim_path="/World/Origin0/Cloth",
+        spawn=sim_utils.MeshSquareCfg(
+            size=0.5,
+            resolution=(3, 3),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.5, 0.1)),
+            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+        ),
+    )
+    cloth_object = DeformableObject(cfg=cfg)
+    scene_entities["cloth_object"] = cloth_object
 
     # Sensors
     if args_cli.save:
@@ -147,6 +161,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
     # note: we only do this here for readability. In general, it is better to access the entities directly from
     #   the dictionary. This dictionary is replaced by the InteractiveScene class in the next tutorial.
     cube_object: DeformableObject = entities["cube_object"]
+    cloth_object: DeformableObject = entities["cloth_object"]
 
     # Write camera outputs
     if args_cli.save:
@@ -223,8 +238,12 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         count += 1
         # update buffers
         cube_object.update(sim_dt)
+        cloth_object.update(sim_dt)
         if args_cli.save:
             camera.update(sim_dt)
+
+        print(f"Cloth coords: {wp.to_torch(cloth_object.data.nodal_pos_w)}")
+        breakpoint()
 
         com_traj.append(wp.to_torch(cube_object.data.nodal_pos_w).mean(1).cpu().numpy())
         # print the root position
