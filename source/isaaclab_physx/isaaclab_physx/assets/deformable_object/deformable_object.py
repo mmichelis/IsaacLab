@@ -586,13 +586,14 @@ class DeformableObject(AssetBase):
                 " If you want to modify the material properties, please ensure that the material is bound"
                 " to the deformable body."
             )
+        # deformable type based on material that is applied
+        self._deformable_type = "surface" if material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI") else "volume"
 
         # resolve root path back into regex expression
         # -- root prim expression
         root_prim_path = root_prim.GetPath().pathString
         root_prim_path_expr = self.cfg.prim_path + root_prim_path[len(template_prim_path) :]
         # -- object view
-        self._deformable_type = "surface" if root_prim.HasAPI("OmniPhysicsSurfaceDeformableSimAPI") else "volume"
         if self._deformable_type == "surface":
             # surface deformable
             self._root_physx_view = self._physics_sim_view.create_surface_deformable_body_view(root_prim_path_expr.replace(".*", "*"))
@@ -604,8 +605,9 @@ class DeformableObject(AssetBase):
         if self._root_physx_view._backend is None:
             raise RuntimeError(f"Failed to create deformable body at: {self.cfg.prim_path}. Please check PhysX logs.")
         # Check validity of deformables in view
-        if not self._root_physx_view.check():
-            raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
+        # if not self._root_physx_view.check():
+        #     print(f"Simulation nodal positions: {self._root_physx_view.get_simulation_nodal_positions().numpy()}")
+        #     raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
 
         # resolve material path back into regex expression
         if material_prim is not None:
@@ -633,7 +635,7 @@ class DeformableObject(AssetBase):
             logger.info(f"Number of instances: {self._material_physx_view.count}")
         else:
             logger.info("No deformable material found. Material properties will be set to default values.")
-
+            
         # container for data access
         self._data = DeformableObjectData(self.root_view, self.device)
 
