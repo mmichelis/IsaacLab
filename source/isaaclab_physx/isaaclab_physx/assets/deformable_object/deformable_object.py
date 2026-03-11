@@ -605,9 +605,9 @@ class DeformableObject(AssetBase):
         if self._root_physx_view._backend is None:
             raise RuntimeError(f"Failed to create deformable body at: {self.cfg.prim_path}. Please check PhysX logs.")
         # Check validity of deformables in view
-        # if not self._root_physx_view.check():
-        #     print(f"Simulation nodal positions: {self._root_physx_view.get_simulation_nodal_positions().numpy()}")
-        #     raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
+        if not self._root_physx_view.check():
+            # raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
+            logger.warning(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
 
         # resolve material path back into regex expression
         if material_prim is not None:
@@ -635,7 +635,7 @@ class DeformableObject(AssetBase):
             logger.info(f"Number of instances: {self._material_physx_view.count}")
         else:
             logger.info("No deformable material found. Material properties will be set to default values.")
-            
+
         # container for data access
         self._data = DeformableObjectData(self.root_view, self.device)
 

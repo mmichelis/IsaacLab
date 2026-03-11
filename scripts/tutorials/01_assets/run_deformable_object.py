@@ -133,14 +133,15 @@ def design_scene():
     scene_entities["cube_object"] = cube_object
 
     # 2D Cloth Object
+    sim_utils.create_prim(f"/World/OriginCloth", "Xform", translation=[0,0,0.75])
     cfg = DeformableObjectCfg(
-        prim_path="/World/Origin0/Cloth",
+        prim_path="/World/OriginCloth/Cloth",
         spawn=sim_utils.MeshSquareCfg(
             size=0.5,
             resolution=(3, 3),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.01, contact_offset=0.02),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.5, 0.1)),
-            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5, surface_thickness=0.01),
         ),
     )
     cloth_object = DeformableObject(cfg=cfg)
@@ -216,6 +217,11 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
             # reset buffers
             cube_object.reset()
 
+            # reset the cloth object as well
+            nodal_state = wp.to_torch(cloth_object.data.default_nodal_state_w).clone()
+            cloth_object.write_nodal_state_to_sim(nodal_state)
+            cloth_object.reset()
+
             print("----------------------------------------")
             print("[INFO]: Resetting object state...")
 
@@ -242,9 +248,6 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         if args_cli.save:
             camera.update(sim_dt)
 
-        print(f"Cloth coords: {wp.to_torch(cloth_object.data.nodal_pos_w)}")
-        breakpoint()
-
         com_traj.append(wp.to_torch(cube_object.data.nodal_pos_w).mean(1).cpu().numpy())
         # print the root position
         if t % args_cli.video_fps == 0:
@@ -253,6 +256,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
             print(f"Cube 1 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[1].mean(0)}")
             print(f"Cube 2 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[2].mean(0)}")
             print(f"Cube 3 COM: {wp.to_torch(cube_object.data.nodal_pos_w)[3].mean(0)}")
+            print(f"Cloth COM: {wp.to_torch(cloth_object.data.nodal_pos_w)[0].mean(0)}")
 
             trajectories = np.stack(com_traj, axis=1)
             time_axis = np.arange(trajectories.shape[1]) * sim_dt
