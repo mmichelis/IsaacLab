@@ -422,7 +422,7 @@ def _spawn_mesh_geom_from_mesh(
             root_prim = stage.GetPrimAtPath(prim_path)
             if "PhysxSurfaceDeformableBodyAPI" not in root_prim.GetAppliedSchemas():
                 root_prim.AddAppliedSchema("PhysxSurfaceDeformableBodyAPI")
-                root_prim.GetAttribute("physxDeformableBody:disableGravity").Set(True)
+                root_prim.GetAttribute("physxDeformableBody:disableGravity").Set(False)
                 root_prim.GetAttribute("physxDeformableBody:selfCollision").Set(True)
 
         else:
