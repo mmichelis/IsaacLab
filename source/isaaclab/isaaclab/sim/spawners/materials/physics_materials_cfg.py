@@ -133,8 +133,8 @@ class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg):
 
     func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
 
-    surface_thickness: float | None = None
-    """The thickness of the deformable body's surface. Defaults to None, in which case the simulation decides the default thickness."""
+    surface_thickness: float = 0.01
+    """The thickness of the deformable body's surface. Defaults to 0.01 meters (m)."""
 
     surface_stretch_stiffness: float = 0.0
     """The stretch stiffness of the deformable body's surface. Defaults to 0.0."""
