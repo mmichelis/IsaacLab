@@ -16,7 +16,11 @@ from pxr import Usd, UsdPhysics
 from isaaclab.sim import schemas
 from isaaclab.sim.utils import bind_physics_material, bind_visual_material, clone, create_prim, get_current_stage
 
-from ..materials import SurfaceDeformableBodyMaterialCfg, DeformableBodyMaterialCfg, RigidBodyMaterialCfg
+from ..materials import RigidBodyMaterialCfg
+
+# TODO: PhysX dependency
+from isaaclab_physx.sim import schemas as schemas_physx
+from isaaclab_physx.sim.spawners.materials import SurfaceDeformableBodyMaterialCfg, DeformableBodyMaterialCfg
 
 if TYPE_CHECKING:
     from . import meshes_cfg
@@ -431,7 +435,7 @@ def _spawn_mesh_geom_from_mesh(
         if cfg.mass_props is not None:
             schemas.define_mass_properties(mesh_prim_path, cfg.mass_props, stage=stage)
         # apply deformable body properties
-        schemas.define_deformable_body_properties(mesh_prim_path, cfg.deformable_props, stage=stage)
+        schemas_physx.define_deformable_body_properties(mesh_prim_path, cfg.deformable_props, stage=stage)
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh
         if cfg.__class__.__name__ == "MeshSphereCfg":

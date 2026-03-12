@@ -365,7 +365,8 @@ def _spawn_from_usd_file(
 
     # modify deformable body properties
     if cfg.deformable_props is not None:
-        schemas.modify_deformable_body_properties(prim_path, cfg.deformable_props)
+        # schemas.modify_deformable_body_properties(prim_path, cfg.deformable_props) #TODO
+        raise NotImplementedError("Deformable body properties modification is not implemented yet.")
 
     # apply visual material
     if cfg.visual_material is not None:

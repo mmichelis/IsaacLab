@@ -75,9 +75,9 @@ from isaaclab.sim import SimulationContext
 from isaaclab.sensors.camera import Camera, CameraCfg
 from isaaclab.utils import convert_dict_to_backend
 
-# from isaaclab.assets import DeformableObject, DeformableObjectCfg
-# For now import PhysX implementation for testing.
+# deformables supported in PhysX
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 
 def define_sensor() -> Camera:
@@ -123,7 +123,7 @@ def design_scene():
             size=(0.2, 0.2, 0.2),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         debug_vis=True,
@@ -138,10 +138,10 @@ def design_scene():
         prim_path="/World/OriginCloth/Cloth",
         spawn=sim_utils.MeshSquareCfg(
             size=1.5,
-            resolution=(13, 13),
+            resolution=(21, 21),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.01, contact_offset=0.02),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.5, 0.1)),
-            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+            physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
     )
     cloth_object = DeformableObject(cfg=cfg)
