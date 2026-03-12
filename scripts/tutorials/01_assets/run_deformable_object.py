@@ -133,15 +133,15 @@ def design_scene():
     scene_entities["cube_object"] = cube_object
 
     # 2D Cloth Object
-    sim_utils.create_prim(f"/World/OriginCloth", "Xform", translation=[0,0,0.75])
+    sim_utils.create_prim(f"/World/OriginCloth", "Xform", translation=[0,0,1.5])
     cfg = DeformableObjectCfg(
         prim_path="/World/OriginCloth/Cloth",
         spawn=sim_utils.MeshSquareCfg(
-            size=0.5,
-            resolution=(3, 3),
+            size=1.5,
+            resolution=(13, 13),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.01, contact_offset=0.02),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.5, 0.1)),
-            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5, surface_thickness=0.01),
+            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
     )
     cloth_object = DeformableObject(cfg=cfg)

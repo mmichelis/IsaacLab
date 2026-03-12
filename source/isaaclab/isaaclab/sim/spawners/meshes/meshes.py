@@ -373,8 +373,8 @@ def _spawn_mesh_geom_from_mesh(
     mesh_prim_path = geom_prim_path + "/mesh"
 
     # create the mesh prim
-    if cfg.deformable_props is None:
-        # non-deformables
+    if cfg.deformable_props is None or isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg):
+        # non-deformables and surface deformables
         mesh_prim = create_prim(
             mesh_prim_path,
             prim_type="Mesh",
@@ -408,35 +408,17 @@ def _spawn_mesh_geom_from_mesh(
             stage=stage,
         )
 
-        if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg):
-            # surface deformable
-            success = deformableUtils.create_auto_surface_deformable_hierarchy(
-                stage=stage,
-                root_prim_path=prim_path,
-                simulation_mesh_path=sim_mesh_prim_path,
-                cooking_src_mesh_path=render_mesh_prim_path,
-                cooking_src_simplification_enabled=False,
-                set_visibility_with_guide_purpose=True,
-            )
-
-            root_prim = stage.GetPrimAtPath(prim_path)
-            if "PhysxSurfaceDeformableBodyAPI" not in root_prim.GetAppliedSchemas():
-                root_prim.AddAppliedSchema("PhysxSurfaceDeformableBodyAPI")
-                root_prim.GetAttribute("physxDeformableBody:disableGravity").Set(False)
-                root_prim.GetAttribute("physxDeformableBody:selfCollision").Set(True)
-
-        else:
-            # volume deformable
-            success = deformableUtils.create_auto_volume_deformable_hierarchy(
-                stage=stage,
-                root_prim_path=prim_path,
-                simulation_tetmesh_path=sim_mesh_prim_path,
-                collision_tetmesh_path=sim_mesh_prim_path,
-                cooking_src_mesh_path=render_mesh_prim_path,
-                simulation_hex_mesh_enabled=False,
-                cooking_src_simplification_enabled=False,
-                set_visibility_with_guide_purpose=True,
-            )
+        # volume deformable
+        success = deformableUtils.create_auto_volume_deformable_hierarchy(
+            stage=stage,
+            root_prim_path=prim_path,
+            simulation_tetmesh_path=sim_mesh_prim_path,
+            collision_tetmesh_path=sim_mesh_prim_path,
+            cooking_src_mesh_path=render_mesh_prim_path,
+            simulation_hex_mesh_enabled=False,
+            cooking_src_simplification_enabled=False,
+            set_visibility_with_guide_purpose=True,
+        )
 
         if not success:
             raise RuntimeError("Failed to create deformable hierarchy from the given mesh.")
