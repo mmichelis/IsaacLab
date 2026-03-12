@@ -117,7 +117,6 @@ def spawn_deformable_body_material(prim_path: str, cfg: physics_materials_cfg.De
         prim.AddAppliedSchema("OmniPhysicsDeformableMaterialAPI")
     if "PhysxDeformableMaterialAPI" not in applied:
         prim.AddAppliedSchema("PhysxDeformableMaterialAPI")
-    
     # surface deformable material API
     is_surface_deformable = isinstance(cfg, physics_materials_cfg.SurfaceDeformableBodyMaterialCfg)
     if is_surface_deformable:
@@ -137,12 +136,6 @@ def spawn_deformable_body_material(prim_path: str, cfg: physics_materials_cfg.De
         )
     # set surface deformable body material attributes into OmniPhysics API (prim attributes: omniphysics:*)
     if is_surface_deformable:
-        # auto set value for thickness, same as usdLoad/Materials.cpp
-        mpu = UsdGeom.GetStageMetersPerUnit(stage)
-        cfg["surface_thickness"] = 0.001 / mpu if cfg["surface_thickness"] is None else cfg["surface_thickness"]
-        if cfg["surface_thickness"] <= 0:
-            raise ValueError("Surface thickness must be greater than 0.")
-        
         for attr_name in ["surface_thickness", "surface_stretch_stiffness", "surface_shear_stiffness", "surface_bend_stiffness"]:
             value = cfg.pop(attr_name, None)
             safe_set_attribute_on_usd_prim(
