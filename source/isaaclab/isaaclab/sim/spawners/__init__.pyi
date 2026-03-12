@@ -24,10 +24,7 @@ __all__ = [
     "DomeLightCfg",
     "LightCfg",
     "SphereLightCfg",
-    "spawn_deformable_body_material",
     "spawn_rigid_body_material",
-    "DeformableBodyMaterialCfg",
-    "SurfaceDeformableBodyMaterialCfg",
     "PhysicsMaterialCfg",
     "RigidBodyMaterialCfg",
     "spawn_from_mdl_file",
@@ -92,10 +89,7 @@ from .lights import (
     SphereLightCfg,
 )
 from .materials import (
-    spawn_deformable_body_material,
     spawn_rigid_body_material,
-    DeformableBodyMaterialCfg,
-    SurfaceDeformableBodyMaterialCfg,
     PhysicsMaterialCfg,
     RigidBodyMaterialCfg,
     spawn_from_mdl_file,
