@@ -370,35 +370,37 @@ def _spawn_mesh_geom_from_mesh(
 
     # create all the paths we need for clarity
     geom_prim_path = prim_path + "/geometry"
-    mesh_prim_path = geom_prim_path + "/mesh"
 
     # create the mesh prim
-    # non-deformables and surface deformables use UsdGeom.Mesh
-    mesh_prim = create_prim(
-        mesh_prim_path,
-        prim_type="Mesh",
-        scale=scale,
-        attributes={
-            "points": mesh.vertices,
-            "faceVertexIndices": mesh.faces.flatten(),
-            "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
-            "subdivisionScheme": "bilinear",
-        },
-        stage=stage,
-    )
-    
-    if cfg.deformable_props is not None and not isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg):
+    if cfg.deformable_props is None or isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg):
+        # non-deformables and surface deformables use UsdGeom.Mesh
+        mesh_prim_path = geom_prim_path + "/mesh"
+
+        mesh_prim = create_prim(
+            mesh_prim_path,
+            prim_type="Mesh",
+            scale=scale,
+            attributes={
+                "points": mesh.vertices,
+                "faceVertexIndices": mesh.faces.flatten(),
+                "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
+                "subdivisionScheme": "bilinear",
+            },
+            stage=stage,
+        )
+    else:
         # volume deformables have both a triangle surface UsdGeom.Mesh for visualization and a tetrahedral UsdGeom.TetMesh for simulation
         from omni.physx.scripts import deformableUtils
         # create all the paths we need for clarity, we use the same mesh for simulation and collision
-        sim_mesh_prim_path = geom_prim_path + "/tetmesh"
+        mesh_prim_path = geom_prim_path + "/tetmesh"
+        render_mesh_prim_path = mesh_prim_path + "/rendermesh"
 
         # tetrahedralize surface mesh
         tet_mesh_points, tet_mesh_indices = deformableUtils.compute_conforming_tetrahedral_mesh(mesh.vertices, mesh.faces.flatten())
 
         # create simulation tetmesh prim
-        sim_mesh_prim = create_prim(
-            sim_mesh_prim_path,
+        mesh_prim = create_prim(
+            mesh_prim_path,
             prim_type="TetMesh",
             scale=scale,
             attributes={
@@ -408,21 +410,19 @@ def _spawn_mesh_geom_from_mesh(
             stage=stage,
         )
 
-        # bind pose of visual triangle mesh to simulation tetmesh
-        purposesAttrName = "deformablePose:default:omniphysics:purposes"
-        pointsAttrName = "deformablePose:default:omniphysics:points"
-        
-        mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
-        if mesh_prim.HasAPI("OmniPhysicsDeformablePoseAPI", "default"):
-            mesh_prim.GetAttribute(purposesAttrName).Set(["bindPose"])
-            mesh_prim.GetAttribute(pointsAttrName).Set(mesh_prim.GetAttribute("points").Get())
-
-        sim_mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
-        if sim_mesh_prim.HasAPI("OmniPhysicsDeformablePoseAPI", "default"):
-            sim_mesh_prim.GetAttribute(purposesAttrName).Set(["bindPose"])
-            sim_mesh_prim.GetAttribute(pointsAttrName).Set(sim_mesh_prim.GetAttribute("points").Get())
-
-        mesh_prim_path = sim_mesh_prim_path
+        # create visualization mesh prim
+        render_mesh_prim = create_prim(
+            render_mesh_prim_path,
+            prim_type="Mesh",
+            scale=scale,
+            attributes={
+                "points": mesh.vertices,
+                "faceVertexIndices": mesh.faces.flatten(),
+                "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
+                "subdivisionScheme": "bilinear",
+            },
+            stage=stage,
+        )
 
     # note: in case of deformable objects, we need to apply the deformable properties to the mesh prim.
     #   this is different from rigid objects where we apply the properties to the parent prim.
