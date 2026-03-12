@@ -880,32 +880,6 @@ def define_deformable_body_properties(
     # check if prim path is valid
     if not prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
-    # check if prim has deformable body applied on it
-    # if "OmniPhysicsDeformableBodyAPI" not in prim.GetAppliedSchemas():
-    #     raise ValueError(f"Prim path '{prim_path}' does not have the deformable body schema applied.")
-
-    # traverse the prim and get the collision mesh
-    # TODO: currently we only allow volume deformables (TetMesh), if surface deformable we want the prim type to be Mesh.
-    # matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
-    # # check if the mesh is valid
-    # if len(matching_prims) == 0:
-    #     raise ValueError(f"Could not find any mesh in '{prim_path}'. Please check asset.")
-    # if len(matching_prims) > 1:
-    #     # get list of all meshes found
-    #     mesh_paths = [p.GetPrimPath() for p in matching_prims]
-    #     raise ValueError(
-    #         f"Found multiple meshes in '{prim_path}': {mesh_paths}."
-    #         " Deformable body schema can only be applied to one mesh."
-    #     )
-
-    # get deformable-body USD prim
-    # mesh_prim = matching_prims[0]
-    # ensure PhysX deformable body API is applied
-    # mesh_applied = mesh_prim.GetAppliedSchemas()
-
-    # TODO: Make this general for engines besides PhysX
-    # if "PhysxBaseDeformableBodyAPI" not in prim.GetAppliedSchemas():
-    #     prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI")
 
     # set deformable body properties
     modify_deformable_body_properties(prim_path, cfg, stage)
@@ -962,12 +936,10 @@ def modify_deformable_body_properties(
     # get deformable-body USD prim
     deformable_body_prim = stage.GetPrimAtPath(prim_path)
 
-    # check if the prim is valid and has the deformable-body API
+    # check if the prim is valid
     if not deformable_body_prim.IsValid():
         return False
 
-    # TODO: PhysX specific APIs here
-    # convert to dict
     from omni.physx.scripts import deformableUtils
     # set deformable body properties based on the type of the mesh (surface vs volume)
     if deformable_body_prim.IsA(UsdGeom.Mesh):
