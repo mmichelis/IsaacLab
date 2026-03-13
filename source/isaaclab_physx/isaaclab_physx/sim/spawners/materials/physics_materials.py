@@ -69,23 +69,12 @@ def spawn_deformable_body_material(prim_path: str, cfg: physics_materials_cfg.De
     # convert to dict
     cfg = cfg.to_dict()
     del cfg["func"]
-    # set base attributes into OmniPhysics API (prim attributes: omniphysics:*)
-    for attr_name in ["static_friction", "dynamic_friction", "density", "youngs_modulus", "poissons_ratio"]:
-        value = cfg.pop(attr_name, None)
-        safe_set_attribute_on_usd_prim(
-            prim, f"omniphysics:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
-        )
-    # set surface deformable body material attributes into OmniPhysics API (prim attributes: omniphysics:*)
-    if is_surface_deformable:
-        for attr_name in ["surface_thickness", "surface_stretch_stiffness", "surface_shear_stiffness", "surface_bend_stiffness"]:
-            value = cfg.pop(attr_name, None)
+    # set into PhysX API, gather prefixes for each attribute
+    property_prefixes = cfg["_property_prefix"]
+    for prefix, attr_list in property_prefixes.items():
+        for attr_name in attr_list:
             safe_set_attribute_on_usd_prim(
-                prim, f"omniphysics:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+                prim, f"{prefix}:{to_camel_case(attr_name, 'cC')}", cfg[attr_name], camel_case=False
             )
-    # set extras into PhysX API (prim attributes: physxDeformableMaterial:*)
-    for attr_name, value in cfg.items():
-        safe_set_attribute_on_usd_prim(
-            prim, f"physxDeformableMaterial:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
-        )
     # return the prim
     return prim
