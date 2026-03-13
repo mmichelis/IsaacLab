@@ -73,8 +73,10 @@ import omni.replicator.core as rep
 import isaaclab.sim as sim_utils
 from isaaclab.utils import convert_dict_to_backend
 from isaaclab.sensors.camera import Camera, CameraCfg
-# from isaaclab.assets import DeformableObject, DeformableObjectCfg
+
+# deformables supported in PhysX
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
+from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg
 
 
 def define_origins(num_origins: int, spacing: float) -> list[list[float]]:
@@ -130,36 +132,36 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # spawn a red cone
     cfg_sphere = sim_utils.MeshSphereCfg(
         radius=0.5,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
+        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cuboid = sim_utils.MeshCuboidCfg(
         size=(0.2, 0.2, 0.2),
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
+        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cylinder = sim_utils.MeshCylinderCfg(
         radius=0.15,
         height=0.5,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
+        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
         radius=0.35,
         height=0.5,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
+        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cone = sim_utils.MeshConeCfg(
         radius=0.15,
         height=0.5,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
+        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=DeformableBodyMaterialCfg(),
     )
     # create a dictionary of all the objects to be spawned
     objects_cfg = {
