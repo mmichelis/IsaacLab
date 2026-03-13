@@ -74,6 +74,7 @@ import isaaclab.utils.math as math_utils
 from isaaclab.sim import SimulationContext
 from isaaclab.sensors.camera import Camera, CameraCfg
 from isaaclab.utils import convert_dict_to_backend
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 # deformables supported in PhysX
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
@@ -121,7 +122,7 @@ def design_scene():
         prim_path="/World/Origin.*/Cube",
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.2, 0.2, 0.2),
-            deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
+            deformable_props=DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
             physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
@@ -139,13 +140,38 @@ def design_scene():
         spawn=sim_utils.MeshSquareCfg(
             size=1.5,
             resolution=(21, 21),
-            deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.01, contact_offset=0.02),
+            deformable_props=DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.5, 0.1)),
             physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
     )
     cloth_object = DeformableObject(cfg=cfg)
     scene_entities["cloth_object"] = cloth_object
+
+    # USD Teddy Bear
+    sim_utils.create_prim(f"/World/OriginTeddy", "Xform", translation=[0,0,2.0])
+    cfg = DeformableObjectCfg(
+        prim_path="/World/OriginTeddy/Teddy",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
+            # usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Mug/mug.usd",
+            deformable_props=DeformableBodyPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.35, 0.15)),
+            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5)
+        )
+    )
+    teddy_object = DeformableObject(cfg=cfg)
+    scene_entities["teddy_object"] = teddy_object
+
+    from pxr import Usd
+    stage = sim_utils.get_current_stage()
+    root = stage.GetPrimAtPath("/World/OriginTeddy")
+    for prim in Usd.PrimRange(root):
+        print(prim.GetPath(), prim.GetTypeName())
+
+    breakpoint()
+
+    
 
     # Sensors
     if args_cli.save:
