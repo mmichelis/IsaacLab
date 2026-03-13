@@ -77,7 +77,7 @@ from isaaclab.utils import convert_dict_to_backend
 
 # deformables supported in PhysX
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
+from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 
 def define_sensor() -> Camera:
@@ -121,7 +121,7 @@ def design_scene():
         prim_path="/World/Origin.*/Cube",
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.2, 0.2, 0.2),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
+            deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
             physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
@@ -139,7 +139,7 @@ def design_scene():
         spawn=sim_utils.MeshSquareCfg(
             size=1.5,
             resolution=(21, 21),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.01, contact_offset=0.02),
+            deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.01, contact_offset=0.02),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.5, 0.1)),
             physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
         ),
