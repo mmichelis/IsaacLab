@@ -31,7 +31,7 @@ Deformable body properties.
 """
 
 def define_deformable_body_properties(
-    prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None, deformable_type: str = "volume"
+    prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None, deformable_type: str = "volume", sim_mesh_prim_path: str | None = None
 ):
     """Apply the deformable body schema on the input prim and set its properties.
 
@@ -85,9 +85,8 @@ def define_deformable_body_properties(
         raise ValueError(f"Mesh prim path '{mesh_prim_path}' is not valid.")
     
     # set root prim properties based on the type of the deformable mesh (surface vs volume)
-    sim_mesh_prim_path = None
     if deformable_type == "surface":
-        sim_mesh_prim_path = prim_path + "/sim_mesh"
+        sim_mesh_prim_path = prim_path + "/sim_mesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
         success = deformableUtils.create_auto_surface_deformable_hierarchy(
             stage=stage, 
             root_prim_path=prim_path,
@@ -97,7 +96,7 @@ def define_deformable_body_properties(
             set_visibility_with_guide_purpose=True
         )
     elif deformable_type == "volume":
-        sim_mesh_prim_path = prim_path + "/sim_tetmesh"
+        sim_mesh_prim_path = prim_path + "/sim_tetmesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
         success = deformableUtils.create_auto_volume_deformable_hierarchy(
             stage=stage, 
             root_prim_path=prim_path,
