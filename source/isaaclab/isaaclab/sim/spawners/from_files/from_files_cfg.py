@@ -70,6 +70,20 @@ class FileCfg(RigidObjectSpawnerCfg, DeformableObjectSpawnerCfg):
         If None, then no visual material will be added.
     """
 
+    physics_material_path: str = "material"
+    """Path to the physics material to use for the prim. Defaults to "material".
+
+    If the path is relative, then it will be relative to the prim's path.
+    This parameter is ignored if `physics_material` is not None.
+    """
+
+    physics_material: materials.PhysicsMaterialCfg | None = None
+    """Physics material properties.
+
+    Note:
+        If None, then no physics material will be added.
+    """
+
 
 @configclass
 class UsdFileCfg(FileCfg):
