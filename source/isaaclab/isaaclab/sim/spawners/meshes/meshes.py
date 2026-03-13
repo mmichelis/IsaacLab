@@ -374,66 +374,28 @@ def _spawn_mesh_geom_from_mesh(
 
     # create all the paths we need for clarity
     geom_prim_path = prim_path + "/geometry"
+    mesh_prim_path = geom_prim_path + "/mesh"
 
     # create the mesh prim
-    if cfg.deformable_props is None or isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg):
-        # non-deformables and surface deformables use UsdGeom.Mesh
-        mesh_prim_path = geom_prim_path + "/mesh"
-
-        mesh_prim = create_prim(
-            mesh_prim_path,
-            prim_type="Mesh",
-            scale=scale,
-            attributes={
-                "points": mesh.vertices,
-                "faceVertexIndices": mesh.faces.flatten(),
-                "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
-                "subdivisionScheme": "bilinear",
-            },
-            stage=stage,
-        )
-    else:
-        # volume deformables have both a triangle surface UsdGeom.Mesh for visualization and a tetrahedral UsdGeom.TetMesh for simulation
-        from omni.physx.scripts import deformableUtils
-        # create all the paths we need for clarity, we use the same mesh for simulation and collision
-        mesh_prim_path = geom_prim_path + "/tetmesh"
-        render_mesh_prim_path = mesh_prim_path + "/mesh"
-
-        # tetrahedralize surface mesh
-        tet_mesh_points, tet_mesh_indices = deformableUtils.compute_conforming_tetrahedral_mesh(mesh.vertices, mesh.faces.flatten())
-
-        # create simulation tetmesh prim
-        mesh_prim = create_prim(
-            mesh_prim_path,
-            prim_type="TetMesh",
-            scale=scale,
-            attributes={
-                "points": tet_mesh_points,
-                "tetVertexIndices": np.asarray(tet_mesh_indices).reshape(-1, 4),
-            },
-            stage=stage,
-        )
-
-        # create visualization mesh prim
-        render_mesh_prim = create_prim(
-            render_mesh_prim_path,
-            prim_type="Mesh",
-            scale=scale,
-            attributes={
-                "points": mesh.vertices,
-                "faceVertexIndices": mesh.faces.flatten(),
-                "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
-                "subdivisionScheme": "bilinear",
-            },
-            stage=stage,
-        )
+    mesh_prim = create_prim(
+        mesh_prim_path,
+        prim_type="Mesh",
+        scale=scale,
+        attributes={
+            "points": mesh.vertices,
+            "faceVertexIndices": mesh.faces.flatten(),
+            "faceVertexCounts": np.asarray([3] * len(mesh.faces)),
+            "subdivisionScheme": "bilinear",
+        },
+        stage=stage,
+    )
 
     if cfg.deformable_props is not None:
         # apply mass properties
         if cfg.mass_props is not None:
             schemas.define_mass_properties(prim_path, cfg.mass_props, stage=stage)
         # apply deformable body properties
-        schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage=stage)
+        schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage=stage, deformable_type="surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume")
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh
         if cfg.__class__.__name__ == "MeshSphereCfg":

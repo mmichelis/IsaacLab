@@ -31,7 +31,7 @@ Deformable body properties.
 """
 
 def define_deformable_body_properties(
-    prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
+    prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None, deformable_type: str = "volume"
 ):
     """Apply the deformable body schema on the input prim and set its properties.
 
@@ -47,10 +47,13 @@ def define_deformable_body_properties(
         cfg: The configuration for the deformable body.
         stage: The stage where to find the prim. Defaults to None, in which case the
             current stage is used.
+        deformable_type: The type of the deformable body (surface or volume). 
+            This is used to determine which PhysX API to use for the deformable body. Defaults to "volume".
 
     Raises:
         ValueError: When the prim path is not valid.
         ValueError: When the prim has no mesh or multiple meshes.
+        RuntimeError: When setting the deformable body properties fails.
     """
     # get stage handle
     if stage is None:
@@ -62,14 +65,11 @@ def define_deformable_body_properties(
     if not prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
 
-    # traverse the prim and get the mesh. 
-    # Check for existence of TetMesh (volume), if not found check for Mesh (surface). If multiple meshes are found, raise error.
-    matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
+    # traverse the prim and get the mesh. If none or multiple meshes are found, raise error.
+    matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
     # check if the volume deformable mesh is valid
     if len(matching_prims) == 0:
-        matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
-        if len(matching_prims) == 0:
-            raise ValueError(f"Could not find any tetmesh or mesh in '{prim_path}'. Please check asset.")
+        raise ValueError(f"Could not find any tetmesh or mesh in '{prim_path}'. Please check asset.")
     if len(matching_prims) > 1:
         # get list of all meshes found
         mesh_paths = [p.GetPrimPath() for p in matching_prims]
@@ -77,33 +77,47 @@ def define_deformable_body_properties(
             f"Found multiple meshes in '{prim_path}': {mesh_paths}."
             " Deformable body schema can only be applied to one mesh."
         )
-    deformable_body_prim = matching_prims[0]
-    deformable_prim_path = deformable_body_prim.GetPrimPath()
+    mesh_prim = matching_prims[0]
+    mesh_prim_path = mesh_prim.GetPrimPath()
 
     # check if the prim is valid
-    if not deformable_body_prim.IsValid():
-        return False
+    if not mesh_prim.IsValid():
+        raise ValueError(f"Mesh prim path '{mesh_prim_path}' is not valid.")
     
     # set root prim properties based on the type of the deformable mesh (surface vs volume)
-    if deformable_body_prim.IsA(UsdGeom.Mesh):
-        success = deformableUtils.set_physics_surface_deformable_body(stage, deformable_prim_path)
-        # apply physx extension api
-        if "PhysxSurfaceDeformableBodyAPI" not in prim.GetAppliedSchemas():
-            prim.AddAppliedSchema("PhysxSurfaceDeformableBodyAPI")
-    elif deformable_body_prim.IsA(UsdGeom.TetMesh):
-        success = deformableUtils.set_physics_volume_deformable_body(stage, deformable_prim_path)
-        # apply physx extension api
-        if "PhysxBaseDeformableBodyAPI" not in prim.GetAppliedSchemas():
-            prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI")
+    sim_mesh_prim_path = None
+    if deformable_type == "surface":
+        sim_mesh_prim_path = prim_path + "/sim_mesh"
+        success = deformableUtils.create_auto_surface_deformable_hierarchy(
+            stage=stage, 
+            root_prim_path=prim_path,
+            simulation_mesh_path=sim_mesh_prim_path,
+            cooking_src_mesh_path=mesh_prim_path,
+            cooking_src_simplification_enabled=False,
+            set_visibility_with_guide_purpose=True
+        )
+    elif deformable_type == "volume":
+        sim_mesh_prim_path = prim_path + "/sim_tetmesh"
+        success = deformableUtils.create_auto_volume_deformable_hierarchy(
+            stage=stage, 
+            root_prim_path=prim_path,
+            simulation_tetmesh_path=sim_mesh_prim_path,
+            collision_tetmesh_path=sim_mesh_prim_path,
+            cooking_src_mesh_path=mesh_prim_path,
+            simulation_hex_mesh_enabled=False,
+            cooking_src_simplification_enabled=False,
+            set_visibility_with_guide_purpose=True
+        )
     else:
-        print(f"Unsupported deformable body prim type: '{deformable_body_prim.GetTypeName()}'. Only Mesh and TetMesh are supported.")
+        print(f"Unsupported deformable type: '{deformable_type}'. Only surface and volume deformables are supported.")
         success = False
+
     # api failure
     if not success:
-        raise RuntimeError(f"Failed to set deformable body properties on prim '{deformable_prim_path}'.")
+        raise RuntimeError(f"Failed to set deformable body properties on prim '{mesh_prim_path}'.")
 
     # set deformable body properties
-    modify_deformable_body_properties(deformable_prim_path, cfg, stage)
+    modify_deformable_body_properties(sim_mesh_prim_path, cfg, stage)
 
 
 def modify_deformable_body_properties(
