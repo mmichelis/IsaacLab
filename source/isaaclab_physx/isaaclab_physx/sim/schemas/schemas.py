@@ -117,9 +117,10 @@ def define_deformable_body_properties(
         raise RuntimeError(f"Failed to set deformable body properties on prim '{mesh_prim_path}'.")
 
     # set deformable body properties
-    modify_deformable_body_properties(sim_mesh_prim_path, cfg, stage)
+    modify_deformable_body_properties(prim_path, cfg, stage)
 
 
+@apply_nested
 def modify_deformable_body_properties(
     prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
 ):
@@ -169,6 +170,13 @@ def modify_deformable_body_properties(
     # check if the prim is valid
     if not deformable_body_prim.IsValid():
         return False
+    # check if deformable body API is applied
+    if "OmniPhysicsBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
+        return False
+    
+    # apply customization to deformable API
+    if "PhysxBaseDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
+        deformable_body_prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI")
 
     # ensure PhysX collision API is applied on the collision mesh 
     if "PhysxCollisionAPI" not in deformable_body_prim.GetAppliedSchemas():
