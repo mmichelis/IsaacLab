@@ -18,7 +18,7 @@ from isaaclab.sim.utils import bind_physics_material, bind_visual_material, clon
 
 from ..materials import RigidBodyMaterialCfg
 
-# TODO: PhysX dependency
+# deformables only supported on PhysX backend
 from isaaclab_physx.sim import schemas as schemas_physx
 from isaaclab_physx.sim.spawners.materials import SurfaceDeformableBodyMaterialCfg, DeformableBodyMaterialCfg
 
@@ -397,7 +397,7 @@ def _spawn_mesh_geom_from_mesh(
         from omni.physx.scripts import deformableUtils
         # create all the paths we need for clarity, we use the same mesh for simulation and collision
         mesh_prim_path = geom_prim_path + "/tetmesh"
-        render_mesh_prim_path = mesh_prim_path + "/rendermesh"
+        render_mesh_prim_path = mesh_prim_path + "/mesh"
 
         # tetrahedralize surface mesh
         tet_mesh_points, tet_mesh_indices = deformableUtils.compute_conforming_tetrahedral_mesh(mesh.vertices, mesh.faces.flatten())
@@ -428,14 +428,12 @@ def _spawn_mesh_geom_from_mesh(
             stage=stage,
         )
 
-    # note: in case of deformable objects, we need to apply the deformable properties to the mesh prim.
-    #   this is different from rigid objects where we apply the properties to the parent prim.
     if cfg.deformable_props is not None:
         # apply mass properties
         if cfg.mass_props is not None:
-            schemas.define_mass_properties(mesh_prim_path, cfg.mass_props, stage=stage)
+            schemas.define_mass_properties(prim_path, cfg.mass_props, stage=stage)
         # apply deformable body properties
-        schemas_physx.define_deformable_body_properties(mesh_prim_path, cfg.deformable_props, stage=stage)
+        schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage=stage)
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh
         if cfg.__class__.__name__ == "MeshSphereCfg":
@@ -455,13 +453,13 @@ def _spawn_mesh_geom_from_mesh(
     # apply visual material
     if cfg.visual_material is not None:
         if not cfg.visual_material_path.startswith("/"):
-            material_path = f"{geom_prim_path}/{cfg.visual_material_path}"
+            material_path = f"{prim_path}/{cfg.visual_material_path}"
         else:
             material_path = cfg.visual_material_path
         # create material
         cfg.visual_material.func(material_path, cfg.visual_material)
         # apply material
-        bind_visual_material(mesh_prim_path, material_path, stage=stage)
+        bind_visual_material(prim_path, material_path, stage=stage)
 
     # apply physics material
     if cfg.physics_material is not None:
@@ -472,7 +470,7 @@ def _spawn_mesh_geom_from_mesh(
         # create material
         cfg.physics_material.func(material_path, cfg.physics_material)
         # apply material
-        bind_physics_material(mesh_prim_path, material_path, stage=stage)
+        bind_physics_material(prim_path, material_path, stage=stage)
 
     # note: we apply the rigid properties to the parent prim in case of rigid objects.
     if cfg.rigid_props is not None:
