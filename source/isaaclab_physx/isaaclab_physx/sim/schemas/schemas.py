@@ -20,6 +20,8 @@ from isaaclab.sim.utils import (
 
 from isaaclab.sim.schemas import schemas_cfg
 
+from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
+
 # import logger
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ Deformable body properties.
 """
 
 def define_deformable_body_properties(
-    prim_path: str, cfg: schemas_cfg.DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
+    prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
 ):
     """Apply the deformable body schema on the input prim and set its properties.
 
@@ -66,7 +68,7 @@ def define_deformable_body_properties(
 
 @apply_nested
 def modify_deformable_body_properties(
-    prim_path: str, cfg: schemas_cfg.DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
+    prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
 ):
     """Modify PhysX parameters for a deformable body prim.
 
@@ -145,18 +147,12 @@ def modify_deformable_body_properties(
     # convert to dict
     cfg = cfg.to_dict()
     # set into PhysX API (collision prim attributes: physxCollision:* for rest/contact offset, physxDeformable:* for rest on deformable prim)
-    for attr_name, value in cfg.items():
-        if attr_name in ["rest_offset", "contact_offset"]:
+    # prefixes for each attribute
+    property_prefixes = cfg["_property_prefix"]
+    for prefix, attr_list in property_prefixes.items():
+        for attr_name in attr_list:
             safe_set_attribute_on_usd_prim(
-                deformable_body_prim, f"physxCollision:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
-            )
-        elif attr_name in ["kinematic_enabled", "deformable_body_enabled"]:
-            safe_set_attribute_on_usd_prim(
-                deformable_body_prim, f"omniphysics:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
-            )
-        else:
-            safe_set_attribute_on_usd_prim(
-                deformable_body_prim, f"physxDeformableBody:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
+                deformable_body_prim, f"{prefix}:{to_camel_case(attr_name, 'cC')}", cfg[attr_name], camel_case=False
             )
 
     # success

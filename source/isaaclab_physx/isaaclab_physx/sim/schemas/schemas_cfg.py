@@ -5,33 +5,19 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from isaaclab.utils import configclass
 
 
 @configclass
-class DeformableBodyPropertiesCfg:
-    """Properties to apply to a deformable body.
+class OmniPhysicsPropertiesCfg:
+    """OmniPhysics properties for a deformable body.
 
-    A deformable body is a body that can deform under forces. The configuration allows users to specify
-    the properties of the deformable body, such as the solver iteration counts, damping, and self-collision.
+    These properties are set with the prefix ``omniphysics:<property_name>``. For example, to set the mass of the
+    deformable body, you would set the property ``omniphysics:mass``.
 
-    An FEM-based deformable body is created by providing a collision mesh and simulation mesh. The collision mesh
-    is used for collision detection and the simulation mesh is used for simulation. The collision mesh is usually
-    a simplified version of the simulation mesh.
-
-    Based on the above, the PhysX team provides APIs to either set the simulation and collision mesh directly
-    (by specifying the points) or to simplify the collision mesh based on the simulation mesh. The simplification
-    process involves remeshing the collision mesh and simplifying it based on the target triangle count.
-
-    Since specifying the collision mesh points directly is not a common use case, we only expose the parameters
-    to simplify the collision mesh based on the simulation mesh. If you want to provide the collision mesh points,
-    please open an issue on the repository and we can add support for it.
-
-    See :meth:`modify_deformable_body_properties` for more information.
-
-    .. note::
-        If the values are :obj:`None`, they are not modified. This is useful when you want to set only a subset of
-        the properties and leave the rest as-is.
+    See the OmniPhysics documentation for more information on the available properties.
     """
 
     deformable_body_enabled: bool | None = None
@@ -43,6 +29,20 @@ class DeformableBodyPropertiesCfg:
     Similar to rigid bodies, this allows setting user-driven motion for the deformable body. For more information,
     please refer to the `documentation <https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/SoftBodies.html#kinematic-soft-bodies>`__.
     """
+
+
+@configclass
+class PhysXDeformableBodyPropertiesCfg:
+    """PhysX-specific properties for a deformable body.
+
+    These properties are set with the prefix ``physxDeformableBody:<property_name>``. For example, to set the rest
+    offset of the deformable body, you would set the property ``physxDeformableBody:restOffset``.
+
+    See the PhysX documentation for more information on the available properties.
+    """
+
+    solver_position_iteration_count: int | None = None
+    """Number of the solver positional iterations per step. Range is [1,255]"""
 
     self_collision: bool | None = None
     """Whether to enable or disable self-collisions for the deformable body based on the rest position distances."""
@@ -64,22 +64,11 @@ class DeformableBodyPropertiesCfg:
     sleep_threshold: float | None = None
     """The velocity threshold (in m/s) under which the vertex becomes a candidate for sleeping in the next step."""
 
-    solver_position_iteration_count: int | None = None
-    """Number of the solver positional iterations per step. Range is [1,255]"""
 
     vertex_velocity_damping: float | None = None
     """Coefficient for artificial damping on the vertex velocity.
 
     This parameter can be used to approximate the effect of air drag on the deformable body.
-    """
-
-    simulation_hexahedral_resolution: int = 10
-    """The target resolution for the hexahedral mesh used for simulation. Defaults to 10.
-
-    Note:
-        This value is ignored if the user provides the simulation mesh points directly. However, we assume that
-        most users will not provide the simulation mesh points directly. If you want to provide the simulation mesh
-        directly, please set this value to :obj:`None`.
     """
 
     collision_simplification: bool = True
@@ -121,6 +110,20 @@ class DeformableBodyPropertiesCfg:
     This parameter is ignored if :attr:`collision_simplification` is False.
     """
 
+    max_depenetration_velocity: float | None = None
+    """Maximum depenetration velocity permitted to be introduced by the solver (in m/s)."""
+
+
+@configclass
+class PhysXCollisionPropertiesCfg:
+    """PhysX-specific collision properties for a deformable body.
+
+    These properties are set with the prefix ``physxCollision:<property_name>``. For example, to set the rest offset
+    of the deformable body's collision mesh, you would set the property ``physxCollision:restOffset``.
+
+    See the PhysX documentation for more information on the available properties.
+    """
+    
     contact_offset: float | None = None
     """Contact offset for the collision shape (in m).
 
@@ -137,5 +140,35 @@ class DeformableBodyPropertiesCfg:
     offset, the shapes will be separated at rest by an air gap.
     """
 
-    max_depenetration_velocity: float | None = None
-    """Maximum depenetration velocity permitted to be introduced by the solver (in m/s)."""
+@configclass
+class DeformableBodyPropertiesCfg(OmniPhysicsPropertiesCfg, PhysXDeformableBodyPropertiesCfg, PhysXCollisionPropertiesCfg):
+    """Properties to apply to a deformable body.
+
+    A deformable body is a body that can deform under forces. The configuration allows users to specify
+    the properties of the deformable body, such as the solver iteration counts, damping, and self-collision.
+
+    An FEM-based deformable body is created by providing a collision mesh and simulation mesh. The collision mesh
+    is used for collision detection and the simulation mesh is used for simulation. The collision mesh is usually
+    a simplified version of the simulation mesh.
+
+    Based on the above, the PhysX team provides APIs to either set the simulation and collision mesh directly
+    (by specifying the points) or to simplify the collision mesh based on the simulation mesh. The simplification
+    process involves remeshing the collision mesh and simplifying it based on the target triangle count.
+
+    Since specifying the collision mesh points directly is not a common use case, we only expose the parameters
+    to simplify the collision mesh based on the simulation mesh. If you want to provide the collision mesh points,
+    please open an issue on the repository and we can add support for it.
+
+    See :meth:`modify_deformable_body_properties` for more information.
+
+    .. note::
+        If the values are :obj:`None`, they are not modified. This is useful when you want to set only a subset of
+        the properties and leave the rest as-is.
+    """
+
+    _property_prefix: dict[str, list[str]] = {
+        "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsPropertiesCfg)],
+        "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableBodyPropertiesCfg)],
+        "physxCollision": [field.name for field in dataclasses.fields(PhysXCollisionPropertiesCfg)],
+    }
+    """Mapping between the property prefixes and the properties that fall under each prefix."""
