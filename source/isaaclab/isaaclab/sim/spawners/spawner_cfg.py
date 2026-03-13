@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from isaaclab.sim import schemas
+    from isaaclab_physx.sim import schemas as schemas_physx
 
 
 @configclass
@@ -120,5 +121,5 @@ class DeformableObjectSpawnerCfg(SpawnerCfg):
     mass_props: schemas.MassPropertiesCfg | None = None
     """Mass properties."""
 
-    deformable_props: schemas.DeformableBodyPropertiesCfg | None = None
-    """Deformable body properties."""
+    deformable_props: schemas_physx.DeformableBodyPropertiesCfg | None = None
+    """Deformable body properties. Only supported on PhysX backend for now."""
