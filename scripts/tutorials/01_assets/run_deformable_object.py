@@ -148,20 +148,22 @@ def design_scene():
     cloth_object = DeformableObject(cfg=cfg)
     scene_entities["cloth_object"] = cloth_object
 
-    # USD Teddy Bear
-    sim_utils.create_prim(f"/World/OriginTeddy", "Xform", translation=[0.1,-0.25,2.0])
+    # USD File
+    uniform_scale = 0.50
+    sim_utils.create_prim(f"/World/OriginUSD", "Xform", translation=[0.1,-0.25,2.0])
     cfg = DeformableObjectCfg(
-        prim_path="/World/OriginTeddy/Teddy",
+        prim_path="/World/OriginUSD/Teddy",
         spawn=sim_utils.UsdFileCfg(
             usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
             deformable_props=DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.35, 0.15)),
-            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e8),
-            scale=[0.05, 0.05, 0.05]
+            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e9),
+            scale=[uniform_scale, uniform_scale, uniform_scale]
         )
     )
-    teddy_object = DeformableObject(cfg=cfg)
-    scene_entities["teddy_object"] = teddy_object
+    usd_object = DeformableObject(cfg=cfg)
+    scene_entities["usd_object"] = usd_object
+        
 
     # Sensors
     if args_cli.save:
