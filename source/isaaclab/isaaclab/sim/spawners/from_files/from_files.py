@@ -374,9 +374,6 @@ def _spawn_from_usd_file(
         if "OmniPhysicsBodyAPI" in prim.GetAppliedSchemas():
             schemas_physx.modify_deformable_body_properties(prim_path, cfg.deformable_props, stage, deformable_type)
         else:
-            # clear existing schemas
-            for schema in prim.GetAppliedSchemas():
-                prim.RemoveAppliedSchema(schema)
             schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage, deformable_type)
 
     # apply visual material
