@@ -73,10 +73,11 @@ import omni.replicator.core as rep
 import isaaclab.sim as sim_utils
 from isaaclab.utils import convert_dict_to_backend
 from isaaclab.sensors.camera import Camera, CameraCfg
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 # deformables supported in PhysX
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg
+from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 
 def define_origins(num_origins: int, spacing: float) -> list[list[float]]:
@@ -89,7 +90,7 @@ def define_origins(num_origins: int, spacing: float) -> list[list[float]]:
     xx, yy = torch.meshgrid(torch.arange(num_rows), torch.arange(num_cols), indexing="xy")
     env_origins[:, 0] = spacing * xx.flatten()[:num_origins] - spacing * (num_rows - 1) / 2
     env_origins[:, 1] = spacing * yy.flatten()[:num_origins] - spacing * (num_cols - 1) / 2
-    env_origins[:, 2] = torch.rand(num_origins) + 1.0
+    env_origins[:, 2] = 2.0 * torch.rand(num_origins) + 0.5
     # return the origins
     return env_origins.tolist()
 
@@ -103,8 +104,8 @@ def define_sensor() -> Camera:
     camera_cfg = CameraCfg(
         prim_path="/World/OriginCamera/CameraSensor",
         update_period=1.0/args_cli.video_fps,
-        height=600,
-        width=800,
+        height=800,
+        width=1000,
         data_types=["rgb",],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
@@ -131,37 +132,51 @@ def design_scene() -> tuple[dict, list[list[float]]]:
 
     # spawn a red cone
     cfg_sphere = sim_utils.MeshSphereCfg(
-        radius=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
+        radius=0.4,
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cuboid = sim_utils.MeshCuboidCfg(
-        size=(0.2, 0.2, 0.2),
-        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
+        size=(0.6, 0.6, 0.6),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cylinder = sim_utils.MeshCylinderCfg(
-        radius=0.15,
+        radius=0.25,
         height=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
         radius=0.35,
         height=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cone = sim_utils.MeshConeCfg(
-        radius=0.15,
-        height=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(rest_offset=0.0),
+        radius=0.35,
+        height=0.75,
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
+    )
+    cfg_cloth = sim_utils.MeshSquareCfg(
+        size=2.5,
+        resolution=(21, 21),
+        deformable_props=DeformableBodyPropertiesCfg(),
+        visual_material=sim_utils.PreviewSurfaceCfg(),
+        physics_material=SurfaceDeformableBodyMaterialCfg(),
+    )
+    cfg_usd = sim_utils.UsdFileCfg(
+        usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
+        deformable_props=DeformableBodyPropertiesCfg(),
+        visual_material=sim_utils.PreviewSurfaceCfg(),
+        physics_material=DeformableBodyMaterialCfg(),
+        scale=[0.05, 0.05, 0.05]
     )
     # create a dictionary of all the objects to be spawned
     objects_cfg = {
@@ -170,22 +185,30 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         "cylinder": cfg_cylinder,
         "capsule": cfg_capsule,
         "cone": cfg_cone,
+        "cloth": cfg_cloth,
+        "usd": cfg_usd
     }
 
     # Create separate groups of deformable objects
-    origins = define_origins(num_origins=6, spacing=0.6)
+    origins = define_origins(num_origins=16, spacing=0.8)
     print("[INFO]: Spawning objects...")
     # Iterate over all the origins and randomly spawn objects
     for idx, origin in tqdm.tqdm(enumerate(origins), total=len(origins)):
         # randomly select an object to spawn
         obj_name = random.choice(list(objects_cfg.keys()))
         obj_cfg = objects_cfg[obj_name]
-        # randomize the young modulus (somewhere between a Silicone 30 and Silicone 70)
-        obj_cfg.physics_material.youngs_modulus = random.uniform(0.7e6, 3.3e6)
+        # randomize the young modulus
+        obj_cfg.physics_material.youngs_modulus = random.uniform(1e6, 1e8)
+        # higher mesh resolution causes instability at low stiffness
+        if obj_name == "sphere" or obj_name == "capsule" or obj_name == "cloth":
+            obj_cfg.physics_material.youngs_modulus = random.uniform(5e8, 5e9)
         # randomize the poisson's ratio
         obj_cfg.physics_material.poissons_ratio = random.uniform(0.25, 0.45)
         # randomize the color
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
+        # spawn cloth a bit higher than the rest
+        if obj_name == "cloth":
+            origin[2] += 1.5
         # spawn the object
         obj_cfg.func(f"/World/Origin/Object{idx:02d}", obj_cfg, translation=origin)
 
@@ -210,8 +233,6 @@ def design_scene() -> tuple[dict, list[list[float]]]:
 
 def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, DeformableObject], origins: torch.Tensor, output_dir: str = "outputs"):
     """Runs the simulation loop."""
-
-    objects: DeformableObject = entities["deformable_object"]
     # Write camera outputs
     if args_cli.save:
         camera: Camera = entities["camera"]
@@ -223,9 +244,12 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
             rgb=True,
         )
         # Camera positions, targets, orientations
-        camera_positions = torch.tensor([[2.5, 2.5, 2.5]], device=sim.device)
-        camera_targets = torch.tensor([[0.0, 0.0, 0.25]], device=sim.device)
+        camera_positions = torch.tensor([[7.0, 7.0, 3.0]], device=sim.device)
+        camera_targets = torch.tensor([[0.0, 0.0, 0.5]], device=sim.device)
         camera.set_world_poses_from_view(camera_positions, camera_targets)
+
+
+    print(f"Solving for {torch.tensor(entities["deformable_object"].root_view.get_simulation_nodal_positions().shape).prod().item():,} Degrees of Freedom.")
 
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
