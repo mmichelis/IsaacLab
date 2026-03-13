@@ -243,10 +243,8 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         sim_time += sim_dt
         count += 1
         # update buffers
-        cube_object.update(sim_dt)
-        cloth_object.update(sim_dt)
-        if args_cli.save:
-            camera.update(sim_dt)
+        for entity in entities.values():
+            entity.update(sim_dt)
 
         com_traj.append(wp.to_torch(cube_object.data.nodal_pos_w).mean(1).cpu().numpy())
         # print the root position

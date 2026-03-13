@@ -6,8 +6,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import MISSING
-from typing import Literal
 
 from isaaclab.utils import configclass
 from isaaclab.sim.spawners.materials import PhysicsMaterialCfg
@@ -48,13 +46,6 @@ class DeformableBodyMaterialCfg(PhysicsMaterialCfg):
 
     elasticity_damping: float = 0.005
     """The elasticity damping for the deformable material. Defaults to 0.005."""
-
-    damping_scale: float = 1.0 # DEPRECATED since change from SoftBodyMaterialView to DefrmableMaterialView
-    """The damping scale for the deformable material. Defaults to 1.0.
-
-    A scale of 1 corresponds to default damping. A value of 0 will only apply damping to certain motions leading
-    to special effects that look similar to water filled soft bodies.
-    """
 
 
 @configclass
