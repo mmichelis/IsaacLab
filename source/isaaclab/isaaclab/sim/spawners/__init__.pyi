@@ -6,7 +6,6 @@
 __all__ = [
     "SpawnerCfg",
     "RigidObjectSpawnerCfg",
-    "DeformableObjectSpawnerCfg",
     "spawn_from_mjcf",
     "spawn_from_urdf",
     "spawn_from_usd",
@@ -66,7 +65,7 @@ __all__ = [
     "MultiUsdFileCfg",
 ]
 
-from .spawner_cfg import SpawnerCfg, RigidObjectSpawnerCfg, DeformableObjectSpawnerCfg
+from .spawner_cfg import SpawnerCfg, RigidObjectSpawnerCfg
 from .from_files import (
     spawn_from_mjcf,
     spawn_from_urdf,
