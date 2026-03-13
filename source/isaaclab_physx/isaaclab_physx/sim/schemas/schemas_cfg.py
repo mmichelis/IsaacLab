@@ -24,102 +24,75 @@ class OmniPhysicsPropertiesCfg:
     """Enables deformable body."""
 
     kinematic_enabled: bool = False
-    """Enables kinematic body. Defaults to False, which means that the body is not kinematic.
-
-    Similar to rigid bodies, this allows setting user-driven motion for the deformable body. For more information,
-    please refer to the `documentation <https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/SoftBodies.html#kinematic-soft-bodies>`__.
-    """
+    """Enables kinematic body. Defaults to False, which means that the body is not kinematic."""
 
 
 @configclass
 class PhysXDeformableBodyPropertiesCfg:
     """PhysX-specific properties for a deformable body.
 
-    These properties are set with the prefix ``physxDeformableBody:<property_name>``. For example, to set the rest
-    offset of the deformable body, you would set the property ``physxDeformableBody:restOffset``.
+    These properties are set with the prefix ``physxDeformableBody:<property_name>``
 
-    See the PhysX documentation for more information on the available properties.
+    For more information on the available properties, please refer to the `documentation <https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/dev_guide/deformables/physx_deformable_schema.html#physxbasedeformablebodyapi>`_.
     """
 
-    solver_position_iteration_count: int | None = None
-    """Number of the solver positional iterations per step. Range is [1,255]"""
+    solver_position_iteration_count: int = 16
+    """Number of the solver positional iterations per step. Range is [1,255], default to 16."""
 
-    self_collision: bool | None = None
-    """Whether to enable or disable self-collisions for the deformable body based on the rest position distances."""
+    linear_damping: float | None = None
+    """Linear damping coefficient, in units of 1/seconds and constrainted to the range [0, inf)."""
 
-    self_collision_filter_distance: float | None = None
-    """Penetration value that needs to get exceeded before contacts for self collision are generated.
+    max_linear_velocity: float | None = None
+    """Maximum allowable linear velocity for the deformable body, in units of distance/second and constrained to the range [0, inf). A negative value allows the simulation to choose suitable a per vertex value dynamically, currently only supported for surface deformables. This can help prevent surface-surface intersections."""
 
-    This parameter must be greater than of equal to twice the :attr:`rest_offset` value.
-
-    This value has an effect only if :attr:`self_collision` is enabled.
-    """
+    settling_damping: float | None = None
+    """Additional damping applied when a vertex's velocity falls below :attr:`settlingThreshold`. Specified in units of 1/seconds and constrained to the range [0, inf)."""
 
     settling_threshold: float | None = None
-    """Threshold vertex velocity (in m/s) under which sleep damping is applied in addition to velocity damping."""
-
-    sleep_damping: float | None = None
-    """Coefficient for the additional damping term if fertex velocity drops below setting threshold."""
+    """Velocity threshold below which :attr:`settlingDamping` is applied in addition to standard damping. Specified in units of distance/second and constrained to the range [0, inf)."""
 
     sleep_threshold: float | None = None
-    """The velocity threshold (in m/s) under which the vertex becomes a candidate for sleeping in the next step."""
-
-
-    vertex_velocity_damping: float | None = None
-    """Coefficient for artificial damping on the vertex velocity.
-
-    This parameter can be used to approximate the effect of air drag on the deformable body.
-    """
-
-    collision_simplification: bool = True
-    """Whether or not to simplify the collision mesh before creating a soft body out of it. Defaults to True.
-
-    Note:
-        This flag is ignored if the user provides the simulation mesh points directly. However, we assume that
-        most users will not provide the simulation mesh points directly. Hence, this flag is enabled by default.
-
-        If you want to provide the simulation mesh points directly, please set this flag to False.
-    """
-
-    collision_simplification_remeshing: bool = True
-    """Whether or not the collision mesh should be remeshed before simplification. Defaults to True.
-
-    This parameter is ignored if :attr:`collision_simplification` is False.
-    """
-
-    collision_simplification_remeshing_resolution: int = 0
-    """The resolution used for remeshing. Defaults to 0, which means that a heuristic is used to determine the
-    resolution.
-
-    This parameter is ignored if :attr:`collision_simplification_remeshing` is False.
-    """
-
-    collision_simplification_target_triangle_count: int = 0
-    """The target triangle count used for the simplification. Defaults to 0, which means that a heuristic based on
-    the :attr:`simulation_hexahedral_resolution` is used to determine the target count.
-
-    This parameter is ignored if :attr:`collision_simplification` is False.
-    """
-
-    collision_simplification_force_conforming: bool = True
-    """Whether or not the simplification should force the output mesh to conform to the input mesh. Defaults to True.
-
-    The flag indicates that the tretrahedralizer used to generate the collision mesh should produce tetrahedra
-    that conform to the triangle mesh. If False, the simplifier uses the output from the tretrahedralizer used.
-
-    This parameter is ignored if :attr:`collision_simplification` is False.
-    """
+    """Velocity threshold below which a vertex becomes a candidate for sleeping. Specified in units of distance/seconds and constraint to the range [0, inf)."""
 
     max_depenetration_velocity: float | None = None
-    """Maximum depenetration velocity permitted to be introduced by the solver (in m/s)."""
+    """Maximum velocity that the solver may apply to resolve intersections. Specified in units of distance/seconds and constraint to the range [0, inf)."""
+
+    self_collision: bool | None = None
+    """Enables self-collisions for the deformable body, preventing self-intersections."""
+
+    self_collision_filter_distance: float | None = None
+    """Distance below which self-collision is disabled. The default value of -inf indicates that the simulation selects a suitable value. Specified in units of distance and constraint to the range [:attr:`rest_offset` * 2, inf].
+    """
+
+    enable_speculative_c_c_d: bool | None = None
+    """Enables dynamic adjustment of the contact offset based on velocity (speculative continuous colision detection)."""
+
+    disable_gravity: bool | None = None
+    """Disables gravity for the deformable body."""
+
+    # specific to surface deformables
+    collision_pair_update_frequency: int | None = None
+    """Determines how often surface-to-surface collision pairs are updated during each time step. Increasing this value results in more frequent updates to the contact pairs, which provides better contact points. 
+    
+    For example, a value of 2 means collision pairs are updated twice per time step: once at the beginning and once in the middle of the time step (i.e., during the middle solver iteration). If set to 0, the solver adaptively determines when to update the surface-to-surface contact pairs, instead of using a fixed frequency. 
+    
+    Valid range: [1, :attr:`solver_position_iteration_count`].
+    """
+
+    collision_iteration_multiplier: float | None = None
+    """Determines how many collision subiterations are used in each solver iteration. By default, collision constraints are applied once per solver iteration. Increasing this value applies collision constraints more frequently within each solver iteration. 
+    
+    For example, a value of 2 means collision constraints are applied twice per solver iteration (i.e., collision constraints are applied 2 x :attr:`solver_position_iteration_count` times per time step). Increasing this value does not update collision pairs more frequently; refer to :attr:`collision_pair_update_frequency` for that. 
+    
+    Valid range: [1, :attr:`solver_position_iteration_count` / 2].
+    """
 
 
 @configclass
 class PhysXCollisionPropertiesCfg:
     """PhysX-specific collision properties for a deformable body.
 
-    These properties are set with the prefix ``physxCollision:<property_name>``. For example, to set the rest offset
-    of the deformable body's collision mesh, you would set the property ``physxCollision:restOffset``.
+    These properties are set with the prefix ``physxCollision:<property_name>``.
 
     See the PhysX documentation for more information on the available properties.
     """
@@ -140,24 +113,16 @@ class PhysXCollisionPropertiesCfg:
     offset, the shapes will be separated at rest by an air gap.
     """
 
+
 @configclass
 class DeformableBodyPropertiesCfg(OmniPhysicsPropertiesCfg, PhysXDeformableBodyPropertiesCfg, PhysXCollisionPropertiesCfg):
     """Properties to apply to a deformable body.
 
-    A deformable body is a body that can deform under forces. The configuration allows users to specify
+    A deformable body is a body that can deform under forces, both surface and volume deformables. The configuration allows users to specify
     the properties of the deformable body, such as the solver iteration counts, damping, and self-collision.
 
     An FEM-based deformable body is created by providing a collision mesh and simulation mesh. The collision mesh
-    is used for collision detection and the simulation mesh is used for simulation. The collision mesh is usually
-    a simplified version of the simulation mesh.
-
-    Based on the above, the PhysX team provides APIs to either set the simulation and collision mesh directly
-    (by specifying the points) or to simplify the collision mesh based on the simulation mesh. The simplification
-    process involves remeshing the collision mesh and simplifying it based on the target triangle count.
-
-    Since specifying the collision mesh points directly is not a common use case, we only expose the parameters
-    to simplify the collision mesh based on the simulation mesh. If you want to provide the collision mesh points,
-    please open an issue on the repository and we can add support for it.
+    is used for collision detection and the simulation mesh is used for simulation. 
 
     See :meth:`modify_deformable_body_properties` for more information.
 
