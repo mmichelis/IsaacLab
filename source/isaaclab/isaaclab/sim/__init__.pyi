@@ -50,7 +50,6 @@ __all__ = [
     "TriangleMeshSimplificationPropertiesCfg",
     "SpawnerCfg",
     "RigidObjectSpawnerCfg",
-    "DeformableObjectSpawnerCfg",
     "spawn_from_mjcf",
     "spawn_from_urdf",
     "spawn_from_usd",
@@ -213,7 +212,6 @@ from .schemas import (
 from .spawners import (
     SpawnerCfg,
     RigidObjectSpawnerCfg,
-    DeformableObjectSpawnerCfg,
     spawn_from_mjcf,
     spawn_from_urdf,
     spawn_from_usd,
