@@ -72,12 +72,12 @@ def modify_deformable_body_properties(
 ):
     """Modify PhysX parameters for a deformable body prim.
 
-    A `deformable body`_ is a single body that can be simulated by PhysX. Unlike rigid bodies, deformable bodies
+    A `deformable body`_ is a single body (either surface or volume deformable) that can be simulated by PhysX. Unlike rigid bodies, deformable bodies
     support relative motion of the nodes in the mesh. Consequently, they can be used to simulate deformations
     under applied forces.
 
-    PhysX soft body simulation employs Finite Element Analysis (FEA) to simulate the deformations of the mesh.
-    It uses two tetrahedral meshes to represent the deformable body:
+    PhysX deformable body simulation employs Finite Element Analysis (FEA) to simulate the deformations of the mesh.
+    It uses two meshes to represent the deformable body:
 
     1. **Simulation mesh**: This mesh is used for the simulation and is the one that is deformed by the solver.
     2. **Collision mesh**: This mesh only needs to match the surface of the simulation mesh and is used for
@@ -85,21 +85,18 @@ def modify_deformable_body_properties(
 
     For most applications, we assume that the above two meshes are computed from the "render mesh" of the deformable
     body. The render mesh is the mesh that is visible in the scene and is used for rendering purposes. It is composed
-    of triangles and is the one that is used to compute the above meshes based on PhysX cookings.
-
-    The schema comprises of attributes that belong to the `PhysxDeformableBodyAPI`_. schemas containing the PhysX
-    parameters for the deformable body.
+    of triangles, while the simulation mesh is composed of tetrahedrons for volume deformables, and triangles for surface deformables.
 
     .. caution::
         The deformable body schema is still under development by the Omniverse team. The current implementation
-        works with the PhysX schemas shipped with Isaac Sim 4.0.0 onwards. It may change in future releases.
+        works with the PhysX schemas shipped with Isaac Sim 6.0.0 onwards. It may change in future releases.
 
     .. note::
         This function is decorated with :func:`apply_nested` that sets the properties to all the prims
         (that have the schema applied on them) under the input prim path.
 
-    .. _deformable body: https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/SoftBodies.html
-    .. _PhysxDeformableBodyAPI: https://docs.omniverse.nvidia.com/kit/docs/omni_usd_schema_physics/104.2/class_physx_schema_physx_deformable_a_p_i.html
+    .. _deformable body: https://nvidia-omniverse.github.io/PhysX/physx/5.6.1/docs/DeformableVolume.html
+    .. _PhysxDeformableBodyAPI: https://docs.omniverse.nvidia.com/kit/docs/omni_usd_schema_physics/latest/physxschema/annotated.html
 
     Args:
         prim_path: The prim path to the deformable body.
@@ -154,6 +151,5 @@ def modify_deformable_body_properties(
             safe_set_attribute_on_usd_prim(
                 deformable_body_prim, f"{prefix}:{to_camel_case(attr_name, 'cC')}", cfg[attr_name], camel_case=False
             )
-
     # success
     return True
