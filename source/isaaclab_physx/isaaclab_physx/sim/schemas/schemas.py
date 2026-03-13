@@ -19,6 +19,7 @@ from isaaclab.sim.utils import (
     safe_set_attribute_on_usd_prim,
 )
 
+from omni.physx.scripts import deformableUtils
 from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
 
 # import logger
@@ -76,13 +77,35 @@ def define_deformable_body_properties(
             f"Found multiple meshes in '{prim_path}': {mesh_paths}."
             " Deformable body schema can only be applied to one mesh."
         )
-    mesh_prim = matching_prims[0]
+    deformable_body_prim = matching_prims[0]
+    deformable_prim_path = deformable_body_prim.GetPrimPath()
+
+    # check if the prim is valid
+    if not deformable_body_prim.IsValid():
+        return False
+    
+    # set root prim properties based on the type of the deformable mesh (surface vs volume)
+    if deformable_body_prim.IsA(UsdGeom.Mesh):
+        success = deformableUtils.set_physics_surface_deformable_body(stage, deformable_prim_path)
+        # apply physx extension api
+        if "PhysxSurfaceDeformableBodyAPI" not in prim.GetAppliedSchemas():
+            prim.AddAppliedSchema("PhysxSurfaceDeformableBodyAPI")
+    elif deformable_body_prim.IsA(UsdGeom.TetMesh):
+        success = deformableUtils.set_physics_volume_deformable_body(stage, deformable_prim_path)
+        # apply physx extension api
+        if "PhysxBaseDeformableBodyAPI" not in prim.GetAppliedSchemas():
+            prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI")
+    else:
+        print(f"Unsupported deformable body prim type: '{deformable_body_prim.GetTypeName()}'. Only Mesh and TetMesh are supported.")
+        success = False
+    # api failure
+    if not success:
+        raise RuntimeError(f"Failed to set deformable body properties on prim '{deformable_prim_path}'.")
 
     # set deformable body properties
-    modify_deformable_body_properties(mesh_prim.GetPrimPath(), cfg, stage)
+    modify_deformable_body_properties(deformable_prim_path, cfg, stage)
 
 
-@apply_nested
 def modify_deformable_body_properties(
     prim_path: str, cfg: DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
 ):
@@ -129,28 +152,8 @@ def modify_deformable_body_properties(
 
     # get deformable-body USD prim
     deformable_body_prim = stage.GetPrimAtPath(prim_path)
-
     # check if the prim is valid
     if not deformable_body_prim.IsValid():
-        return False
-
-    from omni.physx.scripts import deformableUtils
-    # set deformable body properties based on the type of the mesh (surface vs volume)
-    if deformable_body_prim.IsA(UsdGeom.Mesh):
-        success = deformableUtils.set_physics_surface_deformable_body(stage, prim_path)
-        # apply physx extension api
-        if "PhysxSurfaceDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
-            deformable_body_prim.AddAppliedSchema("PhysxSurfaceDeformableBodyAPI")
-    elif deformable_body_prim.IsA(UsdGeom.TetMesh):
-        success = deformableUtils.set_physics_volume_deformable_body(stage, prim_path)
-        # apply physx extension api
-        if "PhysxBaseDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
-            deformable_body_prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI")
-    else:
-        print(f"Unsupported deformable body prim type: '{deformable_body_prim.GetTypeName()}'. Only Mesh and TetMesh are supported.")
-        success = False
-    # api failure
-    if not success:
         return False
 
     # ensure PhysX collision API is applied on the collision mesh 
