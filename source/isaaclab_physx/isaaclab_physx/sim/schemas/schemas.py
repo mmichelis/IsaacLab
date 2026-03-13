@@ -15,10 +15,9 @@ from isaaclab.utils.string import to_camel_case
 
 from isaaclab.sim.utils import (
     apply_nested,
+    get_all_matching_child_prims,
     safe_set_attribute_on_usd_prim,
 )
-
-from isaaclab.sim.schemas import schemas_cfg
 
 from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
 
@@ -62,8 +61,25 @@ def define_deformable_body_properties(
     if not prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
 
+    # traverse the prim and get the mesh. 
+    # Check for existence of TetMesh (volume), if not found check for Mesh (surface). If multiple meshes are found, raise error.
+    matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
+    # check if the volume deformable mesh is valid
+    if len(matching_prims) == 0:
+        matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
+        if len(matching_prims) == 0:
+            raise ValueError(f"Could not find any tetmesh or mesh in '{prim_path}'. Please check asset.")
+    if len(matching_prims) > 1:
+        # get list of all meshes found
+        mesh_paths = [p.GetPrimPath() for p in matching_prims]
+        raise ValueError(
+            f"Found multiple meshes in '{prim_path}': {mesh_paths}."
+            " Deformable body schema can only be applied to one mesh."
+        )
+    mesh_prim = matching_prims[0]
+
     # set deformable body properties
-    modify_deformable_body_properties(prim_path, cfg, stage)
+    modify_deformable_body_properties(mesh_prim.GetPrimPath(), cfg, stage)
 
 
 @apply_nested
