@@ -5,9 +5,9 @@
 
 from __future__ import annotations
 
-from pxr import Usd, UsdGeom, UsdPhysics, UsdShade
+from pxr import Usd, UsdShade
 
-from isaaclab.sim.utils import clone, safe_set_attribute_on_usd_prim, safe_set_attribute_on_usd_schema
+from isaaclab.sim.utils import clone, safe_set_attribute_on_usd_prim
 from isaaclab.sim.utils.stage import get_current_stage
 from isaaclab.utils.string import to_camel_case
 

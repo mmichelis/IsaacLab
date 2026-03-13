@@ -6,6 +6,7 @@
 __all__ = [
     "define_deformable_body_properties",
     "modify_deformable_body_properties",
+    "DeformableBodyPropertiesCfg",
     "spawn_deformable_body_material",
     "DeformableBodyMaterialCfg",
     "SurfaceDeformableBodyMaterialCfg",
@@ -14,6 +15,7 @@ __all__ = [
 from .schemas import (
     define_deformable_body_properties,
     modify_deformable_body_properties,
+    DeformableBodyPropertiesCfg
 )
 from .spawners import (
     spawn_deformable_body_material,
