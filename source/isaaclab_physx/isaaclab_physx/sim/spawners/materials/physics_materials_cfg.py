@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 
 from isaaclab.utils import configclass
@@ -12,14 +13,14 @@ from isaaclab.sim.spawners.materials import PhysicsMaterialCfg
 
 
 @configclass
-class DeformableBodyMaterialCfg(PhysicsMaterialCfg):
-    """Physics material parameters for deformable bodies.
+class OmniPhysicsDeformableMaterialCfg:
+    """OmniPhysics material properties for a deformable body.
 
-    See :meth:`spawn_deformable_body_material` for more information.
+    These properties are set with the prefix ``omniphysics:<property_name>``. For example, to set the density of the
+    deformable body, you would set the property ``omniphysics:density``.
 
+    See the OmniPhysics documentation for more information on the available properties.
     """
-
-    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
 
     density: float | None = None
     """The material density. Defaults to None, in which case the simulation decides the default density."""
@@ -44,19 +45,16 @@ class DeformableBodyMaterialCfg(PhysicsMaterialCfg):
     material incompressible.
     """
 
-    elasticity_damping: float = 0.005
-    """The elasticity damping for the deformable material. Defaults to 0.005."""
-
 
 @configclass
-class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg):
-    """Physics material parameters for surface deformable bodies, extending on :class:`DeformableBodyMaterialCfg` with additional parameters for surface deformable bodies.
+class OmniPhysicsSurfaceDeformableMaterialCfg(OmniPhysicsDeformableMaterialCfg):
+    """OmniPhysics material properties for a surface deformable body, extending on :class:`OmniPhysicsDeformableMaterialCfg` with additional parameters for surface deformable bodies.
 
-    See :meth:`spawn_deformable_body_material` for more information.
+    These properties are set with the prefix ``omniphysics:<property_name>``. For example, to set the surface thickness of the
+    surface deformable body, you would set the property ``omniphysics:surfaceThickness``.
 
+    See the OmniPhysics documentation for more information on the available properties.
     """
-
-    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
 
     surface_thickness: float = 0.01
     """The thickness of the deformable body's surface. Defaults to 0.01 meters (m)."""
@@ -73,3 +71,48 @@ class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg):
     bend_damping: float = 0.0
     """The bend damping for the deformable body's surface. Defaults to 0.0."""
 
+
+@configclass
+class PhysXDeformableMaterialCfg:
+    """PhysX-specific material properties for a deformable body.
+
+    These properties are set with the prefix ``physxDeformableBody:<property_name>``. For example, to set the elasticity damping of the
+    deformable body, you would set the property ``physxDeformableBody:elasticityDamping``.
+
+    See the PhysX documentation for more information on the available properties.
+    """
+
+    elasticity_damping: float = 0.005
+    """The elasticity damping for the deformable material. Defaults to 0.005."""
+
+
+@configclass
+class DeformableBodyMaterialCfg(PhysicsMaterialCfg, OmniPhysicsDeformableMaterialCfg, PhysXDeformableMaterialCfg):
+    """Physics material parameters for deformable bodies.
+
+    See :meth:`spawn_deformable_body_material` for more information.
+    """
+
+    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
+
+    _property_prefix: dict[str, list[str]] = {
+        "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsDeformableMaterialCfg)],
+        "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableMaterialCfg)],
+    }
+    """Mapping between the property prefixes and the properties that fall under each prefix."""
+
+
+@configclass
+class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg, OmniPhysicsSurfaceDeformableMaterialCfg):
+    """Physics material parameters for surface deformable bodies, extending on :class:`DeformableBodyMaterialCfg` with additional parameters for surface deformable bodies.
+
+    See :meth:`spawn_deformable_body_material` for more information.
+    """
+
+    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
+
+    _property_prefix: dict[str, list[str]] = {
+        "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsSurfaceDeformableMaterialCfg)],
+        "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableMaterialCfg)],
+    }
+    """Extend DeformableBodyMaterialCfg properties under each prefix."""
