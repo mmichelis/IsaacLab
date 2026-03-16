@@ -68,8 +68,6 @@ import torch
 import tqdm
 import warp as wp
 
-import omni.replicator.core as rep
-
 import isaaclab.sim as sim_utils
 from isaaclab.utils import convert_dict_to_backend
 from isaaclab.sensors.camera import Camera, CameraCfg
@@ -79,37 +77,41 @@ from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
 from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
+# import only used for rendering frames
+if args_cli.save:
+    import omni.replicator.core as rep
 
-def define_origins(num_origins: int, spacing: float) -> list[list[float]]:
-    """Defines the origins of the the scene."""
-    # create tensor based on number of environments
+
+def define_origins(num_origins: int, radius: float = 2.0, center_height: float = 3.0) -> list[list[float]]:
+    """Defines origins distributed on the surface of a sphere, sampled according to a Fibonacci lattice.
+
+    Args:
+        num_origins: Number of points to place.
+        radius: Radius of the sphere [m].
+        center_height: Height of the sphere center above ground [m].
+    """
+    golden_ratio = (1 + np.sqrt(5)) / 2
     env_origins = torch.zeros(num_origins, 3)
-    # create a grid of origins
-    num_cols = np.floor(np.sqrt(num_origins))
-    num_rows = np.ceil(num_origins / num_cols)
-    xx, yy = torch.meshgrid(torch.arange(num_rows), torch.arange(num_cols), indexing="xy")
-    env_origins[:, 0] = spacing * xx.flatten()[:num_origins] - spacing * (num_rows - 1) / 2
-    env_origins[:, 1] = spacing * yy.flatten()[:num_origins] - spacing * (num_cols - 1) / 2
-    env_origins[:, 2] = 2.0 * torch.rand(num_origins) + 0.5
-    # return the origins
+    for i in range(num_origins):
+        theta = 2 * np.pi * i / golden_ratio
+        phi = np.arccos(1 - 2 * (i + 0.5) / num_origins)
+        env_origins[i, 0] = radius * np.cos(theta) * np.sin(phi)
+        env_origins[i, 1] = radius * np.sin(theta) * np.sin(phi)
+        env_origins[i, 2] = radius * np.cos(phi) + center_height
     return env_origins.tolist()
 
 
 def define_sensor() -> Camera:
-    """Defines the camera sensor to add to the scene."""
+    """Defines the camera sensor to add to the scene for rendering frames."""
     # Setup camera sensor
-    # In contrast to the ray-cast camera, we spawn the prim at these locations.
-    # This means the camera sensor will be attached to these prims.
-    sim_utils.create_prim("/World/OriginCamera", "Xform", translation=[0.0, 0.0, 0.0])
+    sim_utils.create_prim("/World/CameraOrigin", "Xform", translation=[0.0, 0.0, 0.0])
     camera_cfg = CameraCfg(
-        prim_path="/World/OriginCamera/CameraSensor",
+        prim_path="/World/CameraOrigin/CameraSensor",
         update_period=1.0/args_cli.video_fps,
         height=800,
         width=1000,
         data_types=["rgb",],
-        spawn=sim_utils.PinholeCameraCfg(
-            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
-        ),
+        spawn=sim_utils.PinholeCameraCfg(),
     )
     # Create camera
     camera = Camera(cfg=camera_cfg)
@@ -165,7 +167,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cloth = sim_utils.MeshSquareCfg(
-        size=2.5,
+        size=1.5,
         resolution=(21, 21),
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
@@ -190,7 +192,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     }
 
     # Create separate groups of deformable objects
-    origins = define_origins(num_origins=16, spacing=0.8)
+    origins = define_origins(num_origins=12, radius=1.5, center_height=2.0)
     print("[INFO]: Spawning objects...")
     # Iterate over all the origins and randomly spawn objects
     for idx, origin in tqdm.tqdm(enumerate(origins), total=len(origins)):
@@ -198,17 +200,14 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         obj_name = random.choice(list(objects_cfg.keys()))
         obj_cfg = objects_cfg[obj_name]
         # randomize the young modulus
-        obj_cfg.physics_material.youngs_modulus = random.uniform(1e6, 1e8)
+        obj_cfg.physics_material.youngs_modulus = random.uniform(5e5, 1e8)
         # higher mesh resolution causes instability at low stiffness
-        if obj_name == "sphere" or obj_name == "capsule" or obj_name == "cloth":
-            obj_cfg.physics_material.youngs_modulus = random.uniform(5e8, 5e9)
+        if obj_name in ["sphere", "capsule", "cloth", "usd"]:
+            obj_cfg.physics_material.youngs_modulus = random.uniform(1e8, 5e9)
         # randomize the poisson's ratio
         obj_cfg.physics_material.poissons_ratio = random.uniform(0.25, 0.45)
         # randomize the color
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
-        # spawn cloth a bit higher than the rest
-        if obj_name == "cloth":
-            origin[2] += 1.5
         # spawn the object
         obj_cfg.func(f"/World/Origin/Object{idx:02d}", obj_cfg, translation=origin)
 
@@ -221,8 +220,9 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         init_state=DeformableObjectCfg.InitialStateCfg(),
     )
     deformable_object = DeformableObject(cfg=cfg)
-
     scene_entities = {"deformable_object": deformable_object}
+
+    # Create camera if saving frames
     if args_cli.save:
         camera = define_sensor()
         scene_entities["camera"] = camera
@@ -231,7 +231,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     return scene_entities, origins
 
 
-def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, DeformableObject], origins: torch.Tensor, output_dir: str = "outputs"):
+def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, DeformableObject], output_dir: str = "outputs"):
     """Runs the simulation loop."""
     # Write camera outputs
     if args_cli.save:
@@ -249,7 +249,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
         camera.set_world_poses_from_view(camera_positions, camera_targets)
 
 
-    print(f"Solving for {torch.tensor(entities["deformable_object"].root_view.get_simulation_nodal_positions().shape).prod().item():,} Degrees of Freedom.")
+    print(f"[INFO]: Solving for {torch.tensor(entities["deformable_object"].root_view.get_simulation_nodal_positions().shape).prod().item():,} Degrees of Freedom.")
 
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
@@ -301,15 +301,15 @@ def main():
     sim.set_camera_view([4.0, 4.0, 3.0], [0.5, 0.5, 0.0])
 
     # Design scene by adding assets to it
-    scene_entities, scene_origins = design_scene()
-    scene_origins = torch.tensor(scene_origins, device=sim.device)
+    scene_entities, _ = design_scene()
     # Play the simulator
     sim.reset()
     # Now we are ready!
     print("[INFO]: Setup complete...")
-
     camera_output = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "camera")
-    run_simulator(sim, scene_entities, scene_origins, camera_output)
+    run_simulator(sim, scene_entities, camera_output)
+    print("[INFO]: Simulation complete...")
+
     # Store video if saving frames
     if args_cli.save:
         video_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "output.mp4")
