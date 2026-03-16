@@ -40,50 +40,66 @@ class PhysXDeformableBodyPropertiesCfg:
     """Number of the solver positional iterations per step. Range is [1,255], default to 16."""
 
     linear_damping: float | None = None
-    """Linear damping coefficient, in units of 1/seconds and constrainted to the range [0, inf)."""
+    """Linear damping coefficient, in units of 1/seconds and constrained to the range [0, inf)."""
 
     max_linear_velocity: float | None = None
-    """Maximum allowable linear velocity for the deformable body, in units of distance/second and constrained to the range [0, inf). A negative value allows the simulation to choose suitable a per vertex value dynamically, currently only supported for surface deformables. This can help prevent surface-surface intersections."""
+    """Maximum allowable linear velocity for the deformable body, in units of distance/second and constrained to the
+    range [0, inf). A negative value allows the simulation to choose suitable a per vertex value dynamically,
+    currently only supported for surface deformables. This can help prevent surface-surface intersections."""
 
     settling_damping: float | None = None
-    """Additional damping applied when a vertex's velocity falls below :attr:`settlingThreshold`. Specified in units of 1/seconds and constrained to the range [0, inf)."""
+    """Additional damping applied when a vertex's velocity falls below :attr:`settlingThreshold`.
+    Specified in units of 1/seconds and constrained to the range [0, inf)."""
 
     settling_threshold: float | None = None
-    """Velocity threshold below which :attr:`settlingDamping` is applied in addition to standard damping. Specified in units of distance/second and constrained to the range [0, inf)."""
+    """Velocity threshold below which :attr:`settlingDamping` is applied in addition to standard damping.
+    Specified in units of distance/second and constrained to the range [0, inf)."""
 
     sleep_threshold: float | None = None
-    """Velocity threshold below which a vertex becomes a candidate for sleeping. Specified in units of distance/seconds and constraint to the range [0, inf)."""
+    """Velocity threshold below which a vertex becomes a candidate for sleeping.
+    Specified in units of distance/seconds and constrained to the range [0, inf)."""
 
     max_depenetration_velocity: float | None = None
-    """Maximum velocity that the solver may apply to resolve intersections. Specified in units of distance/seconds and constraint to the range [0, inf)."""
+    """Maximum velocity that the solver may apply to resolve intersections.
+    Specified in units of distance/seconds and constrained to the range [0, inf)."""
 
     self_collision: bool | None = None
     """Enables self-collisions for the deformable body, preventing self-intersections."""
 
     self_collision_filter_distance: float | None = None
-    """Distance below which self-collision is disabled. The default value of -inf indicates that the simulation selects a suitable value. Specified in units of distance and constraint to the range [:attr:`rest_offset` * 2, inf].
+    """Distance below which self-collision is disabled. The default value of -inf indicates that the simulation
+    selects a suitable value. Specified in units of distance and constrained to range [:attr:`rest_offset`*2, inf].
     """
 
     enable_speculative_c_c_d: bool | None = None
-    """Enables dynamic adjustment of the contact offset based on velocity (speculative continuous colision detection)."""
+    """Enables dynamic adjustment of contact offset based on velocity (speculative continuous collision detection)."""
 
     disable_gravity: bool | None = None
     """Disables gravity for the deformable body."""
 
     # specific to surface deformables
     collision_pair_update_frequency: int | None = None
-    """Determines how often surface-to-surface collision pairs are updated during each time step. Increasing this value results in more frequent updates to the contact pairs, which provides better contact points. 
-    
-    For example, a value of 2 means collision pairs are updated twice per time step: once at the beginning and once in the middle of the time step (i.e., during the middle solver iteration). If set to 0, the solver adaptively determines when to update the surface-to-surface contact pairs, instead of using a fixed frequency. 
-    
+    """Determines how often surface-to-surface collision pairs are updated during each time step.
+    Increasing this value results in more frequent updates to the contact pairs, which provides better contact points.
+
+    For example, a value of 2 means collision pairs are updated twice per time step:
+    once at the beginning and once in the middle of the time step (i.e., during the middle solver iteration).
+    If set to 0, the solver adaptively determines when to update the surface-to-surface contact pairs,
+    instead of using a fixed frequency.
+
     Valid range: [1, :attr:`solver_position_iteration_count`].
     """
 
     collision_iteration_multiplier: float | None = None
-    """Determines how many collision subiterations are used in each solver iteration. By default, collision constraints are applied once per solver iteration. Increasing this value applies collision constraints more frequently within each solver iteration. 
-    
-    For example, a value of 2 means collision constraints are applied twice per solver iteration (i.e., collision constraints are applied 2 x :attr:`solver_position_iteration_count` times per time step). Increasing this value does not update collision pairs more frequently; refer to :attr:`collision_pair_update_frequency` for that. 
-    
+    """Determines how many collision subiterations are used in each solver iteration.
+    By default, collision constraints are applied once per solver iteration.
+    Increasing this value applies collision constraints more frequently within each solver iteration.
+
+    For example, a value of 2 means collision constraints are applied twice per solver iteration
+    (i.e., collision constraints are applied 2 x :attr:`solver_position_iteration_count` times per time step).
+    Increasing this value does not update collision pairs more frequently;
+    refer to :attr:`collision_pair_update_frequency` for that.
+
     Valid range: [1, :attr:`solver_position_iteration_count` / 2].
     """
 
@@ -96,7 +112,7 @@ class PhysXCollisionPropertiesCfg:
 
     See the PhysX documentation for more information on the available properties.
     """
-    
+
     contact_offset: float | None = None
     """Contact offset for the collision shape (in m).
 
@@ -115,14 +131,17 @@ class PhysXCollisionPropertiesCfg:
 
 
 @configclass
-class DeformableBodyPropertiesCfg(OmniPhysicsPropertiesCfg, PhysXDeformableBodyPropertiesCfg, PhysXCollisionPropertiesCfg):
+class DeformableBodyPropertiesCfg(
+    OmniPhysicsPropertiesCfg, PhysXDeformableBodyPropertiesCfg, PhysXCollisionPropertiesCfg
+):
     """Properties to apply to a deformable body.
 
-    A deformable body is a body that can deform under forces, both surface and volume deformables. The configuration allows users to specify
-    the properties of the deformable body, such as the solver iteration counts, damping, and self-collision.
+    A deformable body is a body that can deform under forces, both surface and volume deformables.
+    The configuration allows users to specify the properties of the deformable body,
+    such as the solver iteration counts, damping, and self-collision.
 
     An FEM-based deformable body is created by providing a collision mesh and simulation mesh. The collision mesh
-    is used for collision detection and the simulation mesh is used for simulation. 
+    is used for collision detection and the simulation mesh is used for simulation.
 
     See :meth:`modify_deformable_body_properties` for more information.
 

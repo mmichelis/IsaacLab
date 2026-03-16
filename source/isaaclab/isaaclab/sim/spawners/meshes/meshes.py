@@ -11,16 +11,16 @@ import numpy as np
 import trimesh
 import trimesh.transformations
 
+# deformables only supported on PhysX backend
+from isaaclab_physx.sim import schemas as schemas_physx
+from isaaclab_physx.sim.spawners.materials import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
+
 from pxr import Usd, UsdPhysics
 
 from isaaclab.sim import schemas
 from isaaclab.sim.utils import bind_physics_material, bind_visual_material, clone, create_prim, get_current_stage
 
 from ..materials import RigidBodyMaterialCfg
-
-# deformables only supported on PhysX backend
-from isaaclab_physx.sim import schemas as schemas_physx
-from isaaclab_physx.sim.spawners.materials import SurfaceDeformableBodyMaterialCfg, DeformableBodyMaterialCfg
 
 if TYPE_CHECKING:
     from . import meshes_cfg
@@ -293,8 +293,9 @@ def spawn_mesh_square(
     """
     # create a 2D triangle mesh grid
     from omni.physx.scripts import deformableUtils
+
     vertices, faces = deformableUtils.create_triangle_mesh_square(cfg.resolution[0], cfg.resolution[1], scale=cfg.size)
-    grid = trimesh.Trimesh(vertices=vertices, faces=np.array(faces).reshape(-1,3), process=False)
+    grid = trimesh.Trimesh(vertices=vertices, faces=np.array(faces).reshape(-1, 3), process=False)
 
     # obtain stage handle
     stage = get_current_stage()
@@ -395,7 +396,14 @@ def _spawn_mesh_geom_from_mesh(
         if cfg.mass_props is not None:
             schemas.define_mass_properties(prim_path, cfg.mass_props, stage=stage)
         # apply deformable body properties
-        schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage=stage, deformable_type="surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume")
+        schemas_physx.define_deformable_body_properties(
+            prim_path,
+            cfg.deformable_props,
+            stage=stage,
+            deformable_type="surface"
+            if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg)
+            else "volume",
+        )
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh
         if cfg.__class__.__name__ == "MeshSphereCfg":

@@ -30,7 +30,7 @@ parser.add_argument(
 parser.add_argument(
     "--dt",
     type=float,
-    default=1.0/60,
+    default=1.0 / 60,
     help="Simulation timestep.",
 )
 parser.add_argument(
@@ -68,14 +68,14 @@ import torch
 import tqdm
 import warp as wp
 
-import isaaclab.sim as sim_utils
-from isaaclab.utils import convert_dict_to_backend
-from isaaclab.sensors.camera import Camera, CameraCfg
-from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
-
 # deformables supported in PhysX
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
+
+import isaaclab.sim as sim_utils
+from isaaclab.sensors.camera import Camera, CameraCfg
+from isaaclab.utils import convert_dict_to_backend
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 # import only used for rendering frames
 if args_cli.save:
@@ -107,10 +107,12 @@ def define_sensor() -> Camera:
     sim_utils.create_prim("/World/CameraOrigin", "Xform", translation=[0.0, 0.0, 0.0])
     camera_cfg = CameraCfg(
         prim_path="/World/CameraOrigin/CameraSensor",
-        update_period=1.0/args_cli.video_fps,
+        update_period=1.0 / args_cli.video_fps,
         height=800,
         width=1000,
-        data_types=["rgb",],
+        data_types=[
+            "rgb",
+        ],
         spawn=sim_utils.PinholeCameraCfg(),
     )
     # Create camera
@@ -178,7 +180,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
-        scale=[0.05, 0.05, 0.05]
+        scale=[0.05, 0.05, 0.05],
     )
     # create a dictionary of all the objects to be spawned
     objects_cfg = {
@@ -188,7 +190,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         "capsule": cfg_capsule,
         "cone": cfg_cone,
         "cloth": cfg_cloth,
-        "usd": cfg_usd
+        "usd": cfg_usd,
     }
 
     # Create separate groups of deformable objects
@@ -248,12 +250,14 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
         camera_targets = torch.tensor([[0.0, 0.0, 0.5]], device=sim.device)
         camera.set_world_poses_from_view(camera_positions, camera_targets)
 
-
-    print(f"[INFO]: Solving for {torch.tensor(entities["deformable_object"].root_view.get_simulation_nodal_positions().shape).prod().item():,} Degrees of Freedom.")
+    dof = torch.tensor(entities["deformable_object"].root_view.get_simulation_nodal_positions().shape).prod().item()
+    print(f"[INFO]: Solving for {dof:,} Degrees of Freedom.")
 
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
-    assert sim_dt <= 1.0 / args_cli.video_fps, "Simulation timestep must be smaller than the inverse of the video FPS to save frames properly."
+    assert sim_dt <= 1.0 / args_cli.video_fps, (
+        "Simulation timestep must be smaller than the inverse of the video FPS to save frames properly."
+    )
     num_steps = int(args_cli.total_time / sim_dt)
     sim_time = 0.0
     count = 0
@@ -286,10 +290,12 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
         if args_cli.save:
             if camera.data.output["rgb"] is not None:
                 cam_data = convert_dict_to_backend(camera.data.output, backend="numpy")
-                rep_writer.write({
-                    "annotators": {"rgb": {"render_product": {"data": cam_data["rgb"][0]}}},
-                    "trigger_outputs": {"on_time": camera.frame[0]}
-                })
+                rep_writer.write(
+                    {
+                        "annotators": {"rgb": {"render_product": {"data": cam_data["rgb"][0]}}},
+                        "trigger_outputs": {"on_time": camera.frame[0]},
+                    }
+                )
 
 
 def main():
@@ -314,21 +320,40 @@ def main():
     if args_cli.save:
         video_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "output.mp4")
         fps = args_cli.video_fps
-        subprocess.run([
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-framerate", str(fps),
-            "-i", os.path.join(camera_output, "rgb_%d_0.png"),
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            video_path,
-        ], check=True)
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-framerate",
+                str(fps),
+                "-i",
+                os.path.join(camera_output, "rgb_%d_0.png"),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                video_path,
+            ],
+            check=True,
+        )
         # Also generate gif for quick preview
         gif_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "output", "output.gif")
-        subprocess.run([
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-i", video_path,
-            "-vf", "fps=15,scale=320:-1:flags=lanczos",
-            gif_path,
-        ], check=True)
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                video_path,
+                "-vf",
+                "fps=15,scale=320:-1:flags=lanczos",
+                gif_path,
+            ],
+            check=True,
+        )
         print(f"[INFO]: Video saved to {video_path}")
 
 

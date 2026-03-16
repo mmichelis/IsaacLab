@@ -381,7 +381,7 @@ class DeformableObject(AssetBase):
         """
         if self._deformable_type != "volume":
             raise ValueError("Kinematic targets can only be set for volume deformable bodies.")
-        
+
         # resolve env_ids
         env_ids = self._resolve_env_ids(env_ids)
         if full_data:
@@ -406,7 +406,9 @@ class DeformableObject(AssetBase):
             device=self.device,
         )
         # set into simulation
-        self.root_view.set_simulation_nodal_kinematic_targets(self._data.nodal_kinematic_target.view(wp.float32), indices=env_ids)
+        self.root_view.set_simulation_nodal_kinematic_targets(
+            self._data.nodal_kinematic_target.view(wp.float32), indices=env_ids
+        )
 
     def write_nodal_kinematic_target_to_sim_mask(
         self,
@@ -587,7 +589,9 @@ class DeformableObject(AssetBase):
                 " to the deformable body."
             )
         # deformable type based on material that is applied
-        self._deformable_type = "surface" if material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI") else "volume"
+        self._deformable_type = (
+            "surface" if material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI") else "volume"
+        )
 
         # resolve root path back into regex expression
         # -- root prim expression
@@ -596,18 +600,21 @@ class DeformableObject(AssetBase):
         # -- object view
         if self._deformable_type == "surface":
             # surface deformable
-            self._root_physx_view = self._physics_sim_view.create_surface_deformable_body_view(root_prim_path_expr.replace(".*", "*"))
+            self._root_physx_view = self._physics_sim_view.create_surface_deformable_body_view(
+                root_prim_path_expr.replace(".*", "*")
+            )
         else:
             # volume deformable
-            self._root_physx_view = self._physics_sim_view.create_volume_deformable_body_view(root_prim_path_expr.replace(".*", "*"))
+            self._root_physx_view = self._physics_sim_view.create_volume_deformable_body_view(
+                root_prim_path_expr.replace(".*", "*")
+            )
 
         # Return if the asset is not found
         if self._root_physx_view._backend is None:
             raise RuntimeError(f"Failed to create deformable body at: {self.cfg.prim_path}. Please check PhysX logs.")
         # Check validity of deformables in view
         if not self._root_physx_view.check():
-            # raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
-            logger.warning(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
+            raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
 
         # resolve material path back into regex expression
         if material_prim is not None:
@@ -689,7 +696,9 @@ class DeformableObject(AssetBase):
             wp.launch(
                 set_kinematic_flags_to_one,
                 dim=(self.num_instances * self.max_sim_vertices_per_body,),
-                inputs=[self._data.nodal_kinematic_target.reshape((self.num_instances * self.max_sim_vertices_per_body,))],
+                inputs=[
+                    self._data.nodal_kinematic_target.reshape((self.num_instances * self.max_sim_vertices_per_body,))
+                ],
                 device=self.device,
             )
 

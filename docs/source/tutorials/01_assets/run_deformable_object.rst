@@ -160,7 +160,7 @@ Now that we have gone through the code, let's run the script and see the result:
 
 .. code-block:: bash
 
-   ./isaaclab.sh -p scripts/tutorials/01_assets/run_deformable_object.py
+   ./isaaclab.sh -p scripts/tutorials/01_assets/run_deformable_object.py --visualizer kit
 
 
 This should open a stage with a ground plane, lights, and several green cubes. Two of the four cubes must be dropping
@@ -175,7 +175,7 @@ To stop the simulation, you can either close the window, or press ``Ctrl+C`` in 
 
 This tutorial showed how to spawn deformable objects and wrap them in a :class:`DeformableObject` class to initialize their
 physics handles which allows setting and obtaining their state. We also saw how to apply kinematic commands to the
-deformable object to move the mesh nodes in a controlled manner. In the next tutorial, we will see how to create
+deformable object to move the mesh nodes in a controlled manner. An advanced demo of deformable objects, including surface deformables and loading USD assets and applying deformable material on them, can be found in ``scripts/demos/deformables.py``. In the next tutorial, we will see how to create
 a scene using the :class:`InteractiveScene` class.
 
 .. _PhysX documentation: https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/SoftBodies.html

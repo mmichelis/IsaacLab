@@ -170,9 +170,7 @@ class DeformableObjectData:
         The rotations are stored as quaternions in the order (x, y, z, w).
         """
         # deprecated
-        raise NotImplementedError(
-            "The sim_element_quat_w property is deprecated."
-        )
+        raise NotImplementedError("The sim_element_quat_w property is deprecated.")
 
     @property
     def collision_element_quat_w(self) -> wp.array:
@@ -182,9 +180,7 @@ class DeformableObjectData:
         The rotations are stored as quaternions in the order (x, y, z, w).
         """
         # deprecated
-        raise NotImplementedError(
-            "The collision_element_quat_w property is deprecated."
-        )
+        raise NotImplementedError("The collision_element_quat_w property is deprecated.")
 
     @property
     def sim_element_deform_gradient_w(self) -> wp.array:
@@ -192,9 +188,7 @@ class DeformableObjectData:
         in simulation world frame. Shape is (num_instances, max_sim_elements_per_body, 3, 3).
         """
         # deprecated
-        raise NotImplementedError(
-            "The sim_element_deform_gradient_w property is deprecated."
-        )
+        raise NotImplementedError("The sim_element_deform_gradient_w property is deprecated.")
 
     @property
     def collision_element_deform_gradient_w(self) -> wp.array:
@@ -202,9 +196,7 @@ class DeformableObjectData:
         in simulation world frame. Shape is (num_instances, max_collision_elements_per_body, 3, 3).
         """
         # deprecated
-        raise NotImplementedError(
-            "The collision_element_deform_gradient_w property is deprecated."
-        )
+        raise NotImplementedError("The collision_element_deform_gradient_w property is deprecated.")
 
     @property
     def sim_element_stress_w(self) -> wp.array:
@@ -212,9 +204,7 @@ class DeformableObjectData:
         in simulation world frame. Shape is (num_instances, max_sim_elements_per_body, 3, 3).
         """
         # deprecated
-        raise NotImplementedError(
-            "The sim_element_stress_w property is deprecated."
-        )
+        raise NotImplementedError("The sim_element_stress_w property is deprecated.")
 
     @property
     def collision_element_stress_w(self) -> wp.array:
@@ -222,9 +212,7 @@ class DeformableObjectData:
         in simulation world frame. Shape is (num_instances, max_collision_elements_per_body, 3, 3).
         """
         # deprecated
-        raise NotImplementedError(
-            "The collision_element_stress_w property is deprecated."
-        )
+        raise NotImplementedError("The collision_element_stress_w property is deprecated.")
 
     ##
     # Derived properties.

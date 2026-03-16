@@ -15,8 +15,8 @@ This script demonstrates how to work with the deformable object and interact wit
 
 """Launch Isaac Sim Simulator first."""
 
-import os
 import argparse
+import os
 
 from isaaclab.app import AppLauncher
 
@@ -31,7 +31,7 @@ parser.add_argument(
 parser.add_argument(
     "--dt",
     type=float,
-    default=1.0/60,
+    default=1.0 / 60,
     help="Simulation timestep.",
 )
 # append AppLauncher cli args
@@ -49,13 +49,12 @@ import torch
 import warp as wp
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
 
+# deformables supported in PhysX
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg
+
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.sim import SimulationContext
-
-# deformables supported in PhysX
-from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg
 
 
 def design_scene():
@@ -88,7 +87,7 @@ def design_scene():
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         debug_vis=True,
     )
-    
+
     cube_object = DeformableObject(cfg=cfg)
     scene_entities["cube_object"] = cube_object
 
@@ -162,8 +161,10 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         cube_object.update(sim_dt)
 
         # print the root positions every second
-        if t % int(1/sim_dt) == 0:
-            print(f"Time {t*sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
+        if t % int(1 / sim_dt) == 0:
+            print(
+                f"Time {t * sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}"
+            )
 
 
 def main():
