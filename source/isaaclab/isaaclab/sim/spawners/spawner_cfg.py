@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from isaaclab.sim import schemas
-    from isaaclab_physx.sim import schemas as schemas_physx
 
 
 @configclass
