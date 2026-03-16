@@ -7,10 +7,11 @@ Interacting with a deformable object
 .. currentmodule:: isaaclab
 
 While deformable objects sometimes refer to a broader class of objects, such as cloths, fluids and soft bodies,
-in PhysX, deformable objects syntactically correspond to soft bodies. Unlike rigid objects, soft bodies can deform
-under external forces and collisions.
+in PhysX, deformable objects are represented as either surface or volume deformables. Unlike rigid objects, soft bodies can deform
+under external forces and collisions. In this tutorial, we will focus on volume deformable bodies. For an example of surface
+deformables (cloth), see the deformable demo at ``scripts/demos/deformables.py``.
 
-Soft bodies are simulated using Finite Element Method (FEM) in PhysX. The soft body comprises of two tetrahedral
+Soft bodies are simulated using Finite Element Method (FEM) in PhysX. The volume deformable comprises of two tetrahedral
 meshes -- a simulation mesh and a collision mesh. The simulation mesh is used to simulate the deformations of
 the soft body, while the collision mesh is used to detect collisions with other objects in the scene.
 For more details, please check the `PhysX documentation`_.
@@ -30,7 +31,7 @@ The tutorial corresponds to the ``run_deformable_object.py`` script in the ``scr
 
    .. literalinclude:: ../../../../scripts/tutorials/01_assets/run_deformable_object.py
       :language: python
-      :emphasize-lines: 61-73, 75-77, 102-110, 112-115, 117-118, 123-130, 132-133, 139-140
+      :emphasize-lines: 79-96, 123-139, 144-152, 154-162
       :linenos:
 
 
@@ -62,7 +63,7 @@ an instance of the :class:`assets.DeformableObject` class by passing the configu
 
 .. literalinclude:: ../../../../scripts/tutorials/01_assets/run_deformable_object.py
    :language: python
-   :start-at: # Create separate groups called "Origin1", "Origin2", "Origin3"
+   :start-at: # Create separate groups called "Origin0", "Origin1", ...
    :end-at: cube_object = DeformableObject(cfg=cfg)
 
 Running the simulation loop
@@ -149,7 +150,7 @@ the average position of all the nodes in the mesh.
 .. literalinclude:: ../../../../scripts/tutorials/01_assets/run_deformable_object.py
    :language: python
    :start-at: # update buffers
-   :end-at: print(f"Root position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
+   :end-at: print(f"Time {t*sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
 
 
 The Code Execution
