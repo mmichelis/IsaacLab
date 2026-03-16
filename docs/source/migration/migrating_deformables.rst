@@ -12,7 +12,7 @@ backend, hence these features are implemented in ``isaaclab_physx``.
 
 .. note::
 
-  The following changes are with respect to Isaac Lab v2.3.3 and Omni Physics v110.0. Please refer to the
+  The following changes are with respect to Isaac Lab v3.0.0 and Omni Physics v110.0. Please refer to the
   `release notes`_ for any changes in the future releases.
 
 
@@ -54,15 +54,7 @@ import changes:
      - ``from isaaclab_physx.sim import DeformableBodyPropertiesCfg``
    * - ``from isaaclab.sim import DeformableBodyMaterialCfg``
      - ``from isaaclab_physx.sim import DeformableBodyMaterialCfg``
-   * - ``import isaaclab.sim as sim_utils`` then ``sim_utils.DeformableBodyPropertiesCfg``
-     - ``from isaaclab_physx.sim import DeformableBodyPropertiesCfg``
-   * - ``import isaaclab.sim as sim_utils`` then ``sim_utils.DeformableBodyMaterialCfg``
-     - ``from isaaclab_physx.sim import DeformableBodyMaterialCfg``
 
-.. note::
-
-   The ``isaaclab_physx`` extension is installed automatically with Isaac Lab. No additional installation steps
-   are required.
 
 Removed Properties
 ^^^^^^^^^^^^^^^^^^
@@ -125,9 +117,10 @@ Code Examples
 Volume Deformable (Before and After)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Before** (Isaac Lab v2.3.3):
+**Before**:
 
 .. code-block:: python
+   :emphasize-lines: 1,2
 
    import isaaclab.sim as sim_utils
    from isaaclab.assets import DeformableObject, DeformableObjectCfg
@@ -136,17 +129,17 @@ Volume Deformable (Before and After)
        prim_path="/World/Origin.*/Cube",
        spawn=sim_utils.MeshCuboidCfg(
            size=(0.2, 0.2, 0.2),
-           deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0),
-           visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-           physics_material=sim_utils.DeformableBodyMaterialCfg(),
+           deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+           visual_material=sim_utils.PreviewSurfaceCfg(),
+           physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
        ),
-       init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
    )
    cube_object = DeformableObject(cfg=cfg)
 
 **After**:
 
 .. code-block:: python
+   :emphasize-lines: 1,2,3
 
    import isaaclab.sim as sim_utils
    from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
@@ -157,10 +150,9 @@ Volume Deformable (Before and After)
        spawn=sim_utils.MeshCuboidCfg(
            size=(0.2, 0.2, 0.2),
            deformable_props=DeformableBodyPropertiesCfg(),
-           visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
+           visual_material=sim_utils.PreviewSurfaceCfg(),
            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
        ),
-       init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
    )
    cube_object = DeformableObject(cfg=cfg)
 
@@ -183,9 +175,8 @@ Surface deformables use :class:`~isaaclab.sim.spawners.meshes.MeshSquareCfg` for
            resolution=(21, 21),
            deformable_props=DeformableBodyPropertiesCfg(),
            visual_material=sim_utils.PreviewSurfaceCfg(),
-           physics_material=SurfaceDeformableBodyMaterialCfg(),
+           physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
        ),
-       init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
    )
    cloth_object = DeformableObject(cfg=cfg)
 
@@ -201,15 +192,16 @@ Deformable properties can also be applied to imported USD assets using
    from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
    from isaaclab_physx.sim import DeformableBodyPropertiesCfg, DeformableBodyMaterialCfg
 
+   from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+
    cfg = DeformableObjectCfg(
        prim_path="/World/Origin.*/Teddy",
        spawn=sim_utils.UsdFileCfg(
-           usd_path="path/to/teddy_bear.usd",
+           usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
            deformable_props=DeformableBodyPropertiesCfg(),
-           physics_material=DeformableBodyMaterialCfg(),
+           physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
            scale=[0.05, 0.05, 0.05],
        ),
-       init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
    )
    teddy_object = DeformableObject(cfg=cfg)
 
@@ -223,7 +215,7 @@ Limitations
 - **Surface-specific solver properties** (``collision_pair_update_frequency``,
   ``collision_iteration_multiplier``) have no effect on volume deformables.
 - **Deformables are PhysX-only.** The ``isaaclab_physx`` extension is required; other physics backends
-  do not support deformable bodies.
+  do not support deformable bodies through Isaac Lab yet.
 
 
 .. _Omni Physics documentation: https://docs.omniverse.nvidia.com/kit/docs/omni_physics/110.0/dev_guide/deformables/deformable_bodies.html
