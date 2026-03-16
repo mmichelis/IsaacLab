@@ -55,7 +55,7 @@ class DeformableObject(AssetBase):
     The state of a deformable object comprises of its nodal positions and velocities, and not the object's root
     position and orientation. The nodal positions and velocities are in the simulation frame.
 
-    Soft bodies can be `partially kinematic`_, where some nodes are driven by kinematic targets, and the rest are
+    Volume deformables can be `partially kinematic`_, where some nodes are driven by kinematic targets, and the rest are
     simulated. The kinematic targets are the desired positions of the nodes, and the simulation drives the nodes
     towards these targets. This is useful for partial control of the object, such as moving a stuffed animal's
     head while the rest of the body is simulated.
@@ -710,10 +710,12 @@ class DeformableObject(AssetBase):
                 self.target_visualizer.set_visibility(False)
 
     def _debug_vis_callback(self, event):
-        # check where to visualize
-        kinematic_target_torch = wp.to_torch(self.data.nodal_kinematic_target)
-        targets_enabled = kinematic_target_torch[:, :, 3] == 0.0
-        num_enabled = int(torch.sum(targets_enabled).item())
+        # check where to visualize, kinematic targets only supported for volume deformables
+        num_enabled = 0
+        if self._deformable_type == "volume":
+            kinematic_target_torch = wp.to_torch(self.data.nodal_kinematic_target)
+            targets_enabled = kinematic_target_torch[:, :, 3] == 0.0
+            num_enabled = int(torch.sum(targets_enabled).item())
         # get positions if any targets are enabled
         if num_enabled == 0:
             # create a marker below the ground

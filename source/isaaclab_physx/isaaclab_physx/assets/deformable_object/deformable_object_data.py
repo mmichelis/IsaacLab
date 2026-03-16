@@ -171,7 +171,7 @@ class DeformableObjectData:
         """
         # deprecated
         raise NotImplementedError(
-            "The sim_element_quat_w property is deprecated and will be removed in future versions. "
+            "The sim_element_quat_w property is deprecated."
         )
 
     @property
@@ -183,7 +183,7 @@ class DeformableObjectData:
         """
         # deprecated
         raise NotImplementedError(
-            "The collision_element_quat_w property is deprecated and will be removed in future versions. "
+            "The collision_element_quat_w property is deprecated."
         )
 
     @property
@@ -193,7 +193,7 @@ class DeformableObjectData:
         """
         # deprecated
         raise NotImplementedError(
-            "The sim_element_deform_gradient_w property is deprecated and will be removed in future versions. "
+            "The sim_element_deform_gradient_w property is deprecated."
         )
 
     @property
@@ -203,7 +203,7 @@ class DeformableObjectData:
         """
         # deprecated
         raise NotImplementedError(
-            "The collision_element_deform_gradient_w property is deprecated and will be removed in future versions. "
+            "The collision_element_deform_gradient_w property is deprecated."
         )
 
     @property
@@ -213,7 +213,7 @@ class DeformableObjectData:
         """
         # deprecated
         raise NotImplementedError(
-            "The sim_element_stress_w property is deprecated and will be removed in future versions. "
+            "The sim_element_stress_w property is deprecated."
         )
 
     @property
@@ -223,7 +223,7 @@ class DeformableObjectData:
         """
         # deprecated
         raise NotImplementedError(
-            "The collision_element_stress_w property is deprecated and will be removed in future versions. "
+            "The collision_element_stress_w property is deprecated."
         )
 
     ##
