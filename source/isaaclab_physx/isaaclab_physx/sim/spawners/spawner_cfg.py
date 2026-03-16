@@ -7,12 +7,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaaclab.utils import configclass
 from isaaclab.sim.spawners.spawner_cfg import SpawnerCfg
-
+from isaaclab.utils import configclass
 
 if TYPE_CHECKING:
     from isaaclab.sim import schemas
+
     # deformables only supported on PhysX backend
     from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
 

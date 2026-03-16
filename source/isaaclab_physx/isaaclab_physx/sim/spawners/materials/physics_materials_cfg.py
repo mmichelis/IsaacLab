@@ -8,8 +8,8 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable
 
-from isaaclab.utils import configclass
 from isaaclab.sim.spawners.materials import PhysicsMaterialCfg
+from isaaclab.utils import configclass
 
 
 @configclass
@@ -48,10 +48,12 @@ class OmniPhysicsDeformableMaterialCfg:
 
 @configclass
 class OmniPhysicsSurfaceDeformableMaterialCfg(OmniPhysicsDeformableMaterialCfg):
-    """OmniPhysics material properties for a surface deformable body, extending on :class:`OmniPhysicsDeformableMaterialCfg` with additional parameters for surface deformable bodies.
+    """OmniPhysics material properties for a surface deformable body,
+    extending on :class:`OmniPhysicsDeformableMaterialCfg` with additional parameters for surface deformable bodies.
 
-    These properties are set with the prefix ``omniphysics:<property_name>``. For example, to set the surface thickness of the
-    surface deformable body, you would set the property ``omniphysics:surfaceThickness``.
+    These properties are set with the prefix ``omniphysics:<property_name>``.
+    For example, to set the surface thickness of the surface deformable body,
+    you would set the property ``omniphysics:surfaceThickness``.
 
     See the OmniPhysics documentation for more information on the available properties.
     """
@@ -76,8 +78,9 @@ class OmniPhysicsSurfaceDeformableMaterialCfg(OmniPhysicsDeformableMaterialCfg):
 class PhysXDeformableMaterialCfg:
     """PhysX-specific material properties for a deformable body.
 
-    These properties are set with the prefix ``physxDeformableBody:<property_name>``. For example, to set the elasticity damping of the
-    deformable body, you would set the property ``physxDeformableBody:elasticityDamping``.
+    These properties are set with the prefix ``physxDeformableBody:<property_name>``.
+    For example, to set the elasticity damping of the deformable body,
+    you would set the property ``physxDeformableBody:elasticityDamping``.
 
     See the PhysX documentation for more information on the available properties.
     """
@@ -104,7 +107,8 @@ class DeformableBodyMaterialCfg(PhysicsMaterialCfg, OmniPhysicsDeformableMateria
 
 @configclass
 class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg, OmniPhysicsSurfaceDeformableMaterialCfg):
-    """Physics material parameters for surface deformable bodies, extending on :class:`DeformableBodyMaterialCfg` with additional parameters for surface deformable bodies.
+    """Physics material parameters for surface deformable bodies,
+    extending on :class:`DeformableBodyMaterialCfg` with additional parameters for surface deformable bodies.
 
     See :meth:`spawn_deformable_body_material` for more information.
     """

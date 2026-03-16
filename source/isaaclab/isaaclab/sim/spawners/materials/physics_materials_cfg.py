@@ -77,4 +77,3 @@ class RigidBodyMaterialCfg(PhysicsMaterialCfg):
     Irrelevant if compliant contacts are disabled when :obj:`compliant_contact_stiffness` is set to zero and
     rigid contacts are active.
     """
-
