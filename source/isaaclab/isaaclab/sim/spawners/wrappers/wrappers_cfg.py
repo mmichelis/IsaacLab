@@ -6,8 +6,11 @@
 from dataclasses import MISSING
 
 from isaaclab.sim.spawners.from_files import UsdFileCfg
-from isaaclab.sim.spawners.spawner_cfg import DeformableObjectSpawnerCfg, RigidObjectSpawnerCfg, SpawnerCfg
+from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg, SpawnerCfg
 from isaaclab.utils import configclass
+
+# deformables only supported in PhysX backend
+from isaaclab_physx.sim.spawners.spawner_cfg import DeformableObjectSpawnerCfg
 
 
 @configclass
