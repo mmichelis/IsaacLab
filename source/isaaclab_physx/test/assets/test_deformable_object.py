@@ -150,6 +150,7 @@ def test_initialization(sim, num_cubes, material_path):
 
 
 @pytest.mark.parametrize("num_cubes", [1, 2])
+@pytest.mark.isaacsim_ci
 def test_initialization_surface_deformable(sim, num_cubes):
     """Test initialization of a surface deformable body."""
     cube_object = generate_cubes_scene(num_cubes=num_cubes, deformable_type="surface")

@@ -580,21 +580,28 @@ class DeformableObject(AssetBase):
                     mat_prim = root_prim.GetStage().GetPrimAtPath(mat_path)
                     if "OmniPhysicsDeformableMaterialAPI" in mat_prim.GetAppliedSchemas():
                         material_prim = mat_prim
+                        # determine deformable material type
+                        if "PhysxSurfaceDeformableMaterialAPI" in mat_prim.GetAppliedSchemas():
+                            self._deformable_type = "surface"
+                        elif "PhysxDeformableMaterialAPI" in mat_prim.GetAppliedSchemas():
+                            self._deformable_type = "volume"
                         break
+
         if material_prim is None:
+            # if a valid tetmesh is found under the root prim and no physics material is assigned
+            # then we assume it's a volume deformable with default material parameters.
+            has_tetmesh = (
+                len(sim_utils.get_all_matching_child_prims(root_prim.GetPath(), lambda p: p.GetTypeName() == "TetMesh"))
+                > 0
+            )
+            if has_tetmesh:
+                self._deformable_type = "volume"
             logger.info(
                 f"Failed to find a deformable material binding for '{root_prim.GetPath().pathString}'."
                 " The material properties will be set to default values and are not modifiable "
                 "at runtime. If you want to modify the material properties, please ensure that the material is "
                 "bound to the deformable body."
             )
-        # determine deformable type (surface vs volume) from simulation mesh hierarchy
-        # volume deformables have a TetMesh child, surface deformables do not
-        has_tetmesh = len(sim_utils.get_all_matching_child_prims(
-            root_prim.GetPath(), lambda p: p.GetTypeName() == "TetMesh"
-        )) > 0
-        self._deformable_type = "volume" if has_tetmesh else "surface"
-            
 
         # resolve root path back into regex expression
         # -- root prim expression
@@ -606,10 +613,16 @@ class DeformableObject(AssetBase):
             self._root_physx_view = self._physics_sim_view.create_surface_deformable_body_view(
                 root_prim_path_expr.replace(".*", "*")
             )
-        else:
+        elif self._deformable_type == "volume":
             # volume deformable
             self._root_physx_view = self._physics_sim_view.create_volume_deformable_body_view(
                 root_prim_path_expr.replace(".*", "*")
+            )
+        else:
+            raise RuntimeError(
+                f"Failed to determine deformable material type for '{root_prim.GetPath().pathString}'."
+                " Please ensure that the material has either 'PhysxSurfaceDeformableMaterialAPI' or "
+                "'PhysxDeformableMaterialAPI' applied, or that a valid tetmesh is found under the root prim."
             )
 
         # Return if the asset is not found
