@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 # deformables only supported on PhysX backend
 from isaaclab_physx.sim import schemas as schemas_physx
-from isaaclab_physx.sim.spawners.materials import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
+from isaaclab_physx.sim.spawners.materials import SurfaceDeformableBodyMaterialCfg
 
 from pxr import Gf, Sdf, Usd, UsdGeom
 
@@ -400,22 +400,6 @@ def _spawn_from_usd_file(
         cfg.physics_material.func(material_path, cfg.physics_material)
         # apply material
         bind_physics_material(prim_path, material_path, stage=stage)
-    elif cfg.deformable_props is not None:
-        # if deformable properties are used but no physics material is specified, then we create a default material
-        material_path = "/World/DefaultDeformableMaterial"
-        if not stage.GetPrimAtPath(material_path).IsValid():
-            default_physics_material = DeformableBodyMaterialCfg()
-            default_physics_material.func(material_path, default_physics_material)
-        # apply material
-        bind_physics_material(prim_path, material_path, stage=stage)
-
-        logger.info(
-            f"Failed to find a deformable material binding for '{prim_path}'."
-            " The material properties will be set to default values and are not modifiable at runtime."
-            " If you want to modify the material properties, please ensure that the material is bound"
-            " to the deformable body."
-        )
-
 
     # return the prim
     return stage.GetPrimAtPath(prim_path)
