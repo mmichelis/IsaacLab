@@ -74,7 +74,7 @@ def define_deformable_body_properties(
     matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
     # check if the volume deformable mesh is valid
     if len(matching_prims) == 0:
-        raise ValueError(f"Could not find any tetmesh or mesh in '{prim_path}'. Please check asset.")
+        raise ValueError(f"Could not find any mesh in '{prim_path}'. Please check asset.")
     if len(matching_prims) > 1:
         # get list of all meshes found
         mesh_paths = [p.GetPrimPath() for p in matching_prims]

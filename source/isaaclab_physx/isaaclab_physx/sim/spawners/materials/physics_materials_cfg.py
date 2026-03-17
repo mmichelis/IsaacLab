@@ -32,9 +32,9 @@ class OmniPhysicsDeformableMaterialCfg:
     """The dynamic friction. Defaults to 0.25."""
 
     youngs_modulus: float = 1000000.0
-    """The Young's modulus, which defines the body's stiffness. Defaults to 1MPa.
+    """The Young's modulus, which defines the body's stiffness. Defaults to 1[MPa].
 
-    The Young's modulus is a measure of the material's ability to deform under stress. It is measured in Pascals (Pa).
+    The Young's modulus is a measure of the material's ability to deform under stress. It is measured in Pascals ([Pa]).
     """
 
     poissons_ratio: float = 0.45
@@ -59,7 +59,7 @@ class OmniPhysicsSurfaceDeformableMaterialCfg(OmniPhysicsDeformableMaterialCfg):
     """
 
     surface_thickness: float = 0.01
-    """The thickness of the deformable body's surface. Defaults to 0.01 meters (m)."""
+    """The thickness of the deformable body's surface. Defaults to 0.01 meters ([m])."""
 
     surface_stretch_stiffness: float = 0.0
     """The stretch stiffness of the deformable body's surface. Defaults to 0.0."""
