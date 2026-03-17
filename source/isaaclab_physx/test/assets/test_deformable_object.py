@@ -23,7 +23,7 @@ import torch
 import warp as wp
 from flaky import flaky
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg, DeformableBodyPropertiesCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
 
 import carb
 
