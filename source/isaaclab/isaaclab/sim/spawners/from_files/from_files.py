@@ -371,7 +371,7 @@ def _spawn_from_usd_file(
     if cfg.deformable_props is not None:
         prim = stage.GetPrimAtPath(prim_path)
         deformable_type = "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume"
-        if "OmniPhysicsBodyAPI" in prim.GetAppliedSchemas():
+        if "OmniPhysicsDeformableBodyAPI" in prim.GetAppliedSchemas():
             schemas_physx.modify_deformable_body_properties(prim_path, cfg.deformable_props, stage)
         else:
             schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage, deformable_type)

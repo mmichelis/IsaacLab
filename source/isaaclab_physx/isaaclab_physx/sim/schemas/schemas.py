@@ -178,7 +178,7 @@ def modify_deformable_body_properties(prim_path: str, cfg: DeformableBodyPropert
     if not deformable_body_prim.IsValid():
         return False
     # check if deformable body API is applied
-    if "OmniPhysicsBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
+    if "OmniPhysicsDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
         return False
 
     # apply customization to deformable API
