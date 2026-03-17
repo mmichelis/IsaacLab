@@ -53,6 +53,7 @@ def define_deformable_body_properties(
             current stage is used.
         deformable_type: The type of the deformable body (surface or volume).
             This is used to determine which PhysX API to use for the deformable body. Defaults to "volume".
+        sim_mesh_prim_path: Optional override for the simulation mesh prim path. If None, it is set to ``{prim_path}/sim_mesh`` for surface deformables and ``{prim_path}/sim_tetmesh`` for volume deformables.
 
     Raises:
         ValueError: When the prim path is not valid.
