@@ -192,7 +192,6 @@ def modify_deformable_body_properties(prim_path: str, cfg: DeformableBodyPropert
     # convert to dict
     cfg = cfg.to_dict()
     # set into PhysX API
-    # TODO: kinematic enabled does not work properly with creating DeformableView in Omni Physics 110.0.
     if cfg["kinematic_enabled"]:
         logger.warning(
             "Kinematic deformable bodies are not fully supported in the current version of Omni Physics. "
