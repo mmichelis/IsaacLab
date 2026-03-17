@@ -40,7 +40,7 @@ class PhysXDeformableBodyPropertiesCfg:
     """Number of the solver positional iterations per step. Range is [1,255], default to 16."""
 
     linear_damping: float | None = None
-    """Linear damping coefficient, in units of 1/seconds and constrained to the range [0, inf)."""
+    """Linear damping coefficient, in units of [1/s] and constrained to the range [0, inf)."""
 
     max_linear_velocity: float | None = None
     """Maximum allowable linear velocity for the deformable body, in units of distance/second and constrained to the
@@ -48,11 +48,11 @@ class PhysXDeformableBodyPropertiesCfg:
     currently only supported for surface deformables. This can help prevent surface-surface intersections."""
 
     settling_damping: float | None = None
-    """Additional damping applied when a vertex's velocity falls below :attr:`settlingThreshold`.
-    Specified in units of 1/seconds and constrained to the range [0, inf)."""
+    """Additional damping applied when a vertex's velocity falls below :attr:`settling_threshold`.
+    Specified in units of [1/s] and constrained to the range [0, inf)."""
 
     settling_threshold: float | None = None
-    """Velocity threshold below which :attr:`settlingDamping` is applied in addition to standard damping.
+    """Velocity threshold below which :attr:`settling_damping` is applied in addition to standard damping.
     Specified in units of distance/second and constrained to the range [0, inf)."""
 
     sleep_threshold: float | None = None
@@ -114,7 +114,7 @@ class PhysXCollisionPropertiesCfg:
     """
 
     contact_offset: float | None = None
-    """Contact offset for the collision shape (in m).
+    """Contact offset for the collision shape (in [m]).
 
     The collision detector generates contact points as soon as two shapes get closer than the sum of their
     contact offsets. This quantity should be non-negative which means that contact generation can potentially start
@@ -122,7 +122,7 @@ class PhysXCollisionPropertiesCfg:
     """
 
     rest_offset: float | None = None
-    """Rest offset for the collision shape (in m).
+    """Rest offset for the collision shape (in [m]).
 
     The rest offset quantifies how close a shape gets to others at rest, At rest, the distance between two
     vertically stacked objects is the sum of their rest offsets. If a pair of shapes have a positive rest
