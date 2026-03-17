@@ -112,8 +112,7 @@ def define_deformable_body_properties(
             set_visibility_with_guide_purpose=True,
         )
     else:
-        logger.error(f"Unsupported deformable type: '{deformable_type}'. Only surface and volume deformables are supported.")
-        success = False
+        raise ValueError(f"Unsupported deformable type: '{deformable_type}'. Only surface and volume deformables are supported.")
 
     # api failure
     if not success:
