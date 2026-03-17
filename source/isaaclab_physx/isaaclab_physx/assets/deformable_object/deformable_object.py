@@ -583,12 +583,16 @@ class DeformableObject(AssetBase):
                         material_prim = mat_prim
                         break
         if material_prim is None:
-            raise RuntimeError(
+            logger.info(
                 f"Failed to find a deformable material binding for '{root_prim.GetPath().pathString}'."
+                " The material properties will be set to default values and are not modifiable at runtime."
+                " If you want to modify the material properties, please ensure that the material is bound"
+                " to the deformable body."
             )
         # deformable type based on material that is applied
         self._deformable_type = (
-            "surface" if material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI") else "volume"
+            "surface" if material_prim is not None and material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI")
+            else "volume"
         )
 
         # resolve root path back into regex expression
@@ -615,26 +619,31 @@ class DeformableObject(AssetBase):
             raise RuntimeError(f"Deformable body view is not valid for: {self.cfg.prim_path}. Please check PhysX logs.")
 
         # resolve material path back into regex expression
-        # -- material prim expression
-        material_prim_path = material_prim.GetPath().pathString
-        # check if the material prim is under the template prim
-        # if not then we are assuming that the single material prim is used for all the deformable bodies
-        if template_prim_path in material_prim_path:
-            material_prim_path_expr = self.cfg.prim_path + material_prim_path[len(template_prim_path) :]
+        if material_prim is not None:
+            # -- material prim expression
+            material_prim_path = material_prim.GetPath().pathString
+            # check if the material prim is under the template prim
+            # if not then we are assuming that the single material prim is used for all the deformable bodies
+            if template_prim_path in material_prim_path:
+                material_prim_path_expr = self.cfg.prim_path + material_prim_path[len(template_prim_path) :]
+            else:
+                material_prim_path_expr = material_prim_path
+            # -- material view
+            self._material_physx_view = self._physics_sim_view.create_deformable_material_view(
+                material_prim_path_expr.replace(".*", "*")
+            )
         else:
-            material_prim_path_expr = material_prim_path
-        # -- material view
-        self._material_physx_view = self._physics_sim_view.create_deformable_material_view(
-            material_prim_path_expr.replace(".*", "*")
-        )
+            self._material_physx_view = None
 
         # log information about the deformable body
         logger.info(f"Deformable body initialized at: {root_prim_path_expr}")
         logger.info(f"Number of instances: {self.num_instances}")
         logger.info(f"Number of bodies: {self.num_bodies}")
-        logger.info(f"Deformable material initialized at: {material_prim_path_expr}")
-        logger.info(f"Number of instances: {self._material_physx_view.count}")
-
+        if self._material_physx_view is not None:
+            logger.info(f"Deformable material initialized at: {material_prim_path_expr}")
+            logger.info(f"Number of instances: {self._material_physx_view.count}")
+        else:
+            logger.info("No deformable material found. Material properties will be set to default values.")
 
         # container for data access
         self._data = DeformableObjectData(self.root_view, self.device)
