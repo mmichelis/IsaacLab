@@ -220,7 +220,7 @@ def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, random
             mean_nodal_pos_default = nodal_state[..., :3].mean(dim=1)
 
             if randomize_pos:
-                pos_w = 0.5*torch.rand(cube_object.num_instances, 3, device=sim.device)
+                pos_w = 0.5 * torch.rand(cube_object.num_instances, 3, device=sim.device)
                 pos_w[:, 2] += 0.5
             else:
                 pos_w = None

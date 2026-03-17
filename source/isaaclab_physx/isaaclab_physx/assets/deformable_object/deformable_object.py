@@ -10,7 +10,6 @@ import warnings
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from isaaclab_physx.sim import DeformableBodyMaterialCfg
 import numpy as np
 import torch
 import warp as wp
@@ -591,7 +590,8 @@ class DeformableObject(AssetBase):
             )
         # deformable type based on material that is applied
         self._deformable_type = (
-            "surface" if material_prim is not None and material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI")
+            "surface"
+            if material_prim is not None and material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI")
             else "volume"
         )
 
