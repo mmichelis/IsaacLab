@@ -588,20 +588,30 @@ class DeformableObject(AssetBase):
                         break
 
         if material_prim is None:
-            # if a valid tetmesh is found under the root prim and no physics material is assigned
-            # then we assume it's a volume deformable with default material parameters.
+            logger.warning(
+                f"Failed to find a deformable material binding for '{root_prim.GetPath().pathString}'."
+                " The material properties will be set to default values and are not modifiable "
+                "at runtime. If you want to modify the material properties, please ensure that the material is "
+                "bound to the deformable body."
+            )
+
+        # fall back to prim hierarchy heuristic when material type detection was inconclusive
+        if self._deformable_type is None:
+            # volume deformables must have a tetmesh in the hierarchy
             has_tetmesh = (
                 len(sim_utils.get_all_matching_child_prims(root_prim.GetPath(), lambda p: p.GetTypeName() == "TetMesh"))
                 > 0
             )
             if has_tetmesh:
                 self._deformable_type = "volume"
-            logger.info(
-                f"Failed to find a deformable material binding for '{root_prim.GetPath().pathString}'."
-                " The material properties will be set to default values and are not modifiable "
-                "at runtime. If you want to modify the material properties, please ensure that the material is "
-                "bound to the deformable body."
-            )
+            else:
+                # surface deformables must have a mesh in the hierarchy
+                has_mesh = (
+                    len(sim_utils.get_all_matching_child_prims(root_prim.GetPath(), lambda p: p.GetTypeName() == "Mesh"))
+                    > 0
+                )
+                if has_mesh:
+                    self._deformable_type = "surface"
 
         # resolve root path back into regex expression
         # -- root prim expression
