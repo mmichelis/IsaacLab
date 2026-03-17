@@ -287,7 +287,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
             for _, deform_body in enumerate(entities.values()):
                 # root state
                 nodal_state = wp.to_torch(deform_body.data.default_nodal_state_w).clone()
-                deform_body.write_nodal_state_to_sim(nodal_state)
+                deform_body.write_nodal_state_to_sim_index(nodal_state)
                 # reset the internal state
                 deform_body.reset()
             print("[INFO]: Resetting deformable object state...")
