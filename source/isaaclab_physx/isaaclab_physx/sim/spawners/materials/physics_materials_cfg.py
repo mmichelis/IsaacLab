@@ -31,8 +31,8 @@ class OmniPhysicsDeformableMaterialCfg:
     dynamic_friction: float = 0.25
     """The dynamic friction. Defaults to 0.25."""
 
-    youngs_modulus: float = 50000000.0
-    """The Young's modulus, which defines the body's stiffness. Defaults to 50000000.0.
+    youngs_modulus: float = 1000000.0
+    """The Young's modulus, which defines the body's stiffness. Defaults to 1MPa.
 
     The Young's modulus is a measure of the material's ability to deform under stress. It is measured in Pascals (Pa).
     """

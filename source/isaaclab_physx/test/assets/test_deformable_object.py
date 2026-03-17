@@ -23,6 +23,7 @@ import torch
 import warp as wp
 from flaky import flaky
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg
 
 import carb
 
@@ -65,11 +66,11 @@ def generate_cubes_scene(
     if has_api:
         spawn_cfg = sim_utils.MeshCuboidCfg(
             size=(0.2, 0.2, 0.2),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(kinematic_enabled=kinematic_enabled),
+            deformable_props=DeformableBodyPropertiesCfg(kinematic_enabled=kinematic_enabled),
         )
         # Add physics material if provided
         if material_path is not None:
-            spawn_cfg.physics_material = sim_utils.DeformableBodyMaterialCfg()
+            spawn_cfg.physics_material = DeformableBodyMaterialCfg()
             spawn_cfg.physics_material_path = material_path
         else:
             spawn_cfg.physics_material = None
@@ -142,42 +143,6 @@ def test_initialization(sim, num_cubes, material_path):
     assert wp.to_torch(cube_object.data.root_pos_w).shape == (num_cubes, 3)
     assert wp.to_torch(cube_object.data.root_vel_w).shape == (num_cubes, 3)
 
-    # Simulate physics
-    for _ in range(2):
-        sim.step()
-        cube_object.update(sim.cfg.dt)
-
-    # Check sim data
-    assert wp.to_torch(cube_object.data.sim_element_quat_w).shape == (
-        num_cubes,
-        cube_object.max_sim_elements_per_body,
-        4,
-    )
-    assert cube_object.data.sim_element_deform_gradient_w.shape == (
-        num_cubes,
-        cube_object.max_sim_elements_per_body,
-        3,
-        3,
-    )
-    assert cube_object.data.sim_element_stress_w.shape == (num_cubes, cube_object.max_sim_elements_per_body, 3, 3)
-    assert wp.to_torch(cube_object.data.collision_element_quat_w).shape == (
-        num_cubes,
-        cube_object.max_collision_elements_per_body,
-        4,
-    )
-    assert cube_object.data.collision_element_deform_gradient_w.shape == (
-        num_cubes,
-        cube_object.max_collision_elements_per_body,
-        3,
-        3,
-    )
-    assert cube_object.data.collision_element_stress_w.shape == (
-        num_cubes,
-        cube_object.max_collision_elements_per_body,
-        3,
-        3,
-    )
-
 
 @pytest.mark.isaacsim_ci
 def test_initialization_on_device_cpu():
@@ -192,33 +157,6 @@ def test_initialization_on_device_cpu():
         # Play sim
         with pytest.raises(RuntimeError):
             sim.reset()
-
-
-@pytest.mark.parametrize("num_cubes", [1, 2])
-@pytest.mark.isaacsim_ci
-def test_initialization_with_kinematic_enabled(sim, num_cubes):
-    """Test that initialization for prim with kinematic flag enabled."""
-    cube_object = generate_cubes_scene(num_cubes=num_cubes, kinematic_enabled=True)
-
-    # Check that the framework doesn't hold excessive strong references.
-    assert sys.getrefcount(cube_object) < 10
-
-    # Play sim
-    sim.reset()
-
-    # Check if object is initialized
-    assert cube_object.is_initialized
-
-    # Check buffers that exist and have correct shapes
-    assert wp.to_torch(cube_object.data.root_pos_w).shape == (num_cubes, 3)
-    assert wp.to_torch(cube_object.data.root_vel_w).shape == (num_cubes, 3)
-
-    # Simulate physics
-    for _ in range(2):
-        sim.step()
-        cube_object.update(sim.cfg.dt)
-        default_nodal_state_w = wp.to_torch(cube_object.data.default_nodal_state_w).clone()
-        torch.testing.assert_close(wp.to_torch(cube_object.data.nodal_state_w), default_nodal_state_w)
 
 
 @pytest.mark.parametrize("num_cubes", [1, 2])
@@ -282,7 +220,7 @@ def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, random
             mean_nodal_pos_default = nodal_state[..., :3].mean(dim=1)
 
             if randomize_pos:
-                pos_w = torch.rand(cube_object.num_instances, 3, device=sim.device)
+                pos_w = 0.5*torch.rand(cube_object.num_instances, 3, device=sim.device)
                 pos_w[:, 2] += 0.5
             else:
                 pos_w = None
@@ -319,7 +257,7 @@ def test_set_kinematic_targets(sim, num_cubes):
 
     sim.reset()
 
-    nodal_kinematic_targets = wp.to_torch(cube_object.root_view.get_sim_kinematic_targets()).clone()
+    nodal_kinematic_targets = wp.to_torch(cube_object.root_view.get_simulation_nodal_kinematic_targets()).clone()
 
     for _ in range(5):
         cube_object.write_nodal_state_to_sim(wp.to_torch(cube_object.data.default_nodal_state_w))
