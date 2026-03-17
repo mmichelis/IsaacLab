@@ -398,10 +398,7 @@ def _spawn_mesh_geom_from_mesh(
         # apply deformable body properties
         deformable_type = "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume"
         schemas_physx.define_deformable_body_properties(
-            prim_path,
-            cfg.deformable_props,
-            stage=stage,
-            deformable_type=deformable_type
+            prim_path, cfg.deformable_props, stage=stage, deformable_type=deformable_type
         )
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh
