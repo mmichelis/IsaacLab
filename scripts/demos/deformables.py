@@ -285,6 +285,9 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
             count = 0
             # reset deformable object state
             for _, deform_body in enumerate(entities.values()):
+                # skip camera
+                if isinstance(deform_body, Camera):
+                    continue
                 # root state
                 nodal_state = wp.to_torch(deform_body.data.default_nodal_state_w).clone()
                 deform_body.write_nodal_state_to_sim_index(nodal_state)
