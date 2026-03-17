@@ -62,25 +62,6 @@ class DeformableObjectData:
         self._nodal_pos_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), device, wp.vec3f)
         self._nodal_vel_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), device, wp.vec3f)
         self._nodal_state_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), device, vec6f)
-        # -- mesh element-wise rotations
-        self._sim_element_quat_w = TimestampedBuffer((self._num_instances, self._max_sim_elements), device, wp.quatf)
-        self._collision_element_quat_w = TimestampedBuffer(
-            (self._num_instances, self._max_collision_elements), device, wp.quatf
-        )
-        # -- mesh element-wise deformation gradients
-        self._sim_element_deform_gradient_w = TimestampedBuffer(
-            (self._num_instances, self._max_sim_elements, 3, 3), device, wp.float32
-        )
-        self._collision_element_deform_gradient_w = TimestampedBuffer(
-            (self._num_instances, self._max_collision_elements, 3, 3), device, wp.float32
-        )
-        # -- mesh element-wise stresses
-        self._sim_element_stress_w = TimestampedBuffer(
-            (self._num_instances, self._max_sim_elements, 3, 3), device, wp.float32
-        )
-        self._collision_element_stress_w = TimestampedBuffer(
-            (self._num_instances, self._max_collision_elements, 3, 3), device, wp.float32
-        )
         # -- derived: root pos/vel
         self._root_pos_w = TimestampedBuffer((self._num_instances,), device, wp.vec3f)
         self._root_vel_w = TimestampedBuffer((self._num_instances,), device, wp.vec3f)
