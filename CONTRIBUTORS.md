@@ -34,6 +34,7 @@ Guidelines for modifications:
 * Kelly (Yunrong) Guo
 * Matthew Trepte
 * Mayank Mittal
+* Mike Yan Michelis
 * Nikita Rudin
 * Octi (Zhengyu) Zhang
 * Ossama Ahmed
