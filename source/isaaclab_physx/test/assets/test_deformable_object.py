@@ -23,7 +23,7 @@ import torch
 import warp as wp
 from flaky import flaky
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg, DeformableBodyPropertiesCfg
 
 import carb
 
@@ -39,6 +39,7 @@ def generate_cubes_scene(
     has_api: bool = True,
     material_path: str | None = "material",
     kinematic_enabled: bool = False,
+    deformable_type: str = "volume",
     device: str = "cuda:0",
 ) -> DeformableObject:
     """Generate a scene with the provided number of cubes.
@@ -51,6 +52,7 @@ def generate_cubes_scene(
         material_path: Path to the material file. If None, no material is added. Default is "material",
             which is path relative to the spawned object prim path.
         kinematic_enabled: Whether the cubes are kinematic.
+        deformable_type: The type of deformable body to spawn. Supported values are "volume" and "surface".
         device: Device to use for the simulation.
 
     Returns:
@@ -70,7 +72,10 @@ def generate_cubes_scene(
         )
         # Add physics material if provided
         if material_path is not None:
-            spawn_cfg.physics_material = DeformableBodyMaterialCfg()
+            if deformable_type == "surface":
+                spawn_cfg.physics_material = SurfaceDeformableBodyMaterialCfg()
+            else:
+                spawn_cfg.physics_material = DeformableBodyMaterialCfg()
             spawn_cfg.physics_material_path = material_path
         else:
             spawn_cfg.physics_material = None
@@ -142,6 +147,40 @@ def test_initialization(sim, num_cubes, material_path):
     # root_pos_w is (N,) vec3f -> wp.to_torch gives (N, 3)
     assert wp.to_torch(cube_object.data.root_pos_w).shape == (num_cubes, 3)
     assert wp.to_torch(cube_object.data.root_vel_w).shape == (num_cubes, 3)
+
+
+@pytest.mark.parametrize("num_cubes", [1, 2])
+def test_initialization_surface_deformable(sim, num_cubes):
+    """Test initialization of a surface deformable body."""
+    cube_object = generate_cubes_scene(num_cubes=num_cubes, deformable_type="surface")
+
+    # Play sim
+    sim.reset()
+
+    # Check if object is initialized
+    assert cube_object.is_initialized
+    assert cube_object._deformable_type == "surface"
+
+    # Check correct number of instances
+    assert cube_object.num_instances == num_cubes
+    assert cube_object.root_view.count == num_cubes
+
+    # Check material view is created
+    assert cube_object.material_physx_view is not None
+    assert cube_object.material_physx_view.count == num_cubes
+
+    # Check nodal state buffers have correct shapes
+    assert wp.to_torch(cube_object.data.nodal_state_w).shape == (num_cubes, cube_object.max_sim_vertices_per_body, 6)
+    assert wp.to_torch(cube_object.data.root_pos_w).shape == (num_cubes, 3)
+    assert wp.to_torch(cube_object.data.root_vel_w).shape == (num_cubes, 3)
+
+    # Kinematic targets are not allocated for surface deformables
+    assert cube_object.data.nodal_kinematic_target is None
+
+    # Writing kinematic targets should raise ValueError
+    dummy_targets = torch.zeros(num_cubes, cube_object.max_sim_vertices_per_body, 4, device=sim.device)
+    with pytest.raises(ValueError, match="Kinematic targets can only be set for volume deformable bodies"):
+        cube_object.write_nodal_kinematic_target_to_sim_index(dummy_targets)
 
 
 @pytest.mark.isaacsim_ci
