@@ -196,6 +196,8 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # Create separate groups of deformable objects
     origins = define_origins(num_origins=12, radius=1.5, center_height=2.0)
     print("[INFO]: Spawning objects...")
+    num_volumes = 0
+    num_surfaces = 0
     # Iterate over all the origins and randomly spawn objects
     for idx, origin in tqdm.tqdm(enumerate(origins), total=len(origins)):
         # randomly select an object to spawn
@@ -210,19 +212,34 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         obj_cfg.physics_material.poissons_ratio = random.uniform(0.25, 0.45)
         # randomize the color
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
-        # spawn the object
-        obj_cfg.func(f"/World/Origin/Object{idx:02d}", obj_cfg, translation=origin)
+        # spawn the object, separate groups for surface and volume deformables
+        if obj_name in ["cloth"]:
+            obj_cfg.func(f"/World/Origin/Surface{idx:02d}", obj_cfg, translation=origin)
+            num_surfaces += 1
+        else:
+            obj_cfg.func(f"/World/Origin/Volume{idx:02d}", obj_cfg, translation=origin)
+            num_volumes += 1
 
-    # create a view for all the deformables
+    # create a view for all the deformables, separate views for volume and surface deformables
     # note: since we manually spawned random deformable meshes above, we don't need to
     #   specify the spawn configuration for the deformable object
-    cfg = DeformableObjectCfg(
-        prim_path="/World/Origin/Object.*",
-        spawn=None,
-        init_state=DeformableObjectCfg.InitialStateCfg(),
-    )
-    deformable_object = DeformableObject(cfg=cfg)
-    scene_entities = {"deformable_object": deformable_object}
+    scene_entities = {}
+    if num_volumes > 0:
+        cfg = DeformableObjectCfg(
+            prim_path="/World/Origin/Volume.*",
+            spawn=None,
+            init_state=DeformableObjectCfg.InitialStateCfg(),
+        )
+        volume_deformable_object = DeformableObject(cfg=cfg)
+        scene_entities["volume_deformable_object"] = volume_deformable_object
+    if num_surfaces > 0:
+        cfg = DeformableObjectCfg(
+            prim_path="/World/Origin/Surface.*",
+            spawn=None,
+            init_state=DeformableObjectCfg.InitialStateCfg(),
+        )
+        surface_deformable_object = DeformableObject(cfg=cfg)
+        scene_entities["surface_deformable_object"] = surface_deformable_object
 
     # Create camera if saving frames
     if args_cli.save:
@@ -249,9 +266,6 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
         camera_positions = torch.tensor([[7.0, 7.0, 3.0]], device=sim.device)
         camera_targets = torch.tensor([[0.0, 0.0, 0.5]], device=sim.device)
         camera.set_world_poses_from_view(camera_positions, camera_targets)
-
-    dof = torch.tensor(entities["deformable_object"].root_view.get_simulation_nodal_positions().shape).prod().item()
-    print(f"[INFO]: Solving for {dof:,} Degrees of Freedom.")
 
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
