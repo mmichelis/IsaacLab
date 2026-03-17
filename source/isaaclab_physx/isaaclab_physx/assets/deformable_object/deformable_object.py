@@ -584,17 +584,17 @@ class DeformableObject(AssetBase):
         if material_prim is None:
             logger.info(
                 f"Failed to find a deformable material binding for '{root_prim.GetPath().pathString}'."
-                " The material properties will be set to default values (volume deformable) and are not modifiable "
+                " The material properties will be set to default values and are not modifiable "
                 "at runtime. If you want to modify the material properties, please ensure that the material is "
                 "bound to the deformable body."
             )
-        # deformable type based on material that is applied
-        # without a valid physics material we apply a volume deformable type by default
-        self._deformable_type = (
-            "surface"
-            if material_prim is not None and material_prim.HasAPI("OmniPhysicsSurfaceDeformableMaterialAPI")
-            else "volume"
-        )
+        # determine deformable type (surface vs volume) from simulation mesh hierarchy
+        # volume deformables have a TetMesh child, surface deformables do not
+        has_tetmesh = len(sim_utils.get_all_matching_child_prims(
+            root_prim.GetPath(), lambda p: p.GetTypeName() == "TetMesh"
+        )) > 0
+        self._deformable_type = "volume" if has_tetmesh else "surface"
+            
 
         # resolve root path back into regex expression
         # -- root prim expression
