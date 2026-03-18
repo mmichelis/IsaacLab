@@ -93,7 +93,7 @@ def define_sensor() -> Camera:
         prim_path="/World/CameraOrigin/CameraSensor",
         update_period=1.0 / args_cli.video_fps,
         height=800,
-        width=1000,
+        width=800,
         data_types=[
             "rgb",
         ],
@@ -122,8 +122,9 @@ def design_scene() -> tuple[dict, list[float]]:
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.9)),
         physics_material=DeformableBodyMaterialCfg(
-            youngs_modulus=5e8,
-            poissons_ratio=0.4,
+            youngs_modulus=5e5,
+            poissons_ratio=0.3,
+            density=1.0,
         ),
     )
     cfg_sphere.func("/World/DeformableSphere", cfg_sphere, translation=origin)
@@ -182,14 +183,14 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, sphere_origi
     # Simulate physics
     for t in range(num_steps):
         # reset
-        if sim_time == 0.0 or sim_time > 3.0:
+        if sim_time == 0.0 or sim_time > 5.0:
             sim_time = 0.0
             count = 0
             # reset robot
             root_pose = wp.to_torch(robot.data.default_root_pose).clone()
             root_pose[:, :3] += sphere_origin
             # place robot above the sphere
-            root_pose[:, 2] += 1.0
+            root_pose[:, 2] += 0.5
             robot.write_root_pose_to_sim_index(root_pose=root_pose)
             root_vel = wp.to_torch(robot.data.default_root_vel).clone()
             robot.write_root_velocity_to_sim_index(root_velocity=root_vel)
@@ -206,9 +207,9 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, sphere_origi
 
         # apply random joint position targets
         joint_pos_target = (
-            wp.to_torch(robot.data.default_joint_pos) + torch.randn_like(wp.to_torch(robot.data.joint_pos)) * 0.1
+            wp.to_torch(robot.data.default_joint_pos) + torch.randn_like(wp.to_torch(robot.data.joint_pos)) * 0.5
         )
-        robot.set_joint_position_target_index(target=joint_pos_target)
+        # robot.set_joint_position_target_index(target=joint_pos_target)
         robot.write_data_to_sim()
 
         # perform step
