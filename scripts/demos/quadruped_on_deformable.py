@@ -32,7 +32,7 @@ parser.add_argument(
 parser.add_argument(
     "--dt",
     type=float,
-    default=1.0 / 60,
+    default=0.01,
     help="Simulation timestep.",
 )
 parser.add_argument(
@@ -68,7 +68,7 @@ import warp as wp
 
 # deformables supported in PhysX
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
@@ -116,15 +116,22 @@ def design_scene() -> tuple[dict, list[float]]:
 
     scene_entities = {}
     # -- Deformable sphere beneath the robot
-    origin = [0.0, 0.0, 0.5]
-    cfg_sphere = sim_utils.MeshSphereCfg(
-        radius=0.5,
+    origin = [0.0, 0.0, 0.76]
+    cfg_sphere = sim_utils.UsdFileCfg(
+        usd_path="/home/mmichelis/Documents/IsaacLab/scripts/demos/icosphere_3.usda",
+        scale=[0.75, 0.75, 0.75],
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.9)),
-        physics_material=DeformableBodyMaterialCfg(
-            youngs_modulus=5e5,
+        physics_material=SurfaceDeformableBodyMaterialCfg(
+            density=10.0,
+            youngs_modulus=0.5e4,
             poissons_ratio=0.3,
-            density=1.0,
+            surface_thickness=0.1,
+            surface_bend_stiffness=5e4,
+            surface_shear_stiffness=5e4,
+            surface_stretch_stiffness=5e4,
+            static_friction=0.75,
+            dynamic_friction=0.75,
         ),
     )
     cfg_sphere.func("/World/DeformableSphere", cfg_sphere, translation=origin)
@@ -133,7 +140,6 @@ def design_scene() -> tuple[dict, list[float]]:
     deformable_cfg = DeformableObjectCfg(
         prim_path="/World/DeformableSphere",
         spawn=None,
-        init_state=DeformableObjectCfg.InitialStateCfg(),
     )
     deformable_sphere = DeformableObject(cfg=deformable_cfg)
     scene_entities["deformable_sphere"] = deformable_sphere
@@ -166,8 +172,8 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, sphere_origi
             rgb=True,
         )
         # Camera positions, targets, orientations
-        camera_positions = torch.tensor([[4.0, 4.0, 2.0]], device=sim.device)
-        camera_targets = torch.tensor([[0.0, 0.0, 0.5]], device=sim.device)
+        camera_positions = torch.tensor([[2.25, 2.25, 2.0]], device=sim.device)
+        camera_targets = torch.tensor([[0.0, 0.0, 0.75]], device=sim.device)
         camera.set_world_poses_from_view(camera_positions, camera_targets)
 
 
@@ -179,18 +185,28 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, sphere_origi
     num_steps = int(args_cli.total_time / sim_dt)
     sim_time = 0.0
     count = 0
+    
+    dof = robot.num_joints + deformable_sphere.max_sim_vertices_per_body * 3
+    robot_mass = wp.to_torch(robot.data.body_mass).sum().item()
+    sphere_radius = 0.75
+    sphere_mass = 10.0 * 4.0/3.0 * torch.pi * (sphere_radius**3 - (sphere_radius - 0.05)**3)
+
+    print(
+        f"[INFO]: Starting simulation for {args_cli.total_time}s, dt={sim_dt}, steps={num_steps}, "
+        f"DOFs={dof}, robot mass={robot_mass:.2f} kg, sphere mass~={sphere_mass:.2f} kg"
+    )
 
     # Simulate physics
     for t in range(num_steps):
         # reset
-        if sim_time == 0.0 or sim_time > 5.0:
+        if sim_time == 0.0 or sim_time > 3.0:
             sim_time = 0.0
             count = 0
             # reset robot
             root_pose = wp.to_torch(robot.data.default_root_pose).clone()
             root_pose[:, :3] += sphere_origin
             # place robot above the sphere
-            root_pose[:, 2] += 0.5
+            root_pose[:, 2] += 0.6
             robot.write_root_pose_to_sim_index(root_pose=root_pose)
             root_vel = wp.to_torch(robot.data.default_root_vel).clone()
             robot.write_root_velocity_to_sim_index(root_velocity=root_vel)
@@ -209,7 +225,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, sphere_origi
         joint_pos_target = (
             wp.to_torch(robot.data.default_joint_pos) + torch.randn_like(wp.to_torch(robot.data.joint_pos)) * 0.5
         )
-        # robot.set_joint_position_target_index(target=joint_pos_target)
+        robot.set_joint_position_target_index(target=joint_pos_target)
         robot.write_data_to_sim()
 
         # perform step
@@ -237,9 +253,9 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, sphere_origi
 def main():
     """Main function."""
     # Initialize the simulation context
-    sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(dt=0.01))
+    sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(dt=args_cli.dt))
     # Set main camera
-    sim.set_camera_view(eye=[2.5, 2.5, 2.0], target=[0.0, 0.0, 0.5])
+    sim.set_camera_view(eye=[2.25, 2.25, 2.0], target=[0.0, 0.0, 0.75])
     # design scene
     scene_entities, sphere_origin = design_scene()
     sphere_origin = torch.tensor([sphere_origin], device=sim.device)
