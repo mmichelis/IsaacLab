@@ -81,7 +81,7 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
     # quadruped robot
     robot: ArticulationCfg = ANYMAL_D_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot", 
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.5))
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0))
     )
 
     # deformable ball
@@ -286,11 +286,11 @@ class TerminationsCfg:
 
 
 @configclass
-class CartpoleEnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the cartpole environment."""
+class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the quadruped yoga environment."""
 
-    # Scene settings
-    scene: QuadrupedYogaSceneCfg = QuadrupedYogaSceneCfg(num_envs=4096, env_spacing=4.0, clone_in_fabric=True)
+    # Scene settings, replicate_physics should be False for deformable objects as PhysX doesn't support deformable object replication
+    scene: QuadrupedYogaSceneCfg = QuadrupedYogaSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=False)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
