@@ -10,7 +10,7 @@ from isaaclab_physx.physics import PhysxCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.sensors.camera import Camera, CameraCfg
+# from isaaclab.sensors.camera import Camera, CameraCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -110,17 +110,16 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
     )
 
     # camera
-    camera: CameraCfg = CameraCfg(
-        prim_path="/World/CameraOrigin/CameraSensor",
-        update_period=1.0 / 60,
-        height=800,
-        width=800,
-        data_types=[
-            "rgb",
-        ],
-        spawn=sim_utils.PinholeCameraCfg(),
-    )
-
+    # camera: CameraCfg = CameraCfg(
+    #     prim_path="/World/CameraOrigin/CameraSensor",
+    #     update_period=1.0 / 60,
+    #     height=800,
+    #     width=800,
+    #     data_types=[
+    #         "rgb",
+    #     ],
+    #     spawn=sim_utils.PinholeCameraCfg(),
+    # )
 
 
 ##
