@@ -51,11 +51,41 @@ def ball_pos_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCf
     return wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
 
 
-def ball_x_position(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
-    """Reward for the ball moving in the positive x direction."""
+def robot_pos_rel_ball(
+    env: ManagerBasedEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+) -> torch.Tensor:
+    """Robot base position relative to ball center in the environment frame."""
+    robot = env.scene[robot_cfg.name]
+    ball = env.scene[ball_cfg.name]
+    robot_pos = wp.to_torch(robot.data.root_pos_w)
+    ball_pos = wp.to_torch(ball.data.root_pos_w)
+    return robot_pos - ball_pos
+
+
+def ball_vel_x(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
+    """Reward for ball velocity in the positive x direction."""
     asset = env.scene[asset_cfg.name]
-    ball_pos = wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
-    return ball_pos[:, 0]
+    ball_vel = wp.to_torch(asset.data.root_vel_w)
+    return ball_vel[:, 0]
+
+
+def ball_vel_y_penalty(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
+    """Penalize ball lateral (y) velocity to encourage straight-line rolling."""
+    asset = env.scene[asset_cfg.name]
+    ball_vel = wp.to_torch(asset.data.root_vel_w)
+    return ball_vel[:, 1].abs()
+
+
+def robot_ball_xy_distance_sq(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+) -> torch.Tensor:
+    """Squared horizontal distance between robot and ball."""
+    rel = robot_pos_rel_ball(env, robot_cfg, ball_cfg)
+    return (rel[:, :2] ** 2).sum(dim=-1)
 
 
 def reset_ball(
@@ -88,10 +118,17 @@ def reset_ball(
 class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
     """Configuration for a quadruped yoga scene."""
 
-    # ground plane
+    # ground plane with low friction for ball rolling
     ground = AssetBaseCfg(
         prim_path="/World/ground",
-        spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)),
+        spawn=sim_utils.GroundPlaneCfg(
+            size=(100.0, 100.0),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=0.3,
+                dynamic_friction=0.3,
+                restitution=0.0,
+            ),
+        ),
     )
 
     # lights
@@ -122,8 +159,8 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
                 surface_bend_stiffness=5e4,
                 surface_shear_stiffness=5e4,
                 surface_stretch_stiffness=5e4,
-                static_friction=0.75,
-                dynamic_friction=0.75,
+                static_friction=0.2,
+                dynamic_friction=0.2,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
@@ -159,6 +196,11 @@ class ObservationsCfg:
 
         # ball center of mass in env frame
         ball_pos = ObsTerm(func=ball_pos_env, params={"asset_cfg": SceneEntityCfg("ball")})
+        # robot position relative to ball (so policy knows where it is on the ball)
+        robot_rel_ball = ObsTerm(
+            func=robot_pos_rel_ball,
+            params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
+        )
         # standard quadruped observations
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
@@ -206,28 +248,15 @@ class EventCfg:
     )
 
     # reset
-    base_external_force_torque = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "force_range": (0.0, 0.0),
-            "torque_range": (-0.0, 0.0),
-        },
-    )
-
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
             "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "yaw": (-0.14, 0.14)},
             "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
+                "x": (-0.1, 0.1),
+                "y": (-0.1, 0.1),
+                "z": (0.0, 0.0),
             },
         },
     )
@@ -263,23 +292,31 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task: maximize ball x-position
-    ball_x_progress = RewTerm(func=ball_x_position, weight=1.0, params={"asset_cfg": SceneEntityCfg("ball")})
+    # -- task: reward ball forward velocity (strong signal for movement)
+    ball_forward_vel = RewTerm(func=ball_vel_x, weight=5.0, params={"asset_cfg": SceneEntityCfg("ball")})
+    # -- task: penalize ball lateral drift
+    ball_lateral_vel = RewTerm(func=ball_vel_y_penalty, weight=-1.0, params={"asset_cfg": SceneEntityCfg("ball")})
+    # -- task: stay on the ball (penalize xy distance between robot and ball)
+    stay_on_ball = RewTerm(
+        func=robot_ball_xy_distance_sq,
+        weight=-10.0,
+        params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
+    )
     # -- alive bonus
     alive = RewTerm(func=mdp.is_alive, weight=0.5)
     # -- termination penalty
     terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-    # -- locomotion penalties
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    # -- locomotion penalties (reduced to allow more movement)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.1)
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
     # -- contact penalties
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-1.0,
+        weight=-0.5,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
     )
 
@@ -292,6 +329,10 @@ class TerminationsCfg:
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
+    )
+    fell_off_ball = DoneTerm(
+        func=mdp.root_height_below_minimum,
+        params={"minimum_height": 0.75, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 
@@ -319,7 +360,7 @@ class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 10.0
+        self.episode_length_s = 5.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
