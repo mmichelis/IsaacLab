@@ -3,15 +3,22 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-import math
+from __future__ import annotations
 
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from typing import TYPE_CHECKING
+
+import torch
+import warp as wp
+
 from isaaclab_physx.physics import PhysxCfg
+from isaaclab_physx.sensors import ContactSensorCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-# from isaaclab.sensors.camera import Camera, CameraCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+
+if TYPE_CHECKING:
+    from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -23,7 +30,6 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 import isaaclab.envs.mdp as mdp
-from isaaclab_tasks.utils import PresetCfg
 
 from isaaclab_physx.assets import DeformableObjectCfg
 from isaaclab_physx.sim import DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
@@ -35,26 +41,42 @@ from isaaclab_assets.robots.anymal import ANYMAL_D_CFG  # isort:skip
 
 
 ##
-# Physics backend presets
+# Custom MDP terms
 ##
 
 
-@configclass
-class QuadrupedYogaPhysicsCfg(PresetCfg):
-    default: PhysxCfg = PhysxCfg()
-    physx: PhysxCfg = PhysxCfg()
-    newton: NewtonCfg = NewtonCfg(
-        solver_cfg=MJWarpSolverCfg(
-            njmax=5,
-            nconmax=3,
-            cone="pyramidal",
-            impratio=1,
-            integrator="implicitfast",
-        ),
-        num_substeps=1,
-        debug_mode=False,
-        use_cuda_graph=True,
-    )
+def ball_pos_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
+    """Ball center of mass position in the environment frame."""
+    asset = env.scene[asset_cfg.name]
+    return wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
+
+
+def ball_x_position(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
+    """Reward for the ball moving in the positive x direction."""
+    asset = env.scene[asset_cfg.name]
+    ball_pos = wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
+    return ball_pos[:, 0]
+
+
+def reset_ball(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+):
+    """Reset the deformable ball to its default shape.
+
+    Must be called after the robot reset event so the robot's new position is available.
+    """
+    robot = env.scene[robot_cfg.name]
+    ball = env.scene[ball_cfg.name]
+
+    # Get default ball nodal state and shift xy to match robot, keep default z (ball_height)
+    nodal_state = wp.to_torch(ball.data.default_nodal_state_w)[env_ids].clone()
+    # Zero velocities
+    nodal_state[..., 3:] = 0.0
+
+    ball.write_nodal_state_to_sim_index(nodal_state, env_ids=env_ids)
 
 
 ##
@@ -80,8 +102,8 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
 
     # quadruped robot
     robot: ArticulationCfg = ANYMAL_D_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot", 
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0))
+        prim_path="{ENV_REGEX_NS}/Robot",
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
     )
 
     # deformable ball
@@ -109,17 +131,10 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    # camera
-    # camera: CameraCfg = CameraCfg(
-    #     prim_path="/World/CameraOrigin/CameraSensor",
-    #     update_period=1.0 / 60,
-    #     height=800,
-    #     width=800,
-    #     data_types=[
-    #         "rgb",
-    #     ],
-    #     spawn=sim_utils.PinholeCameraCfg(),
-    # )
+    # contact sensor
+    contact_forces: ContactSensorCfg = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
+    )
 
 
 ##
@@ -142,14 +157,15 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        # observation terms (order preserved)
+        # ball center of mass in env frame
+        ball_pos = ObsTerm(func=ball_pos_env, params={"asset_cfg": SceneEntityCfg("ball")})
+        # standard quadruped observations
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
-        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
@@ -166,53 +182,6 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
-    # reset
-    base_external_force_torque = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "force_range": (0.0, 0.0),
-            "torque_range": (-0.0, 0.0),
-        },
-    )
-
-    reset_base = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
-            },
-        },
-    )
-
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_by_scale,
-        mode="reset",
-        params={
-            "position_range": (0.5, 1.5),
-            "velocity_range": (0.0, 0.0),
-        },
-    )
-
-    # interval
-    push_robot = EventTerm(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
-    )
-
-
-@configclass
-class StartupEventsCfg:
     # startup
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
@@ -236,13 +205,57 @@ class StartupEventsCfg:
         },
     )
 
-    base_com = EventTerm(
-        func=mdp.randomize_rigid_body_com,
-        mode="startup",
+    # reset
+    base_external_force_torque = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
+            "force_range": (0.0, 0.0),
+            "torque_range": (-0.0, 0.0),
         },
+    )
+
+    reset_base = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "yaw": (-0.14, 0.14)},
+            "velocity_range": {
+                "x": (-0.5, 0.5),
+                "y": (-0.5, 0.5),
+                "z": (-0.5, 0.5),
+                "roll": (-0.5, 0.5),
+                "pitch": (-0.5, 0.5),
+                "yaw": (-0.5, 0.5),
+            },
+        },
+    )
+
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (0.5, 1.5),
+            "velocity_range": (0.0, 0.0),
+        },
+    )
+
+    reset_ball = EventTerm(
+        func=reset_ball,
+        mode="reset",
+        params={
+            "robot_cfg": SceneEntityCfg("robot"),
+            "ball_cfg": SceneEntityCfg("ball"),
+        },
+    )
+
+    # interval
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
     )
 
 
@@ -250,15 +263,24 @@ class StartupEventsCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # (1) Constant running reward
-    alive = RewTerm(func=mdp.is_alive, weight=1.0)
-    # (2) Failure penalty
+    # -- task: maximize ball x-position
+    ball_x_progress = RewTerm(func=ball_x_position, weight=1.0, params={"asset_cfg": SceneEntityCfg("ball")})
+    # -- alive bonus
+    alive = RewTerm(func=mdp.is_alive, weight=0.5)
+    # -- termination penalty
     terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-    # (3) Shaping tasks: lower velocity
-    cart_vel = RewTerm(
-        func=mdp.joint_vel_l1,
-        weight=-0.01,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    # -- locomotion penalties
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    # -- contact penalties
+    undesired_contacts = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
     )
 
 
@@ -266,13 +288,7 @@ class RewardsCfg:
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
-    # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # (2) Cart out of bounds
-    # cart_out_of_bounds = DoneTerm(
-    #     func=mdp.joint_pos_out_of_manual_limit,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]), "bounds": (-3.0, 3.0)},
-    # )
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
@@ -288,8 +304,8 @@ class TerminationsCfg:
 class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the quadruped yoga environment."""
 
-    # Scene settings, replicate_physics should be False for deformable objects as PhysX doesn't support deformable object replication
-    scene: QuadrupedYogaSceneCfg = QuadrupedYogaSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=False)
+    # Scene settings
+    scene: QuadrupedYogaSceneCfg = QuadrupedYogaSceneCfg(num_envs=1024, env_spacing=4.0, replicate_physics=False)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -302,11 +318,14 @@ class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
         # general settings
-        self.decimation = 2
-        self.episode_length_s = 5
+        self.decimation = 4
+        self.episode_length_s = 10.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
-        self.sim.dt = 1 / 120
+        self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
-        self.sim.physics = QuadrupedYogaPhysicsCfg()
+        self.sim.physics = PhysxCfg()
+        # sensor update periods
+        if self.scene.contact_forces is not None:
+            self.scene.contact_forces.update_period = self.sim.dt

@@ -31,6 +31,7 @@ from isaaclab.utils.io import dump_yaml
 from isaaclab_rl.skrl import SkrlVecEnvWrapper
 
 import isaaclab_tasks  # noqa: F401
+import isaaclab_tasks_experimental  # noqa: F401
 from isaaclab_tasks.utils import add_launcher_args, launch_simulation, resolve_task_config
 
 logger = logging.getLogger(__name__)
