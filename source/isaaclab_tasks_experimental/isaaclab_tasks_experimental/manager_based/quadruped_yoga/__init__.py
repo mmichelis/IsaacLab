@@ -22,3 +22,13 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:QuadrupedYogaPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Isaac-QuadrupedYoga-Direction-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.quadruped_yoga_direction_env_cfg:QuadrupedYogaDirectionEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:QuadrupedYogaDirectionPPORunnerCfg",
+    },
+)
