@@ -38,6 +38,7 @@ from isaaclab_physx.sim import DeformableBodyPropertiesCfg, SurfaceDeformableBod
 # Pre-defined configs
 ##
 from isaaclab_assets.robots.anymal import ANYMAL_D_CFG  # isort:skip
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 ##
 # Custom MDP terms
@@ -48,18 +49,6 @@ def ball_pos_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCf
     """Ball center of mass position in the environment frame."""
     asset = env.scene[asset_cfg.name]
     return wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
-
-
-def foot_contact_forces(
-    env: ManagerBasedEnv,
-    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces", body_names=".*FOOT"),
-) -> torch.Tensor:
-    """Net contact force magnitudes on each foot. Shape: (num_envs, 4)."""
-    contact_sensor = env.scene.sensors[sensor_cfg.name]
-    forces = wp.to_torch(contact_sensor.data.net_forces_w)[:, sensor_cfg.body_ids]
-    if torch.norm(forces, dim=-1).max() > 0.0:
-        print("Debug: max foot contact force magnitude:", torch.norm(forces, dim=-1).max().item())
-    return torch.norm(forces, dim=-1)
 
 
 def robot_pos_rel_ball(
@@ -155,9 +144,16 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
     )
 
     # lights
-    dome_light = AssetBaseCfg(
-        prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=2000.0),
+    # dome_light = AssetBaseCfg(
+    #     prim_path="/World/DomeLight",
+    #     spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=2000.0),
+    # )
+    sky_light = AssetBaseCfg(
+        prim_path="/World/skyLight",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=750.0,
+            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+        ),
     )
 
     # quadruped robot
@@ -236,11 +232,6 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
-        # foot contact forces (tells policy which feet are on the ball)
-        # foot_contacts = ObsTerm(
-        #     func=foot_contact_forces,
-        #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*FOOT")},
-        # )
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -282,10 +273,10 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.15, 0.15), "y": (-0.15, 0.15), "yaw": (-0.3, 0.3)},
+            "pose_range": {"x": (-0.15, 0.15), "y": (-0.15, 0.15), "yaw": (-0.5, 0.5)},
             "velocity_range": {
-                "x": (-0.1, 0.1),
-                "y": (-0.1, 0.1),
+                "x": (-0.15, 0.15),
+                "y": (-0.15, 0.15),
                 "z": (0.0, 0.0),
             },
         },
@@ -342,7 +333,7 @@ class RewardsCfg:
     base_height = RewTerm(
         func=mdp.base_height_l2,
         weight=-2.0,
-        params={"target_height": 2.0, "asset_cfg": SceneEntityCfg("robot")},
+        params={"target_height": 2.5, "asset_cfg": SceneEntityCfg("robot")},
     )
     # -- smoothness penalties
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
@@ -400,11 +391,12 @@ class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 4
         self.episode_length_s = 20.0
         # viewer settings
-        self.viewer.eye = (8.0, 0.0, 5.0)
+        self.viewer.origin_type = "asset_root"
+        self.viewer.asset_name = "robot"
+        self.viewer.env_index = 6
+        self.viewer.eye = (5.0, 8.0, 2.0)
+        self.viewer.resolution = (1920, 1080)
         # simulation settings
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.sim.physics = PhysxCfg()
-        # sensor update periods
-        if self.scene.contact_forces is not None:
-            self.scene.contact_forces.update_period = self.sim.dt
