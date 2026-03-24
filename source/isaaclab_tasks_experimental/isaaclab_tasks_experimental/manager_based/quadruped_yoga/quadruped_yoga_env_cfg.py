@@ -37,8 +37,8 @@ from isaaclab_physx.sim import DeformableBodyPropertiesCfg, SurfaceDeformableBod
 ##
 # Pre-defined configs
 ##
-from isaaclab_assets.robots.anymal import ANYMAL_D_CFG  # isort:skip
-
+from isaaclab_assets.robots.anymal import ANYMAL_D_CFG, ANYDRIVE_3_LSTM_ACTUATOR_CFG  # isort:skip
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 ##
 # Custom MDP terms
@@ -76,6 +76,18 @@ def ball_vel_y_penalty(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = Scene
     asset = env.scene[asset_cfg.name]
     ball_vel = wp.to_torch(asset.data.root_vel_w)
     return ball_vel[:, 1].abs()
+
+
+def ball_vel_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
+    """Ball velocity in world frame."""
+    asset = env.scene[asset_cfg.name]
+    return wp.to_torch(asset.data.root_vel_w)
+
+
+def robot_forward_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Robot base forward (x) velocity in world frame."""
+    asset = env.scene[asset_cfg.name]
+    return wp.to_torch(asset.data.root_vel_w)[:, 0]
 
 
 def robot_ball_xy_distance_sq(
@@ -124,8 +136,8 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.GroundPlaneCfg(
             size=(100.0, 100.0),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=0.3,
-                dynamic_friction=0.3,
+                static_friction=0.2,
+                dynamic_friction=0.2,
                 restitution=0.0,
             ),
         ),
@@ -138,9 +150,38 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
     )
 
     # quadruped robot
-    robot: ArticulationCfg = ANYMAL_D_CFG.replace(
+    robot: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
+        spawn=sim_utils.UsdFileCfg(
+            # usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Robots/ANYbotics/ANYmal-D/anymal_d.usd",
+            usd_path=f"/home/mmichelis/Documents/IsaacLab/source/isaaclab_tasks_experimental/isaaclab_tasks_experimental/manager_based/quadruped_yoga/ANYmal-D/anymal_d.usd",
+            activate_contact_sensors=True,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=False,
+                retain_accelerations=False,
+                linear_damping=0.0,
+                angular_damping=0.0,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=1000.0,
+                max_depenetration_velocity=1.0,
+            ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                enabled_self_collisions=True, solver_position_iteration_count=4, solver_velocity_iteration_count=0
+            ),
+            # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
+        ),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0, 0.0, 1.9),
+            joint_pos={
+                ".*HAA": 0.0,  # all HAA
+                ".*F_HFE": 0.4,  # both front HFE
+                ".*H_HFE": -0.4,  # both hind HFE
+                ".*F_KFE": -0.8,  # both front KFE
+                ".*H_KFE": 0.8,  # both hind KFE
+            },
+        ),
+        actuators={"legs": ANYDRIVE_3_LSTM_ACTUATOR_CFG},
+        soft_joint_pos_limit_factor=0.95,
     )
 
     # deformable ball
@@ -159,8 +200,8 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
                 surface_bend_stiffness=5e4,
                 surface_shear_stiffness=5e4,
                 surface_stretch_stiffness=5e4,
-                static_friction=0.2,
-                dynamic_friction=0.2,
+                static_friction=0.5,
+                dynamic_friction=0.5,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
@@ -196,6 +237,8 @@ class ObservationsCfg:
 
         # ball center of mass in env frame
         ball_pos = ObsTerm(func=ball_pos_env, params={"asset_cfg": SceneEntityCfg("ball")})
+        # ball velocity (so policy can anticipate ball dynamics)
+        ball_vel = ObsTerm(func=ball_vel_env, params={"asset_cfg": SceneEntityCfg("ball")})
         # robot position relative to ball (so policy knows where it is on the ball)
         robot_rel_ball = ObsTerm(
             func=robot_pos_rel_ball,
@@ -265,7 +308,7 @@ class EventCfg:
         func=mdp.reset_joints_by_scale,
         mode="reset",
         params={
-            "position_range": (0.5, 1.5),
+            "position_range": (0.8, 1.2),
             "velocity_range": (0.0, 0.0),
         },
     )
@@ -279,12 +322,12 @@ class EventCfg:
         },
     )
 
-    # interval
+    # interval — gentle pushes only (strong pushes knock robot off ball)
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
         interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+        params={"velocity_range": {"x": (-0.1, 0.1), "y": (-0.1, 0.1)}},
     )
 
 
@@ -292,8 +335,10 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task: reward ball forward velocity (strong signal for movement)
-    ball_forward_vel = RewTerm(func=ball_vel_x, weight=5.0, params={"asset_cfg": SceneEntityCfg("ball")})
+    # -- task: reward ball forward velocity
+    ball_forward_vel = RewTerm(func=ball_vel_x, weight=4.0, params={"asset_cfg": SceneEntityCfg("ball")})
+    # -- task: reward robot moving forward (encourages moving WITH the ball, not kicking it away)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=1.0, params={"asset_cfg": SceneEntityCfg("robot")})
     # -- task: penalize ball lateral drift
     ball_lateral_vel = RewTerm(func=ball_vel_y_penalty, weight=-1.0, params={"asset_cfg": SceneEntityCfg("ball")})
     # -- task: stay on the ball (penalize xy distance between robot and ball)
@@ -306,13 +351,13 @@ class RewardsCfg:
     alive = RewTerm(func=mdp.is_alive, weight=0.5)
     # -- termination penalty
     terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-    # -- locomotion penalties (reduced to allow more movement)
+    # -- smoothness penalties
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.1)
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-5.0e-5)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-6)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
     # -- contact penalties
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
@@ -359,12 +404,12 @@ class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
         # general settings
-        self.decimation = 4
-        self.episode_length_s = 5.0
+        self.decimation = 10
+        self.episode_length_s = 10.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
-        self.sim.dt = 0.005
+        self.sim.dt = 0.002
         self.sim.render_interval = self.decimation
         self.sim.physics = PhysxCfg()
         # sensor update periods
