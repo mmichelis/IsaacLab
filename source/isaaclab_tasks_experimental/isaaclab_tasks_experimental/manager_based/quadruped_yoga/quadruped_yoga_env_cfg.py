@@ -37,8 +37,7 @@ from isaaclab_physx.sim import DeformableBodyPropertiesCfg, SurfaceDeformableBod
 ##
 # Pre-defined configs
 ##
-from isaaclab_assets.robots.anymal import ANYMAL_D_CFG, ANYDRIVE_3_LSTM_ACTUATOR_CFG  # isort:skip
-from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+from isaaclab_assets.robots.anymal import ANYMAL_D_CFG  # isort:skip
 
 ##
 # Custom MDP terms
@@ -49,6 +48,18 @@ def ball_pos_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCf
     """Ball center of mass position in the environment frame."""
     asset = env.scene[asset_cfg.name]
     return wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
+
+
+def foot_contact_forces(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces", body_names=".*FOOT"),
+) -> torch.Tensor:
+    """Net contact force magnitudes on each foot. Shape: (num_envs, 4)."""
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    forces = wp.to_torch(contact_sensor.data.net_forces_w)[:, sensor_cfg.body_ids]
+    if torch.norm(forces, dim=-1).max() > 0.0:
+        print("Debug: max foot contact force magnitude:", torch.norm(forces, dim=-1).max().item())
+    return torch.norm(forces, dim=-1)
 
 
 def robot_pos_rel_ball(
@@ -150,38 +161,9 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
     )
 
     # quadruped robot
-    robot: ArticulationCfg = ArticulationCfg(
+    robot: ArticulationCfg = ANYMAL_D_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        spawn=sim_utils.UsdFileCfg(
-            # usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Robots/ANYbotics/ANYmal-D/anymal_d.usd",
-            usd_path=f"/home/mmichelis/Documents/IsaacLab/source/isaaclab_tasks_experimental/isaaclab_tasks_experimental/manager_based/quadruped_yoga/ANYmal-D/anymal_d.usd",
-            activate_contact_sensors=True,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=False,
-                retain_accelerations=False,
-                linear_damping=0.0,
-                angular_damping=0.0,
-                max_linear_velocity=1000.0,
-                max_angular_velocity=1000.0,
-                max_depenetration_velocity=1.0,
-            ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                enabled_self_collisions=True, solver_position_iteration_count=4, solver_velocity_iteration_count=0
-            ),
-            # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
-        ),
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 1.9),
-            joint_pos={
-                ".*HAA": 0.0,  # all HAA
-                ".*F_HFE": 0.4,  # both front HFE
-                ".*H_HFE": -0.4,  # both hind HFE
-                ".*F_KFE": -0.8,  # both front KFE
-                ".*H_KFE": 0.8,  # both hind KFE
-            },
-        ),
-        actuators={"legs": ANYDRIVE_3_LSTM_ACTUATOR_CFG},
-        soft_joint_pos_limit_factor=0.95,
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
     )
 
     # deformable ball
@@ -194,12 +176,12 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.9)),
             physics_material=SurfaceDeformableBodyMaterialCfg(
                 density=10.0,
-                youngs_modulus=0.5e4,
-                poissons_ratio=0.3,
+                youngs_modulus=1e4,
+                poissons_ratio=0.4,
                 surface_thickness=0.1,
-                surface_bend_stiffness=5e4,
-                surface_shear_stiffness=5e4,
-                surface_stretch_stiffness=5e4,
+                surface_bend_stiffness=1e5,
+                surface_shear_stiffness=1e5,
+                surface_stretch_stiffness=1e5,
                 static_friction=0.5,
                 dynamic_friction=0.5,
             ),
@@ -254,6 +236,11 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
+        # foot contact forces (tells policy which feet are on the ball)
+        # foot_contacts = ObsTerm(
+        #     func=foot_contact_forces,
+        #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*FOOT")},
+        # )
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -295,7 +282,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "yaw": (-0.14, 0.14)},
+            "pose_range": {"x": (-0.15, 0.15), "y": (-0.15, 0.15), "yaw": (-0.3, 0.3)},
             "velocity_range": {
                 "x": (-0.1, 0.1),
                 "y": (-0.1, 0.1),
@@ -351,10 +338,16 @@ class RewardsCfg:
     alive = RewTerm(func=mdp.is_alive, weight=0.5)
     # -- termination penalty
     terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
+    # -- posture: maintain height (prevents leaning forward and toppling off)
+    base_height = RewTerm(
+        func=mdp.base_height_l2,
+        weight=-2.0,
+        params={"target_height": 2.0, "asset_cfg": SceneEntityCfg("robot")},
+    )
     # -- smoothness penalties
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.1)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-5.0e-5)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-6)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
@@ -404,12 +397,12 @@ class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
         # general settings
-        self.decimation = 10
-        self.episode_length_s = 10.0
+        self.decimation = 4
+        self.episode_length_s = 20.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
-        self.sim.dt = 0.002
+        self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.sim.physics = PhysxCfg()
         # sensor update periods
