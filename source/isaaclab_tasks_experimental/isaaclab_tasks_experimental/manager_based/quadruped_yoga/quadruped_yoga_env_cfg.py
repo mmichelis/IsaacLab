@@ -159,7 +159,7 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
     # quadruped robot
     robot: ArticulationCfg = ANYMAL_D_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.6)),
     )
 
     # deformable ball
@@ -167,12 +167,12 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Ball",
         spawn=sim_utils.UsdFileCfg(
             usd_path="/home/mmichelis/Documents/IsaacLab/scripts/demos/icosphere_3.usda",
-            scale=[0.75, 0.75, 0.75],
+            scale=[1.0, 1.0, 1.0],
             deformable_props=DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.9)),
             physics_material=SurfaceDeformableBodyMaterialCfg(
-                density=10.0,
-                youngs_modulus=1e4,
+                density=5.0,
+                youngs_modulus=5e4,
                 poissons_ratio=0.4,
                 surface_thickness=0.1,
                 surface_bend_stiffness=1e5,
@@ -183,7 +183,7 @@ class QuadrupedYogaSceneCfg(InteractiveSceneCfg):
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 0.76),
+            pos=(0.0, 0.0, 1.01),
         ),
     )
 
@@ -333,7 +333,7 @@ class RewardsCfg:
     base_height = RewTerm(
         func=mdp.base_height_l2,
         weight=-2.0,
-        params={"target_height": 2.5, "asset_cfg": SceneEntityCfg("robot")},
+        params={"target_height": 2.75, "asset_cfg": SceneEntityCfg("robot")},
     )
     # -- smoothness penalties
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
@@ -400,3 +400,6 @@ class QuadrupedYogaEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.sim.physics = PhysxCfg()
+        # sensor update periods
+        if self.scene.contact_forces is not None:
+            self.scene.contact_forces.update_period = self.sim.dt
