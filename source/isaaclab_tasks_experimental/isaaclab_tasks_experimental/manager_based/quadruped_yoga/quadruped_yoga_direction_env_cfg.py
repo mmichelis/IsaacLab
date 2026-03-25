@@ -35,6 +35,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 import isaaclab.envs.mdp as mdp
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as loco_mdp
@@ -48,6 +49,7 @@ from isaaclab_physx.sim import DeformableBodyPropertiesCfg, SurfaceDeformableBod
 from isaaclab_assets.robots.anymal import ANYMAL_D_CFG  # isort:skip
 
 
+
 ##
 # Custom MDP terms
 ##
@@ -59,10 +61,19 @@ def ball_pos_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCf
     return wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
 
 
-def ball_vel_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
-    """Ball velocity in world frame."""
-    asset = env.scene[asset_cfg.name]
-    return wp.to_torch(asset.data.root_vel_w)
+def ball_vel_in_robot_frame(
+    env: ManagerBasedEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+) -> torch.Tensor:
+    """Ball velocity in the robot's body frame (consistent with command frame)."""
+    import isaaclab.utils.math as math_utils
+
+    robot = env.scene[robot_cfg.name]
+    ball = env.scene[ball_cfg.name]
+    ball_vel_w = wp.to_torch(ball.data.root_vel_w)
+    robot_quat = wp.to_torch(robot.data.root_quat_w)
+    return math_utils.quat_apply_inverse(robot_quat, ball_vel_w)
 
 
 def foot_contact_forces(
@@ -100,28 +111,42 @@ def track_ball_lin_vel_xy_exp(
     env: ManagerBasedRLEnv,
     std: float,
     command_name: str,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
 ) -> torch.Tensor:
-    """Reward tracking of ball xy velocity to commanded velocity using exponential kernel."""
+    """Reward tracking of ball xy velocity to commanded velocity using exponential kernel.
+
+    The command is in the robot's body frame, so ball world-frame velocity
+    is transformed into the robot body frame before comparing.
+    """
+    import isaaclab.utils.math as math_utils
+
+    robot = env.scene[robot_cfg.name]
     ball = env.scene[ball_cfg.name]
-    ball_vel_xy = wp.to_torch(ball.data.root_vel_w)[:, :2]
+    # Transform ball world velocity into robot body frame
+    ball_vel_w = wp.to_torch(ball.data.root_vel_w)
+    robot_quat = wp.to_torch(robot.data.root_quat_w)
+    ball_vel_b = math_utils.quat_apply_inverse(robot_quat, ball_vel_w)
+    # Compare xy components against body-frame command
     command_vel_xy = env.command_manager.get_command(command_name)[:, :2]
-    vel_error = torch.sum(torch.square(command_vel_xy - ball_vel_xy), dim=1)
+    vel_error = torch.sum(torch.square(command_vel_xy - ball_vel_b[:, :2]), dim=1)
     return torch.exp(-vel_error / std**2)
 
 
-def track_ball_ang_vel_z_exp(
+def track_robot_ang_vel_z_exp(
     env: ManagerBasedRLEnv,
     std: float,
     command_name: str,
-    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Reward tracking of ball yaw angular velocity to commanded angular velocity."""
-    # For a rolling ball, we don't directly track angular velocity.
-    # Instead we penalize the robot's yaw rate deviation from command.
+    """Reward tracking of robot yaw angular velocity to commanded angular velocity.
+
+    Uses robot body-frame angular velocity to match the body-frame command.
+    """
+    robot = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(
         env.command_manager.get_command(command_name)[:, 2]
-        - wp.to_torch(env.scene["robot"].data.root_ang_vel_w)[:, 2]
+        - wp.to_torch(robot.data.root_ang_vel_b)[:, 2]
     )
     return torch.exp(-ang_vel_error / std**2)
 
@@ -165,9 +190,16 @@ class QuadrupedYogaDirectionSceneCfg(InteractiveSceneCfg):
     )
 
     # lights
-    dome_light = AssetBaseCfg(
-        prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=2000.0),
+    # dome_light = AssetBaseCfg(
+    #     prim_path="/World/DomeLight",
+    #     spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=2000.0),
+    # )
+    sky_light = AssetBaseCfg(
+        prim_path="/World/skyLight",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=750.0,
+            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+        ),
     )
 
     # quadruped robot
@@ -225,9 +257,9 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=loco_mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5),
-            lin_vel_y=(-0.5, 0.5),
-            ang_vel_z=(-0.5, 0.5),
+            lin_vel_x=(-0.2, 0.2),
+            lin_vel_y=(-0.2, 0.2),
+            ang_vel_z=(-0.3, 0.3),
             heading=(-math.pi, math.pi),
         ),
     )
@@ -250,7 +282,10 @@ class ObservationsCfg:
 
         # ball state
         ball_pos = ObsTerm(func=ball_pos_env, params={"asset_cfg": SceneEntityCfg("ball")})
-        ball_vel = ObsTerm(func=ball_vel_env, params={"asset_cfg": SceneEntityCfg("ball")})
+        ball_vel = ObsTerm(
+            func=ball_vel_in_robot_frame,
+            params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
+        )
         # robot-ball relationship
         robot_rel_ball = ObsTerm(
             func=robot_pos_rel_ball,
@@ -268,7 +303,7 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
-        
+
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
@@ -349,17 +384,22 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task: track commanded ball velocity (xy)
+    # -- task: track commanded ball velocity (xy) in robot body frame
     track_ball_lin_vel_xy = RewTerm(
         func=track_ball_lin_vel_xy_exp,
-        weight=4.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "ball_cfg": SceneEntityCfg("ball")},
+        weight=6.0,
+        params={
+            "command_name": "base_velocity",
+            "std": math.sqrt(0.25),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "ball_cfg": SceneEntityCfg("ball"),
+        },
     )
-    # -- task: track commanded angular velocity
+    # -- task: track commanded robot yaw rate
     track_ang_vel_z = RewTerm(
-        func=track_ball_ang_vel_z_exp,
+        func=track_robot_ang_vel_z_exp,
         weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "ball_cfg": SceneEntityCfg("ball")},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "asset_cfg": SceneEntityCfg("robot")},
     )
     # -- task: stay on the ball
     stay_on_ball = RewTerm(
@@ -374,16 +414,16 @@ class RewardsCfg:
     # -- posture: maintain height
     base_height = RewTerm(
         func=mdp.base_height_l2,
-        weight=-2.0,
+        weight=-1.0,
         params={"target_height": 2.0, "asset_cfg": SceneEntityCfg("robot")},
     )
     # -- smoothness penalties
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.5)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.25)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-5.0e-5)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-6)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.5e-5)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.0e-6)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
     # -- contact penalties
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
