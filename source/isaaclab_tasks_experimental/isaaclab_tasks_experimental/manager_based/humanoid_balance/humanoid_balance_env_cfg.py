@@ -365,14 +365,14 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # -- task
-    robot_forward = RewTerm(func=robot_forward_vel, weight=1.0)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=5.0)
     goal_reached = RewTerm(
         func=reached_end_platform,
         weight=10.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
     # -- penalties
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-10.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2, 
