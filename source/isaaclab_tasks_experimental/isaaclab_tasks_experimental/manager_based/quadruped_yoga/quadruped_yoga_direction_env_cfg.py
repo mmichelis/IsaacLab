@@ -107,6 +107,38 @@ def robot_ball_xy_distance_sq(
     return (rel[:, :2] ** 2).sum(dim=-1)
 
 
+def ball_vel_in_command_direction(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+) -> torch.Tensor:
+    """Reward ball velocity projected onto the commanded direction.
+
+    Returns the dot product of ball velocity (body frame) with the command direction unit vector.
+    Positive when ball moves in the right direction, scales linearly with speed.
+    Zero when standing still. Negative when moving the wrong way.
+    When command is near-zero (standing), returns zero (no reward or penalty).
+    """
+    import isaaclab.utils.math as math_utils
+
+    robot = env.scene[robot_cfg.name]
+    ball = env.scene[ball_cfg.name]
+    # Ball velocity in robot body frame
+    ball_vel_w = wp.to_torch(ball.data.root_vel_w)
+    robot_quat = wp.to_torch(robot.data.root_quat_w)
+    ball_vel_b = math_utils.quat_apply_inverse(robot_quat, ball_vel_w)[:, :2]
+    # Command direction (body frame)
+    command_xy = env.command_manager.get_command(command_name)[:, :2]
+    command_norm = torch.norm(command_xy, dim=-1, keepdim=True).clamp(min=1e-3)
+    command_dir = command_xy / command_norm
+    # Dot product: ball speed in commanded direction
+    vel_in_dir = (ball_vel_b * command_dir).sum(dim=-1)
+    # Zero out reward when command is near-zero (standing envs)
+    is_moving_cmd = torch.norm(command_xy, dim=-1) > 0.05
+    return vel_in_dir * is_moving_cmd.float()
+
+
 def track_ball_lin_vel_xy_exp(
     env: ManagerBasedRLEnv,
     std: float,
@@ -133,22 +165,24 @@ def track_ball_lin_vel_xy_exp(
     return torch.exp(-vel_error / std**2)
 
 
-def track_robot_ang_vel_z_exp(
+def heading_alignment_exp(
     env: ManagerBasedRLEnv,
     std: float,
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Reward tracking of robot yaw angular velocity to commanded angular velocity.
+    """Reward for aligning robot heading with the commanded heading target.
 
-    Uses robot body-frame angular velocity to match the body-frame command.
+    Uses exponential kernel on the heading error. Directly rewards facing
+    the right direction rather than rotating at the right speed.
     """
-    robot = env.scene[asset_cfg.name]
-    ang_vel_error = torch.square(
-        env.command_manager.get_command(command_name)[:, 2]
-        - wp.to_torch(robot.data.root_ang_vel_b)[:, 2]
+    import isaaclab.utils.math as math_utils
+
+    command = env.command_manager.get_term(command_name)
+    heading_error = math_utils.wrap_to_pi(
+        command.heading_target - wp.to_torch(env.scene[asset_cfg.name].data.heading_w)
     )
-    return torch.exp(-ang_vel_error / std**2)
+    return torch.exp(-torch.square(heading_error) / std**2)
 
 
 def reset_ball(
@@ -218,7 +252,7 @@ class QuadrupedYogaDirectionSceneCfg(InteractiveSceneCfg):
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.9)),
             physics_material=SurfaceDeformableBodyMaterialCfg(
                 density=10.0,
-                youngs_modulus=0.5e4,
+                youngs_modulus=1e4,
                 poissons_ratio=0.3,
                 surface_thickness=0.1,
                 surface_bend_stiffness=5e4,
@@ -257,8 +291,8 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=loco_mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.2, 0.2),
-            lin_vel_y=(-0.2, 0.2),
+            lin_vel_x=(-0.5, 0.5),
+            lin_vel_y=(-0.5, 0.5),
             ang_vel_z=(-0.3, 0.3),
             heading=(-math.pi, math.pi),
         ),
@@ -344,10 +378,10 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "yaw": (-0.14, 0.14)},
+            "pose_range": {"x": (-0.15, 0.15), "y": (-0.15, 0.15), "yaw": (-0.5, 0.5)},
             "velocity_range": {
-                "x": (-0.1, 0.1),
-                "y": (-0.1, 0.1),
+                "x": (-0.15, 0.15),
+                "y": (-0.15, 0.15),
                 "z": (0.0, 0.0),
             },
         },
@@ -384,27 +418,38 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task: track commanded ball velocity (xy) in robot body frame
-    track_ball_lin_vel_xy = RewTerm(
-        func=track_ball_lin_vel_xy_exp,
-        weight=6.0,
+    # -- task: reward ball speed in the commanded direction (linear, strong gradient for movement)
+    ball_direction_vel = RewTerm(
+        func=ball_vel_in_command_direction,
+        weight=2.0,
         params={
             "command_name": "base_velocity",
-            "std": math.sqrt(0.25),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "ball_cfg": SceneEntityCfg("ball"),
+        },
+    )
+    # -- task: fine-tune velocity magnitude matching (exponential, secondary to direction reward)
+    track_ball_lin_vel_xy = RewTerm(
+        func=track_ball_lin_vel_xy_exp,
+        weight=2.0,
+        params={
+            "command_name": "base_velocity",
+            "std": math.sqrt(0.5),
             "robot_cfg": SceneEntityCfg("robot"),
             "ball_cfg": SceneEntityCfg("ball"),
         },
     )
     # -- task: track commanded robot yaw rate
-    track_ang_vel_z = RewTerm(
-        func=track_robot_ang_vel_z_exp,
+    # -- task: align robot heading with commanded heading
+    heading_alignment = RewTerm(
+        func=heading_alignment_exp,
         weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "asset_cfg": SceneEntityCfg("robot")},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.5), "asset_cfg": SceneEntityCfg("robot")},
     )
     # -- task: stay on the ball
     stay_on_ball = RewTerm(
         func=robot_ball_xy_distance_sq,
-        weight=-10.0,
+        weight=-8.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
     )
     # -- alive bonus
@@ -415,7 +460,7 @@ class RewardsCfg:
     base_height = RewTerm(
         func=mdp.base_height_l2,
         weight=-1.0,
-        params={"target_height": 2.0, "asset_cfg": SceneEntityCfg("robot")},
+        params={"target_height": 2.5, "asset_cfg": SceneEntityCfg("robot")},
     )
     # -- smoothness penalties
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.25)
@@ -424,12 +469,12 @@ class RewardsCfg:
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.5e-5)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.0e-6)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.025)
-    # -- contact penalties
-    undesired_contacts = RewTerm(
-        func=mdp.undesired_contacts,
-        weight=-0.5,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
-    )
+    # -- contact penalties # TODO: Do not work for rigid-deformable.
+    # undesired_contacts = RewTerm(
+    #     func=mdp.undesired_contacts,
+    #     weight=-0.5,
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+    # )
 
 
 @configclass

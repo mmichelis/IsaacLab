@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Quadruped on deformable environment."""
+"""Humanoid balance beam environment."""
 
 import gymnasium as gym
 

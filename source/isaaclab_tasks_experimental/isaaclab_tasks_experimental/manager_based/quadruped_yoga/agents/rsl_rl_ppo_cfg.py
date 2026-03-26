@@ -11,7 +11,7 @@ from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlOnPolicyRunnerCfg, RslRlPp
 @configclass
 class QuadrupedYogaPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 3000
+    max_iterations = 8000
     save_interval = 100
     experiment_name = "quadruped_yoga"
     obs_groups = {"actor": ["policy"], "critic": ["policy"]}
@@ -45,3 +45,19 @@ class QuadrupedYogaPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class QuadrupedYogaDirectionPPORunnerCfg(QuadrupedYogaPPORunnerCfg):
     experiment_name = "quadruped_yoga_direction"
+    max_iterations = 10000
+    num_steps_per_env = 48
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.008,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.997,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
