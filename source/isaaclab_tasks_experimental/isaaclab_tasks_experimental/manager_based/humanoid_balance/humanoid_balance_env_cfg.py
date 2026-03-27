@@ -131,6 +131,28 @@ def robot_forward_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneE
     return wp.to_torch(asset.data.root_vel_w)[:, 0]
 
 
+def x_position_progress(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Dense reward for x-position progress. Returns robot x in env frame."""
+    robot = env.scene[robot_cfg.name]
+    return wp.to_torch(robot.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0]
+
+
+def distance_to_end_platform(
+    env: ManagerBasedEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    platform_cfg: SceneEntityCfg = SceneEntityCfg("platform_end"),
+) -> torch.Tensor:
+    """Distance from robot to end platform x-position. Shape: (num_envs, 1)."""
+    robot = env.scene[robot_cfg.name]
+    platform = env.scene[platform_cfg.name]
+    robot_x = wp.to_torch(robot.data.root_pos_w)[:, 0]
+    platform_x = wp.to_torch(platform.data.root_pos_w)[:, 0]
+    return (platform_x - robot_x).unsqueeze(-1)
+
+
 def reached_end_platform(
     env: ManagerBasedRLEnv,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -186,7 +208,7 @@ class HumanoidBalanceSceneCfg(InteractiveSceneCfg):
     # humanoid robot
     robot: ArticulationCfg = G1_MINIMAL_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(-0.5, 0.0, 2.0)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(-0.5, 0.0, 1.85)),
     )
 
     # deformable beam
@@ -268,7 +290,13 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        # observation terms (order preserved)
+        # spatial awareness (critical for navigation)
+        root_pos = ObsTerm(func=mdp.root_pos_w)
+        dist_to_goal = ObsTerm(
+            func=distance_to_end_platform,
+            params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
+        )
+        # standard proprioception
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         projected_gravity = ObsTerm(
@@ -330,7 +358,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.25, 0.25), "y": (-0.25, 0.25), "yaw": (-3.14, 3.14)},
+            "pose_range": {"x": (-0.1, 0.1), "y": (-0.1, 0.1), "yaw": (-0.3, 0.3)},
             "velocity_range": {
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
@@ -364,8 +392,11 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task
+    # -- task: dense position progress (provides gradient from start to end)
+    x_progress = RewTerm(func=x_position_progress, weight=3.0, params={"robot_cfg": SceneEntityCfg("robot")})
+    # -- task: forward velocity
     robot_forward = RewTerm(func=robot_forward_vel, weight=5.0)
+    # -- task: bonus for reaching end platform
     goal_reached = RewTerm(
         func=reached_end_platform,
         weight=10.0,
@@ -375,22 +406,22 @@ class RewardsCfg:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-10.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     dof_torques_l2 = RewTerm(
-        func=mdp.joint_torques_l2, 
-        weight=-1.5e-7, 
+        func=mdp.joint_torques_l2,
+        weight=-1.5e-7,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"])
         }
     )
     dof_acc_l2 = RewTerm(
-        func=mdp.joint_acc_l2, 
-        weight=-1.25e-7, 
+        func=mdp.joint_acc_l2,
+        weight=-1.25e-7,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint"])
         }
     )
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
-    # -- optional penalties
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    # -- posture penalties (reduced for beam walking — robot needs to lean and sway)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.2)
 
     # Penalize ankle joint limits
     dof_pos_limits = RewTerm(
@@ -401,12 +432,12 @@ class RewardsCfg:
     # Penalize deviation from default of the joints that are not essential for locomotion
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.03,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.02,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
