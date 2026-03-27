@@ -1,7 +1,7 @@
 Changelog
 ---------
 
-0.5.13 (2026-03-17)
+0.5.14 (2026-03-30)
 ~~~~~~~~~~~~~~~~~~~
 
 Added
@@ -50,6 +50,19 @@ Changed
   ``max_simulation_nodes_per_body``, ``max_collision_nodes_per_body``.
 * Changed kinematic target operations to raise ``ValueError`` when called on
   surface deformable bodies, which do not support kinematic targets.
+
+
+0.5.13 (2026-03-25)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed device mismatch in :meth:`~isaaclab_physx.assets.RigidObjectCollection.reshape_view_to_data_2d`
+  and :meth:`~isaaclab_physx.assets.RigidObjectCollection.reshape_view_to_data_3d` that caused
+  ``wp.clone`` to fail with CUDA errors when PhysX returns data on CPU (e.g., masses, COMs, inertias)
+  while the simulation runs on GPU. The strided view now correctly uses ``data.device`` instead of
+  ``self.device``, matching the fix already present in :class:`~isaaclab_physx.assets.RigidObjectCollectionData`.
 
 
 0.5.12 (2026-03-16)
