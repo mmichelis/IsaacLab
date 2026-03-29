@@ -131,6 +131,31 @@ def robot_forward_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneE
     return wp.to_torch(asset.data.root_vel_w)[:, 0]
 
 
+def out_of_bounds(
+    env: ManagerBasedRLEnv,
+    margin: float = 0.5,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    platform_start_cfg: SceneEntityCfg = SceneEntityCfg("platform_start"),
+    platform_end_cfg: SceneEntityCfg = SceneEntityCfg("platform_end"),
+) -> torch.Tensor:
+    """Terminate if robot leaves the bounding box around the course.
+
+    The bounding box extends from start platform to end platform with a margin
+    of ±margin meters in all horizontal directions.
+    """
+    robot = env.scene[robot_cfg.name]
+    p_start = env.scene[platform_start_cfg.name]
+    p_end = env.scene[platform_end_cfg.name]
+
+    robot_pos = wp.to_torch(robot.data.root_pos_w) - env.scene.env_origins
+    start_x = wp.to_torch(p_start.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0]
+    end_x = wp.to_torch(p_end.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0]
+
+    x_out = (robot_pos[:, 0] < start_x - margin) | (robot_pos[:, 0] > end_x + margin)
+    y_out = robot_pos[:, 1].abs() > margin
+    return x_out | y_out
+
+
 def x_position_progress(
     env: ManagerBasedRLEnv,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -216,7 +241,7 @@ class HumanoidBalanceSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Beam",
         spawn=sim_utils.UsdFileCfg(
             usd_path="/home/mmichelis/Documents/IsaacLab/scripts/demos/walking_beam_402v.usda",
-            scale=[1.0, 1.0, 1.0],
+            scale=[2.0, 1.0, 1.0],
             deformable_props=DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.4, 0.2)),
             physics_material=DeformableBodyMaterialCfg(
@@ -228,7 +253,7 @@ class HumanoidBalanceSceneCfg(InteractiveSceneCfg):
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
-            pos=(1.0, 0.0, 1.0),
+            pos=(2.0, 0.0, 1.0),
         ),
     )
 
@@ -256,7 +281,7 @@ class HumanoidBalanceSceneCfg(InteractiveSceneCfg):
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=0.8, dynamic_friction=0.6),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.9, 0.65, 0.65)),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(2.55, 0.0, 1.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(4.55, 0.0, 1.0)),
         debug_vis=True,
     )
 
@@ -392,10 +417,8 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task: dense position progress (provides gradient from start to end)
-    x_progress = RewTerm(func=x_position_progress, weight=3.0, params={"robot_cfg": SceneEntityCfg("robot")})
     # -- task: forward velocity
-    robot_forward = RewTerm(func=robot_forward_vel, weight=5.0)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=3.0)
     # -- task: bonus for reaching end platform
     goal_reached = RewTerm(
         func=reached_end_platform,
@@ -403,41 +426,41 @@ class RewardsCfg:
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
     # -- penalties
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-10.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-1.5e-7,
+        weight=-3e-7,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"])
         }
     )
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
-        weight=-1.25e-7,
+        weight=-2.5e-7,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint"])
         }
     )
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
-    # -- posture penalties (reduced for beam walking — robot needs to lean and sway)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.2)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    # -- posture penalties
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
 
     # Penalize ankle joint limits
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-1.0,
+        weight=-2.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
     )
     # Penalize deviation from default of the joints that are not essential for locomotion
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.03,
+        weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.02,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -453,7 +476,7 @@ class RewardsCfg:
     )
     joint_deviation_fingers = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.05,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -471,7 +494,7 @@ class RewardsCfg:
     )
     joint_deviation_torso = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
     )
 
@@ -490,6 +513,15 @@ class TerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="torso_link"), "threshold": 1.0},
     )
+    out_of_bounds = DoneTerm(
+        func=out_of_bounds,
+        params={
+            "margin": 0.5,
+            "robot_cfg": SceneEntityCfg("robot"),
+            "platform_start_cfg": SceneEntityCfg("platform_start"),
+            "platform_end_cfg": SceneEntityCfg("platform_end"),
+        },
+    )
 
 
 ##
@@ -502,7 +534,7 @@ class HumanoidBalanceEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the humanoid balance environment."""
 
     # Scene settings
-    scene: HumanoidBalanceSceneCfg = HumanoidBalanceSceneCfg(num_envs=1024, env_spacing=5.0, replicate_physics=False)
+    scene: HumanoidBalanceSceneCfg = HumanoidBalanceSceneCfg(num_envs=1024, env_spacing=7.0, replicate_physics=False)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

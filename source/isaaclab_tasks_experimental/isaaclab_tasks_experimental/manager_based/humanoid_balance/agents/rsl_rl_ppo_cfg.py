@@ -10,9 +10,9 @@ from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlOnPolicyRunnerCfg, RslRlPp
 
 @configclass
 class HumanoidBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
-    max_iterations = 10000
-    save_interval = 100
+    num_steps_per_env = 48
+    max_iterations = 50000
+    save_interval = 1000
     experiment_name = "humanoid_balance"
     obs_groups = {"actor": ["policy"], "critic": ["policy"]}
     actor = RslRlMLPModelCfg(
