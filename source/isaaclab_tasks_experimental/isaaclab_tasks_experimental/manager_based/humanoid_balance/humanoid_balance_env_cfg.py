@@ -41,7 +41,7 @@ from isaaclab_physx.sim import DeformableBodyPropertiesCfg
 ##
 # Pre-defined configs
 ##
-from isaaclab_assets.robots.unitree import G1_MINIMAL_CFG  # isort:skip
+from isaaclab_assets.robots.unitree import G1_CFG, G1_MINIMAL_CFG  # isort:skip
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 
@@ -231,7 +231,7 @@ class HumanoidBalanceSceneCfg(InteractiveSceneCfg):
     )
 
     # humanoid robot
-    robot: ArticulationCfg = G1_MINIMAL_CFG.replace(
+    robot: ArticulationCfg = G1_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
         init_state=ArticulationCfg.InitialStateCfg(pos=(-0.5, 0.0, 1.85)),
     )
@@ -430,14 +430,14 @@ class RewardsCfg:
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-3e-7,
+        weight=-1e-6,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"])
         }
     )
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
-        weight=-2.5e-7,
+        weight=-1e-6,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint"])
         }
@@ -455,12 +455,12 @@ class RewardsCfg:
     # Penalize deviation from default of the joints that are not essential for locomotion
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.2,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -476,7 +476,7 @@ class RewardsCfg:
     )
     joint_deviation_fingers = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.2,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -494,7 +494,7 @@ class RewardsCfg:
     )
     joint_deviation_torso = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.2,
+        weight=-0.4,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
     )
 
