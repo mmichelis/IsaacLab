@@ -419,13 +419,13 @@ def _spawn_mesh_geom_from_mesh(
     # apply visual material
     if cfg.visual_material is not None:
         if not cfg.visual_material_path.startswith("/"):
-            material_path = f"{prim_path}/{cfg.visual_material_path}"
+            material_path = f"{geom_prim_path}/{cfg.visual_material_path}"
         else:
             material_path = cfg.visual_material_path
         # create material
         cfg.visual_material.func(material_path, cfg.visual_material)
         # apply material
-        bind_visual_material(prim_path, material_path, stage=stage)
+        bind_visual_material(geom_prim_path, material_path, stage=stage)
 
     # apply physics material
     if cfg.physics_material is not None:
