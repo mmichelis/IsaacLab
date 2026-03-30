@@ -55,6 +55,7 @@ setup(
         "isaaclab_physx.sim",
         "isaaclab_physx.sim.schemas",
         "isaaclab_physx.sim.spawners",
+        "isaaclab_physx.sim.spawners.materials",
         "isaaclab_physx.test",
         "isaaclab_physx.test.benchmark",
         "isaaclab_physx.test.mock_interfaces",
