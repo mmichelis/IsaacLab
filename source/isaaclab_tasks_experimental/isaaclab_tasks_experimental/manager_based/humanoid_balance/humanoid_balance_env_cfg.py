@@ -304,7 +304,7 @@ class HumanoidBalanceSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
     
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
 
 
 @configclass
@@ -417,8 +417,8 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task: forward velocity
-    robot_forward = RewTerm(func=robot_forward_vel, weight=3.0)
+    # -- task: forward velocity (moderate weight to encourage walking, not jumping)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=1.5)
     # -- task: bonus for reaching end platform
     goal_reached = RewTerm(
         func=reached_end_platform,
@@ -427,6 +427,8 @@ class RewardsCfg:
     )
     # -- penalties
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+    # -- penalize vertical velocity (prevents jumping)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
