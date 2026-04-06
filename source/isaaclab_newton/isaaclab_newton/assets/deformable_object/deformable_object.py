@@ -463,8 +463,52 @@ class DeformableObject(BaseDeformableObject):
         """Initialize the Newton deformable object backend.
 
         Raises:
-            NotImplementedError
+            NotImplementedError: Always raised because Newton XPBD soft body solver integration
+                is not yet complete. Particle index mapping from USD prims to the Newton model
+                requires runtime access to the built Newton model, which is not available until
+                the full solver integration is in place.
         """
+        # TODO: Newton soft body initialization requires XPBD solver and particle index mapping.
+        #
+        # The intended initialization flow is:
+        #
+        # 1. Find the deformable body USD prim(s) via sim_utils:
+        #    template_prim = sim_utils.find_first_matching_prim(self.cfg.prim_path)
+        #    template_prim_path = template_prim.GetPath().pathString
+        #
+        # 2. Discover soft body prims (those with deformable body API):
+        #    root_prims = sim_utils.get_all_matching_child_prims(
+        #        template_prim_path,
+        #        predicate=lambda prim: "PhysxDeformableBodyAPI" in prim.GetAppliedSchemas(),
+        #        traverse_instance_prims=False,
+        #    )
+        #
+        # 3. Build the Newton model with soft mesh particles:
+        #    The ModelBuilder.add_soft_mesh() or add_cloth_mesh() calls produce particle
+        #    ranges in the model. We need to capture:
+        #    - self._num_instances: number of environment copies
+        #    - self._max_sim_vertices_per_body: vertices per soft body
+        #    - self._max_sim_elements_per_body: tetrahedral/triangle elements per body
+        #    - particle_start_indices: start index per instance into model.particle_q
+        #
+        # 4. Create the data container:
+        #    particle_start = wp.array([...], dtype=wp.int32, device=self.device)
+        #    self._data = DeformableObjectData(
+        #        root_view=None,
+        #        device=self.device,
+        #        num_instances=self._num_instances,
+        #        max_sim_vertices=self._max_sim_vertices_per_body,
+        #        particle_start_indices=particle_start,
+        #    )
+        #
+        # 5. Bind simulation state arrays:
+        #    state = SimulationManager.get_state()
+        #    self._data._create_simulation_bindings(state.particle_q, state.particle_qd)
+        #
+        # 6. Create buffers and finalize:
+        #    self._create_buffers()
+        #    self.update(0.0)
+
         raise NotImplementedError(
             "Newton deformable object support requires XPBD solver integration. "
             "Particle index mapping from USD prims to Newton model is not yet implemented."
@@ -510,3 +554,14 @@ class DeformableObject(BaseDeformableObject):
             ],
             device=self.device,
         )
+
+    """
+    Internal simulation callbacks.
+    """
+
+    def _invalidate_initialize_callback(self, event):
+        """Invalidates the scene elements."""
+        # call parent
+        super()._invalidate_initialize_callback(event)
+        self._root_view = None
+
