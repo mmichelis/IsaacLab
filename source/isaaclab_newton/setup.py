@@ -70,6 +70,7 @@ setup(
         "isaaclab_newton.assets.articulation",
         "isaaclab_newton.assets.rigid_object",
         "isaaclab_newton.assets.rigid_object_collection",
+        "isaaclab_newton.assets.deformable_object",
         "isaaclab_newton.cloner",
         "isaaclab_newton.physics",
         "isaaclab_newton.renderers",

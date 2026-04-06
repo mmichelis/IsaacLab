@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -18,8 +17,7 @@ import omni.physics.tensors.impl.api as physx
 from pxr import UsdShade
 
 import isaaclab.sim as sim_utils
-import isaaclab.utils.math as math_utils
-from isaaclab.assets.asset_base import AssetBase
+from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
 from isaaclab.markers import VisualizationMarkers
 
 from isaaclab_physx.physics import PhysxManager as SimulationManager
@@ -34,13 +32,13 @@ from .kernels import (
 )
 
 if TYPE_CHECKING:
-    from .deformable_object_cfg import DeformableObjectCfg
+    from isaaclab.assets.deformable_object.deformable_object_cfg import DeformableObjectCfg
 
 # import logger
 logger = logging.getLogger(__name__)
 
 
-class DeformableObject(AssetBase):
+class DeformableObject(BaseDeformableObject):
     """A deformable object asset class.
 
     Deformable objects are assets that can be deformed in the simulation. They are typically used for
@@ -70,6 +68,8 @@ class DeformableObject(AssetBase):
 
     cfg: DeformableObjectCfg
     """Configuration instance for the deformable object."""
+
+    __backend_name__: str = "physx"
 
     def __init__(self, cfg: DeformableObjectCfg):
         """Initialize the deformable object.
@@ -429,93 +429,6 @@ class DeformableObject(AssetBase):
         self.write_nodal_kinematic_target_to_sim_index(targets, env_ids=env_ids, full_data=True)
 
     """
-    Operations - Deprecated wrappers.
-    """
-
-    def write_nodal_state_to_sim(
-        self,
-        nodal_state: torch.Tensor | wp.array,
-        env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
-    ) -> None:
-        """Deprecated. Please use :meth:`write_nodal_state_to_sim_index` instead."""
-        warnings.warn(
-            "The method 'write_nodal_state_to_sim' is deprecated. Please use 'write_nodal_state_to_sim_index' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.write_nodal_state_to_sim_index(nodal_state, env_ids=env_ids)
-
-    def write_nodal_kinematic_target_to_sim(
-        self,
-        targets: torch.Tensor | wp.array,
-        env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
-    ) -> None:
-        """Deprecated. Please use :meth:`write_nodal_kinematic_target_to_sim_index` instead."""
-        warnings.warn(
-            "The method 'write_nodal_kinematic_target_to_sim' is deprecated."
-            " Please use 'write_nodal_kinematic_target_to_sim_index' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.write_nodal_kinematic_target_to_sim_index(targets, env_ids=env_ids)
-
-    def write_nodal_pos_to_sim(
-        self,
-        nodal_pos: torch.Tensor | wp.array,
-        env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
-    ) -> None:
-        """Deprecated. Please use :meth:`write_nodal_pos_to_sim_index` instead."""
-        warnings.warn(
-            "The method 'write_nodal_pos_to_sim' is deprecated. Please use 'write_nodal_pos_to_sim_index' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.write_nodal_pos_to_sim_index(nodal_pos, env_ids=env_ids)
-
-    def write_nodal_velocity_to_sim(
-        self,
-        nodal_vel: torch.Tensor | wp.array,
-        env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
-    ) -> None:
-        """Deprecated. Please use :meth:`write_nodal_velocity_to_sim_index` instead."""
-        warnings.warn(
-            "The method 'write_nodal_velocity_to_sim' is deprecated."
-            " Please use 'write_nodal_velocity_to_sim_index' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.write_nodal_velocity_to_sim_index(nodal_vel, env_ids=env_ids)
-
-    """
-    Operations - Helper.
-    """
-
-    def transform_nodal_pos(
-        self, nodal_pos: torch.tensor, pos: torch.Tensor | None = None, quat: torch.Tensor | None = None
-    ) -> torch.Tensor:
-        """Transform the nodal positions based on the pose transformation.
-
-        This function computes the transformation of the nodal positions based on the pose transformation.
-        It multiplies the nodal positions with the rotation matrix of the pose and adds the translation.
-        Internally, it calls the :meth:`isaaclab.utils.math.transform_points` function.
-
-        Args:
-            nodal_pos: The nodal positions in the simulation frame. Shape is (N, max_sim_vertices_per_body, 3).
-            pos: The position transformation. Shape is (N, 3).
-                Defaults to None, in which case the position is assumed to be zero.
-            quat: The orientation transformation as quaternion (x, y, z, w). Shape is (N, 4).
-                Defaults to None, in which case the orientation is assumed to be identity.
-
-        Returns:
-            The transformed nodal positions. Shape is (N, max_sim_vertices_per_body, 3).
-        """
-        # offset the nodal positions to center them around the origin
-        mean_nodal_pos = nodal_pos.mean(dim=1, keepdim=True)
-        nodal_pos = nodal_pos - mean_nodal_pos
-        # transform the nodal positions based on the pose around the origin
-        return math_utils.transform_points(nodal_pos, pos, quat) + mean_nodal_pos
-
-    """
     Internal helper.
     """
 
@@ -678,32 +591,6 @@ class DeformableObject(AssetBase):
     """
     Internal simulation callbacks.
     """
-
-    def _set_debug_vis_impl(self, debug_vis: bool):
-        # set visibility of markers
-        # note: parent only deals with callbacks. not their visibility
-        if debug_vis:
-            if not hasattr(self, "target_visualizer"):
-                self.target_visualizer = VisualizationMarkers(self.cfg.visualizer_cfg)
-            # set their visibility to true
-            self.target_visualizer.set_visibility(True)
-        else:
-            if hasattr(self, "target_visualizer"):
-                self.target_visualizer.set_visibility(False)
-
-    def _debug_vis_callback(self, event):
-        # check where to visualize
-        kinematic_target_torch = wp.to_torch(self.data.nodal_kinematic_target)
-        targets_enabled = kinematic_target_torch[:, :, 3] == 0.0
-        num_enabled = int(torch.sum(targets_enabled).item())
-        # get positions if any targets are enabled
-        if num_enabled == 0:
-            # create a marker below the ground
-            positions = torch.tensor([[0.0, 0.0, -10.0]], device=self.device)
-        else:
-            positions = kinematic_target_torch[targets_enabled][..., :3]
-        # show target visualizer
-        self.target_visualizer.visualize(positions)
 
     def _invalidate_initialize_callback(self, event):
         """Invalidates the scene elements."""

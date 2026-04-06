@@ -9,12 +9,13 @@ import warp as wp
 
 import omni.physics.tensors.impl.api as physx
 
+from isaaclab.assets.deformable_object.base_deformable_object_data import BaseDeformableObjectData
 from isaaclab.utils.buffers import TimestampedBufferWarp as TimestampedBuffer
 
 from .kernels import compute_mean_vec3f_over_vertices, compute_nodal_state_w, vec6f
 
 
-class DeformableObjectData:
+class DeformableObjectData(BaseDeformableObjectData):
     """Data container for a deformable object.
 
     This class contains the data for a deformable object in the simulation. The data includes the nodal states of
@@ -34,6 +35,8 @@ class DeformableObjectData:
     is older than the current simulation timestamp. The timestamp is updated whenever the data is updated.
     """
 
+    __backend_name__: str = "physx"
+
     def __init__(self, root_view: physx.SoftBodyView, device: str):
         """Initializes the deformable object data.
 
@@ -41,8 +44,7 @@ class DeformableObjectData:
             root_view: The root deformable body view of the object.
             device: The device used for processing.
         """
-        # Set the parameters
-        self.device = device
+        super().__init__(root_view, device)
         # Set the root deformable body view
         # note: this is stored as a weak reference to avoid circular references between the asset class
         #  and the data container. This is important to avoid memory leaks.

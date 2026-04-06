@@ -22,12 +22,12 @@ import pytest
 import torch
 import warp as wp
 from flaky import flaky
-from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
 
 import carb
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
+from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.sim import build_simulation_context
 
 

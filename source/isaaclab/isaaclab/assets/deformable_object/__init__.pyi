@@ -4,9 +4,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 __all__ = [
+    "BaseDeformableObject",
+    "BaseDeformableObjectData",
     "DeformableObject",
+    "DeformableObjectCfg",
     "DeformableObjectData",
 ]
 
+from .base_deformable_object import BaseDeformableObject
+from .base_deformable_object_data import BaseDeformableObjectData
 from .deformable_object import DeformableObject
+from .deformable_object_cfg import DeformableObjectCfg
 from .deformable_object_data import DeformableObjectData

@@ -35,7 +35,7 @@ simulation_app = app_launcher.app
 
 import torch
 import warp as wp
-from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
+from isaaclab.assets import DeformableObject, DeformableObjectCfg
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils

@@ -29,9 +29,7 @@ from isaaclab.managers import EventTermCfg, ManagerTermBase, SceneEntityCfg
 from isaaclab.utils.version import compare_versions, get_isaac_sim_version
 
 if TYPE_CHECKING:
-    from isaaclab_physx.assets import DeformableObject
-
-    from isaaclab.assets import Articulation, RigidObject
+    from isaaclab.assets import Articulation, DeformableObject, RigidObject
     from isaaclab.envs import ManagerBasedEnv
     from isaaclab.terrains import TerrainImporter
 
