@@ -403,7 +403,7 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # -- task: forward velocity (moderate weight to encourage walking, not jumping)
-    robot_forward = RewTerm(func=robot_forward_vel, weight=1.5)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=2.5)
     # -- task: bonus for reaching end platform
     goal_reached = RewTerm(
         func=reached_end_platform,
@@ -411,7 +411,7 @@ class RewardsCfg:
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
     # -- penalties
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
     # -- penalize vertical velocity (prevents jumping)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
