@@ -424,7 +424,7 @@ def _spawn_mesh_geom_from_mesh(
         # create material
         cfg.visual_material.func(material_path, cfg.visual_material)
         # apply material
-        bind_visual_material(geom_prim_path, material_path, stage=stage)
+        bind_visual_material(mesh_prim_path, material_path, stage=stage)
 
     # apply physics material
     if cfg.physics_material is not None:
