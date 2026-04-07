@@ -472,18 +472,9 @@ class NewtonManager(PhysicsManager):
 
         if not env_paths:
             # No env Xforms — flat loading
-
-            # Check separately for deformables
-            deformable_prims = sim_utils.get_all_matching_child_prims(
-                "/World",
-                predicate=lambda prim: "OmniPhysicsDeformableBodyAPI" in prim.GetAppliedSchemas(),
-                traverse_instance_prims=False,
-            )
-            if len(deformable_prims) > 0:
-                for prim in deformable_prims:
-                    builder.add_cloth_mesh()
-            else:
-                builder.add_usd(stage, schema_resolvers=schema_resolvers)
+            builder.add_usd(stage, schema_resolvers=schema_resolvers)
+            # Add deformable bodies that the rigid-body USD parser skipped
+            cls._add_deformable_prims_to_builder(builder, stage, "/World")
         else:
             # Load everything except the env subtrees (ground plane, lights, etc.)
             ignore_paths = [path for _, path in env_paths]
@@ -497,6 +488,8 @@ class NewtonManager(PhysicsManager):
                 root_path=proto_path,
                 schema_resolvers=schema_resolvers,
             )
+            # Add deformable bodies from the prototype env
+            cls._add_deformable_prims_to_builder(proto, stage, proto_path)
 
             # Add each env as a separate Newton world
             xform_cache = UsdGeom.XformCache()
@@ -518,6 +511,159 @@ class NewtonManager(PhysicsManager):
             cls._num_envs = len(env_paths)
 
         cls.set_builder(builder)
+
+    @classmethod
+    def _add_deformable_prims_to_builder(cls, builder: ModelBuilder, stage, root_path: str) -> None:
+        """Find deformable body prims under *root_path* and add them to *builder* as cloth meshes.
+
+        Reads mesh geometry (vertices, triangle indices) and material properties (Young's modulus,
+        Poisson's ratio, density, damping) from the USD stage and converts them to Newton
+        ``add_cloth_mesh`` calls.
+
+        Args:
+            builder: The Newton :class:`ModelBuilder` to add soft bodies to.
+            stage: The USD stage.
+            root_path: Root prim path to search under for deformable prims.
+        """
+        import numpy as np
+
+        from pxr import Gf, UsdGeom, UsdShade
+
+        # Predicate: match prims with either the OmniPhysics or PhysX deformable body API
+        def _is_deformable(prim):
+            schemas = prim.GetAppliedSchemas()
+            return "OmniPhysicsDeformableBodyAPI" in schemas or "PhysxDeformableBodyAPI" in schemas
+
+        deformable_prims = sim_utils.get_all_matching_child_prims(
+            root_path, predicate=_is_deformable, traverse_instance_prims=False
+        )
+        if not deformable_prims:
+            return
+
+        xform_cache = UsdGeom.XformCache()
+
+        for deformable_prim in deformable_prims:
+            prim_path = deformable_prim.GetPath().pathString
+
+            # -- Find the UsdGeom.Mesh child (at {prim}/geometry/mesh or direct child)
+            mesh_prim = sim_utils.get_first_matching_child_prim(
+                prim_path, lambda p: p.GetTypeName() == "Mesh"
+            )
+            if mesh_prim is None or not mesh_prim.IsValid():
+                logger.warning(f"Deformable prim '{prim_path}' has no Mesh child -- skipping.")
+                continue
+
+            geom_mesh = UsdGeom.Mesh(mesh_prim)
+            points_attr = geom_mesh.GetPointsAttr().Get()
+            face_indices_attr = geom_mesh.GetFaceVertexIndicesAttr().Get()
+            face_counts_attr = geom_mesh.GetFaceVertexCountsAttr().Get()
+
+            if points_attr is None or face_indices_attr is None:
+                logger.warning(f"Deformable prim '{prim_path}' mesh has no points or indices -- skipping.")
+                continue
+
+            vertices = np.asarray(points_attr, dtype=np.float32)
+            face_indices = np.asarray(face_indices_attr, dtype=np.int32)
+            face_counts = np.asarray(face_counts_attr, dtype=np.int32)
+
+            # Ensure all faces are triangles (Newton expects triangle meshes)
+            if not np.all(face_counts == 3):
+                logger.warning(
+                    f"Deformable prim '{prim_path}' has non-triangle faces. "
+                    "Skipping -- Newton cloth meshes require triangulated geometry."
+                )
+                continue
+
+            # -- Read world transform of the deformable prim
+            world_xform = xform_cache.GetLocalToWorldTransform(deformable_prim)
+            translation = world_xform.ExtractTranslation()
+            rotation_quat = world_xform.ExtractRotationQuat()
+            pos = wp.vec3(float(translation[0]), float(translation[1]), float(translation[2]))
+            quat = wp.quat(
+                float(rotation_quat.GetImaginary()[0]),
+                float(rotation_quat.GetImaginary()[1]),
+                float(rotation_quat.GetImaginary()[2]),
+                float(rotation_quat.GetReal()),
+            )
+
+            # -- Read material properties (Young's modulus, Poisson's ratio, density, damping)
+            youngs_modulus = 1e6  # default [Pa]
+            poissons_ratio = 0.45  # default
+            density = 1000.0  # default [kg/m^3]
+            elasticity_damping = 0.005  # default
+
+            if deformable_prim.HasAPI(UsdShade.MaterialBindingAPI):
+                material_paths = (
+                    UsdShade.MaterialBindingAPI(deformable_prim).GetDirectBindingRel("physics").GetTargets()
+                )
+                for mat_path in material_paths:
+                    mat_prim = stage.GetPrimAtPath(mat_path)
+                    if not mat_prim.IsValid():
+                        continue
+                    # Read Young's modulus
+                    attr = mat_prim.GetAttribute("omniphysics:youngsModulus")
+                    if attr and attr.HasValue():
+                        youngs_modulus = float(attr.Get())
+                    # Read Poisson's ratio
+                    attr = mat_prim.GetAttribute("omniphysics:poissonsRatio")
+                    if attr and attr.HasValue():
+                        poissons_ratio = float(attr.Get())
+                    # Read density
+                    attr = mat_prim.GetAttribute("omniphysics:density")
+                    if attr and attr.HasValue():
+                        val = float(attr.Get())
+                        if val > 0:
+                            density = val
+                    # Read damping
+                    attr = mat_prim.GetAttribute("physxDeformableBody:elasticityDamping")
+                    if attr and attr.HasValue():
+                        elasticity_damping = float(attr.Get())
+            else:
+                raise ValueError(
+                    f"Deformable prim '{prim_path}' has no material binding -- cannot read physical properties. "
+                    "Please add a material with the appropriate physics attributes (e.g., "
+                    "physxDeformableBodyMaterial:youngsModulus, physxDeformableBodyMaterial:poissonsRatio, physxDeformableBodyMaterial:density, "
+                    "physxDeformableBodyMaterial:elasticityDamping) or the omniPhysics equivalents."
+                )
+
+            # -- Convert Young's modulus + Poisson's ratio to Lamé parameters
+            # mu = E / (2 * (1 + nu))
+            # lambda = E * nu / ((1 + nu) * (1 - 2 * nu))
+            E = youngs_modulus
+            nu = min(poissons_ratio, 0.499)  # clamp to avoid division by zero
+            k_mu = E / (2.0 * (1.0 + nu))
+            k_lambda = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
+            k_damp = elasticity_damping
+
+            # -- Compute particle radius from mesh bounding box (heuristic)
+            bbox = vertices.max(axis=0) - vertices.min(axis=0)
+            particle_radius = float(np.min(bbox)) * 0.01  # 1% of smallest extent
+
+            # Convert vertices to wp.vec3 for Newton API
+            vertices_list = [wp.vec3(float(v[0]), float(v[1]), float(v[2])) for v in vertices]
+            indices_list = face_indices.tolist()
+
+            logger.info(
+                f"Adding deformable '{prim_path}' as cloth mesh: "
+                f"{len(vertices_list)} vertices, {len(indices_list) // 3} triangles, "
+                f"E={E:.0f} Pa, nu={nu:.3f}, density={density:.1f} kg/m^3"
+            )
+
+            builder.add_cloth_mesh(
+                pos=pos,
+                rot=quat,
+                scale=1.0,
+                vel=wp.vec3(0.0, 0.0, 0.0),
+                vertices=vertices_list,
+                indices=indices_list,
+                density=density,
+                tri_ke=k_mu,
+                tri_ka=k_lambda,
+                tri_kd=k_damp,
+                edge_ke=k_mu * 0.01,  # small bending stiffness
+                edge_kd=k_damp,
+                particle_radius=particle_radius,
+            )
 
     @classmethod
     def _initialize_contacts(cls) -> None:

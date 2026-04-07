@@ -477,32 +477,6 @@ class DeformableObject(BaseDeformableObject):
         # obtain global simulation view
         self._physics_sim_view = SimulationManager.get_physics_sim_view()
 
-        # obtain the first prim in the regex expression (all others are assumed to be a copy of this)
-        template_prim = sim_utils.find_first_matching_prim(self.cfg.prim_path)
-        if template_prim is None:
-            raise RuntimeError(f"Failed to find prim for expression: '{self.cfg.prim_path}'.")
-        template_prim_path = template_prim.GetPath().pathString
-
-        # find deformable root prims
-        root_prims = sim_utils.get_all_matching_child_prims(
-            template_prim_path,
-            predicate=lambda prim: "PhysxDeformableBodyAPI" in prim.GetAppliedSchemas(),
-            traverse_instance_prims=False,
-        )
-        if len(root_prims) == 0:
-            raise RuntimeError(
-                f"Failed to find a deformable body when resolving '{self.cfg.prim_path}'."
-                " Please ensure that the prim has 'PhysxDeformableBodyAPI' applied."
-            )
-        if len(root_prims) > 1:
-            raise RuntimeError(
-                f"Failed to find a single deformable body when resolving '{self.cfg.prim_path}'."
-                f" Found multiple '{root_prims}' under '{template_prim_path}'."
-                " Please ensure that there is only one deformable body in the prim path tree."
-            )
-        # we only need the first one from the list
-        root_prim = root_prims[0]
-
         # Create data container
         self._data = DeformableObjectData(model=SimulationManager.get_model(), device=self.device)
 
