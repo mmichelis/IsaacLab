@@ -15,6 +15,8 @@ from isaaclab.assets.deformable_object.base_deformable_object_data import BaseDe
 from isaaclab.utils.buffers import TimestampedBufferWarp as TimestampedBuffer
 from isaaclab.utils.math import normalize
 
+from isaaclab_newton.physics import NewtonManager as SimulationManager
+
 from .kernels import compute_mean_vec3f_over_vertices, compute_nodal_state_w, read_particles_to_nodal_buffer, vec6f
 
 
@@ -181,16 +183,18 @@ class DeformableObjectData(BaseDeformableObjectData):
         if self._nodal_pos_w.timestamp < self._sim_timestamp:
             if self._sim_bind_particle_q is not None:
                 # Read from Newton's flat particle array into per-instance buffer
-                wp.launch(
-                    read_particles_to_nodal_buffer,
-                    dim=(self._num_instances, self._max_sim_vertices),
-                    inputs=[
-                        self._sim_bind_particle_q,
-                        self._max_sim_vertices,
-                    ],
-                    outputs=[self._nodal_pos_w.data],
-                    device=self.device,
-                )
+                # wp.launch(
+                #     read_particles_to_nodal_buffer,
+                #     dim=(self._num_instances, self._max_sim_vertices),
+                #     inputs=[
+                #         self._sim_bind_particle_q,
+                #         self._max_sim_vertices,
+                #     ],
+                #     outputs=[self._nodal_pos_w.data],
+                #     device=self.device,
+                # )
+                # Directly read from Newton's flat particle array into nodal_pos_w buffer
+                self._nodal_pos_w.data = SimulationManager.get_state_0().particle_q
             self._nodal_pos_w.timestamp = self._sim_timestamp
         return self._nodal_pos_w.data
 
