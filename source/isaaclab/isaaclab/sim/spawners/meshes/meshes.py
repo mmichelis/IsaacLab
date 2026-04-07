@@ -397,6 +397,8 @@ def _spawn_mesh_geom_from_mesh(
         schemas_physx.define_deformable_body_properties(
             prim_path, cfg.deformable_props, stage=stage, deformable_type=deformable_type
         )
+        if cfg.mass_props is not None:
+            raise ValueError("MassPropertiesCfg are not supported for deformable bodies and should be set through DeformableBodyPropertiesCfg(mass=<value>).")
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh
         if cfg.__class__.__name__ == "MeshSphereCfg":
