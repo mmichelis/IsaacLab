@@ -81,7 +81,7 @@ class FileCfg(RigidObjectSpawnerCfg, DeformableObjectSpawnerCfg):
     """Physics material properties.
 
     Note:
-        If None, then no physics material will be added.
+        If None, then no custom physics material will be added.
     """
 
 
