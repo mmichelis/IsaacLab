@@ -5,13 +5,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pxr import Usd, UsdPhysics, UsdShade
 
 from isaaclab.sim.utils import clone, safe_set_attribute_on_usd_prim, safe_set_attribute_on_usd_schema
 from isaaclab.sim.utils.stage import get_current_stage
 from isaaclab.utils.string import to_camel_case
 
-from . import physics_materials_cfg
+if TYPE_CHECKING:
+    from . import physics_materials_cfg
 
 
 @clone
