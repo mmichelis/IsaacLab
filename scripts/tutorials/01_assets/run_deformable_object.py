@@ -147,11 +147,13 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
 
 def main():
     """Main function."""
-    # Load kit helper
-    physics_cfg = None
+    # Load simulation configuration based on CLI arguments
     if args_cli.physics == "newton":
         from isaaclab_newton.physics import NewtonCfg, XPBDSolverCfg
         physics_cfg = NewtonCfg(solver_cfg=XPBDSolverCfg())
+    else:
+        from isaaclab_physx.physics import PhysxCfg
+        physics_cfg = PhysxCfg()
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, physics=physics_cfg)
     sim = SimulationContext(sim_cfg)
     # Set main camera

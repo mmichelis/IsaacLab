@@ -9,6 +9,7 @@ import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from isaaclab.physics import PhysicsEvent
 import numpy as np
 import torch
 import warp as wp
@@ -16,6 +17,8 @@ import warp as wp
 import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
 from isaaclab.markers import VisualizationMarkers
+from isaaclab_newton.physics import NewtonManager as SimulationManager
+
 
 from .deformable_object_data import DeformableObjectData
 from .kernels import (
@@ -77,7 +80,7 @@ class DeformableObject(BaseDeformableObject):
 
     @property
     def num_instances(self) -> int:
-        return self._num_instances
+        return self._data._num_instances
 
     @property
     def num_bodies(self) -> int:
@@ -102,12 +105,12 @@ class DeformableObject(BaseDeformableObject):
     @property
     def max_sim_vertices_per_body(self) -> int:
         """The maximum number of simulation mesh vertices per deformable body."""
-        return self._max_sim_vertices_per_body
+        return self._data._max_sim_vertices
 
     @property
     def max_sim_elements_per_body(self) -> int:
         """The maximum number of simulation mesh elements per deformable body."""
-        return self._max_sim_elements_per_body
+        raise NotImplementedError
 
     """
     Operations.
@@ -462,57 +465,71 @@ class DeformableObject(BaseDeformableObject):
     def _initialize_impl(self) -> None:
         """Initialize the Newton deformable object backend.
 
-        Raises:
-            NotImplementedError: Always raised because Newton XPBD soft body solver integration
-                is not yet complete. Particle index mapping from USD prims to the Newton model
-                requires runtime access to the built Newton model, which is not available until
-                the full solver integration is in place.
-        """
-        # TODO: Newton soft body initialization requires XPBD solver and particle index mapping.
-        #
-        # The intended initialization flow is:
-        #
-        # 1. Find the deformable body USD prim(s) via sim_utils:
-        #    template_prim = sim_utils.find_first_matching_prim(self.cfg.prim_path)
-        #    template_prim_path = template_prim.GetPath().pathString
-        #
-        # 2. Discover soft body prims (those with deformable body API):
-        #    root_prims = sim_utils.get_all_matching_child_prims(
-        #        template_prim_path,
-        #        predicate=lambda prim: "PhysxDeformableBodyAPI" in prim.GetAppliedSchemas(),
-        #        traverse_instance_prims=False,
-        #    )
-        #
-        # 3. Build the Newton model with soft mesh particles:
-        #    The ModelBuilder.add_soft_mesh() or add_cloth_mesh() calls produce particle
-        #    ranges in the model. We need to capture:
-        #    - self._num_instances: number of environment copies
-        #    - self._max_sim_vertices_per_body: vertices per soft body
-        #    - self._max_sim_elements_per_body: tetrahedral/triangle elements per body
-        #    - particle_start_indices: start index per instance into model.particle_q
-        #
-        # 4. Create the data container:
-        #    particle_start = wp.array([...], dtype=wp.int32, device=self.device)
-        #    self._data = DeformableObjectData(
-        #        root_view=None,
-        #        device=self.device,
-        #        num_instances=self._num_instances,
-        #        max_sim_vertices=self._max_sim_vertices_per_body,
-        #        particle_start_indices=particle_start,
-        #    )
-        #
-        # 5. Bind simulation state arrays:
-        #    state = SimulationManager.get_state()
-        #    self._data._create_simulation_bindings(state.particle_q, state.particle_qd)
-        #
-        # 6. Create buffers and finalize:
-        #    self._create_buffers()
-        #    self.update(0.0)
+        This method maps USD deformable body prims to Newton's flat particle arrays by querying
+        the built Newton model for particle counts and body labels. Each deformable instance is
+        assigned a contiguous slice of the global particle arrays.
 
-        raise NotImplementedError(
-            "Newton deformable object support requires XPBD solver integration. "
-            "Particle index mapping from USD prims to Newton model is not yet implemented."
+        Raises:
+            NotImplementedError: Raised because Newton XPBD soft body solver integration
+                is not yet complete. Particle index mapping from USD prims to the Newton model
+                requires runtime validation with actual soft body scenes.
+        """        
+        # obtain global simulation view
+        self._physics_sim_view = SimulationManager.get_physics_sim_view()
+
+        # obtain the first prim in the regex expression (all others are assumed to be a copy of this)
+        template_prim = sim_utils.find_first_matching_prim(self.cfg.prim_path)
+        if template_prim is None:
+            raise RuntimeError(f"Failed to find prim for expression: '{self.cfg.prim_path}'.")
+        template_prim_path = template_prim.GetPath().pathString
+
+        # find deformable root prims
+        root_prims = sim_utils.get_all_matching_child_prims(
+            template_prim_path,
+            predicate=lambda prim: "PhysxDeformableBodyAPI" in prim.GetAppliedSchemas(),
+            traverse_instance_prims=False,
         )
+        if len(root_prims) == 0:
+            raise RuntimeError(
+                f"Failed to find a deformable body when resolving '{self.cfg.prim_path}'."
+                " Please ensure that the prim has 'PhysxDeformableBodyAPI' applied."
+            )
+        if len(root_prims) > 1:
+            raise RuntimeError(
+                f"Failed to find a single deformable body when resolving '{self.cfg.prim_path}'."
+                f" Found multiple '{root_prims}' under '{template_prim_path}'."
+                " Please ensure that there is only one deformable body in the prim path tree."
+            )
+        # we only need the first one from the list
+        root_prim = root_prims[0]
+
+        # Create data container
+        self._data = DeformableObjectData(model=SimulationManager.get_model(), device=self.device)
+
+        # Register callback to rebind after full resets (model/state recreation)
+        self._physics_ready_handle = SimulationManager.register_callback(
+            lambda _: self._data._create_simulation_bindings(),
+            PhysicsEvent.PHYSICS_READY,
+            name=f"deformable_rebind_{self.cfg.prim_path}",
+        )
+
+        # Create buffers, apply init_state transform, and update
+        self._create_buffers()
+        self._process_cfg()
+        # TODO: validate_cfg should be added as well
+        self.update(0.0)
+        self.data.is_primed = True
+
+        # Initialize debug visualization
+        if self._debug_vis_handle is None:
+            self.set_debug_vis(self.cfg.debug_vis)
+
+    def _clear_callbacks(self) -> None:
+        """Clear all registered callbacks, including the physics-ready rebind handle."""
+        super()._clear_callbacks()
+        if hasattr(self, "_physics_ready_handle") and self._physics_ready_handle is not None:
+            self._physics_ready_handle.deregister()
+            self._physics_ready_handle = None
 
     def _create_buffers(self) -> None:
         """Create buffers for storing data."""
@@ -520,48 +537,73 @@ class DeformableObject(BaseDeformableObject):
         self._ALL_INDICES = wp.array(np.arange(self.num_instances, dtype=np.int32), device=self.device)
 
         # default state
-        # we use the initial nodal positions at spawn time as the default state
-        # note: these are all in the simulation frame
-        nodal_positions = self._data._nodal_pos_w.data
+        # Read initial nodal positions from Newton state (via the data container's lazy evaluation)
+        nodal_positions = self.data.nodal_pos_w
         nodal_velocities = wp.zeros(
             (self.num_instances, self.max_sim_vertices_per_body), dtype=wp.vec3f, device=self.device
         )
         # compute default nodal state as vec6f
-        self._data.default_nodal_state_w = wp.zeros(
+        self.data.default_nodal_state_w = wp.zeros(
             (self.num_instances, self.max_sim_vertices_per_body), dtype=vec6f, device=self.device
         )
         wp.launch(
             compute_nodal_state_w,
             dim=(self.num_instances, self.max_sim_vertices_per_body),
             inputs=[nodal_positions, nodal_velocities],
-            outputs=[self._data.default_nodal_state_w],
+            outputs=[self.data.default_nodal_state_w],
             device=self.device,
         )
 
         # kinematic targets -- allocate buffer and set all nodes as non-kinematic by default
-        self._data.nodal_kinematic_target = wp.zeros(
+        self.data.nodal_kinematic_target = wp.zeros(
             (self.num_instances, self.max_sim_vertices_per_body), dtype=wp.vec4f, device=self.device
         )
-        # Copy initial positions into the xyz components of kinematic targets
-        # and set flag (w-component) to 1.0 (non-kinematic / free)
         wp.launch(
             set_kinematic_flags_to_one,
             dim=(self.num_instances * self.max_sim_vertices_per_body,),
             inputs=[
-                self._data.nodal_kinematic_target.reshape(
-                    (self.num_instances * self.max_sim_vertices_per_body,)
-                )
+                self.data.nodal_kinematic_target.reshape((self.num_instances * self.max_sim_vertices_per_body,))
             ],
             device=self.device,
         )
+
+    def _process_cfg(self) -> None:
+        """Post-process configuration parameters.
+
+        Reads :attr:`cfg.init_state.pos` and :attr:`cfg.init_state.rot` and applies the
+        transform to the default nodal state so that every instance starts at the configured
+        pose. The translation and rotation are broadcast across all instances.
+        """
+        # Extract init pose from config
+        pos = torch.tensor(self.cfg.init_state.pos, dtype=torch.float32, device=self.device)
+        quat = torch.tensor(self.cfg.init_state.rot, dtype=torch.float32, device=self.device)
+
+        # Tile to (num_instances, 3) and (num_instances, 4)
+        pos = pos.unsqueeze(0).expand(self.num_instances, -1)
+        quat = quat.unsqueeze(0).expand(self.num_instances, -1)
+
+        # Skip if both are identity (pos=0, quat=identity)
+        is_zero_pos = torch.all(pos == 0.0).item()
+        is_identity_quat = torch.allclose(quat, torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device))
+        if is_zero_pos and is_identity_quat:
+            return
+
+        # Transform the default nodal positions by init_state pose
+        default_state_torch = wp.to_torch(self.data.default_nodal_state_w)  # (N, V, 6)
+        nodal_pos = default_state_torch[..., :3].clone()  # (N, V, 3)
+
+        # Apply translation and rotation via the base class helper
+        nodal_pos = self.transform_nodal_pos(nodal_pos, pos, quat)
+
+        # Write back into default state
+        default_state_torch[..., :3] = nodal_pos
+        self.data.default_nodal_state_w = wp.from_torch(default_state_torch.contiguous(), dtype=vec6f)
 
     """
     Internal simulation callbacks.
     """
 
     def _invalidate_initialize_callback(self, event):
-        """Invalidates the scene elements."""
-        # call parent
+        """Invalidate the scene elements."""
         super()._invalidate_initialize_callback(event)
-        self._root_view = None
 

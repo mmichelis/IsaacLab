@@ -43,27 +43,33 @@ class BaseDeformableObjectData(ABC):
         raise NotImplementedError()
 
     ##
-    # Defaults.
+    # Defaults - Initial state.
     ##
 
-    default_nodal_state_w: wp.array = None
-    """Default nodal state ``[nodal_pos, nodal_vel]`` in simulation world frame.
-    Shape is (num_instances, max_sim_vertices_per_body) with dtype vec6f.
-    """
+    @property
+    @abstractmethod
+    def default_nodal_state_w(self) -> wp.array:
+        """Default nodal state ``[nodal_pos, nodal_vel]`` in simulation world frame.
+        Shape is (num_instances, max_sim_vertices_per_body) with dtype vec6f.
+        """
+        raise NotImplementedError()
 
     ##
     # Kinematic commands.
     ##
 
-    nodal_kinematic_target: wp.array = None
-    """Simulation mesh kinematic targets for the deformable bodies.
-    Shape is (num_instances, max_sim_vertices_per_body) with dtype vec4f.
+    @property
+    @abstractmethod
+    def nodal_kinematic_target(self) -> wp.array:
+        """Simulation mesh kinematic targets for the deformable bodies.
+        Shape is (num_instances, max_sim_vertices_per_body) with dtype vec4f.
 
-    The kinematic targets are used to drive the simulation mesh vertices to the target positions.
-    The targets are stored as (x, y, z, is_not_kinematic) where "is_not_kinematic" is a binary
-    flag indicating whether the vertex is kinematic or not. The flag is set to 0 for kinematic vertices
-    and 1 for non-kinematic vertices.
-    """
+        The kinematic targets are used to drive the simulation mesh vertices to the target positions.
+        The targets are stored as (x, y, z, is_not_kinematic) where "is_not_kinematic" is a binary
+        flag indicating whether the vertex is kinematic or not. The flag is set to 0 for kinematic vertices
+        and 1 for non-kinematic vertices.
+        """
+        raise NotImplementedError()
 
     ##
     # Properties.

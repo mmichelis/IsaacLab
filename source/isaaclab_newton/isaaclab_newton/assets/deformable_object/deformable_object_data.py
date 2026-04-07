@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import weakref
 
+import newton
+import torch
 import warp as wp
 
 from isaaclab.assets.deformable_object.base_deformable_object_data import BaseDeformableObjectData
 from isaaclab.utils.buffers import TimestampedBufferWarp as TimestampedBuffer
+from isaaclab.utils.math import normalize
 
 from .kernels import compute_mean_vec3f_over_vertices, compute_nodal_state_w, read_particles_to_nodal_buffer, vec6f
 
@@ -37,62 +40,72 @@ class DeformableObjectData(BaseDeformableObjectData):
     __backend_name__: str = "newton"
     """The name of the backend for the deformable object data."""
 
-    def __init__(self, root_view, device: str, num_instances: int, max_sim_vertices: int,
-                 particle_start_indices: wp.array):
+    def __init__(
+        self,
+        model: newton.Model,
+        device: str,
+    ):
         """Initialize the Newton deformable object data.
 
         Args:
-            root_view: The root deformable body view of the object. This is None for Newton
-                since no SoftBodyView exists; kept for API compatibility with the base class.
+            model: The Newton model for the deformable object.
             device: The device used for processing.
             num_instances: Number of deformable body instances (environments).
             max_sim_vertices: Maximum number of simulation mesh vertices per body.
-            particle_start_indices: Per-instance start index into Newton's flat particle
-                arrays. Shape is (num_instances,) with dtype int32.
         """
-        super().__init__(root_view, device)
+        super().__init__(None, device)
         # Store as weak reference if a view is provided (for API compatibility)
-        self._root_view = weakref.proxy(root_view) if root_view is not None else None
+        self._root_view = None
 
         # Store dimensions
-        self._num_instances = num_instances
-        self._max_sim_vertices = max_sim_vertices
-        self._particle_start_indices = particle_start_indices
+        self._num_instances = model.world_count
+        self._max_sim_vertices = model.particle_count # or model.tet_count for VBD in the future
+
+        # Primed flag -- once True, default buffers cannot be reassigned
+        self._is_primed = False
 
         # Set initial time stamp
         self._sim_timestamp = 0.0
 
-        # References to Newton state arrays (populated by _create_simulation_bindings)
-        self._sim_bind_particle_q: wp.array | None = None
-        self._sim_bind_particle_qd: wp.array | None = None
+        # Convert to direction vector
+        gravity = wp.to_torch(model.gravity)[0]
+        gravity_dir = torch.tensor((gravity[0], gravity[1], gravity[2]), device=self.device)
+        gravity_dir = normalize(gravity_dir.unsqueeze(0)).squeeze(0)
+        gravity_dir = gravity_dir.repeat(self._num_instances, 1)
+        forward_vec = torch.tensor((1.0, 0.0, 0.0), device=self.device).repeat(self._num_instances, 1)
 
-        # Initialize the lazy buffers
-        # -- node state in simulation world frame
-        self._nodal_pos_w = TimestampedBuffer((num_instances, max_sim_vertices), device, wp.vec3f)
-        self._nodal_vel_w = TimestampedBuffer((num_instances, max_sim_vertices), device, wp.vec3f)
-        self._nodal_state_w = TimestampedBuffer((num_instances, max_sim_vertices), device, vec6f)
-        # -- derived: root pos/vel (mean over vertices)
-        self._root_pos_w = TimestampedBuffer((num_instances,), device, wp.vec3f)
-        self._root_vel_w = TimestampedBuffer((num_instances,), device, wp.vec3f)
+        # Initialize constants
+        self.GRAVITY_VEC_W = wp.from_torch(gravity_dir, dtype=wp.vec3f)
+        self.FORWARD_VEC_B = wp.from_torch(forward_vec, dtype=wp.vec3f)
 
-    def _create_simulation_bindings(self, particle_q: wp.array, particle_qd: wp.array) -> None:
-        """Store references to Newton state particle arrays for lazy reads.
+        self._create_simulation_bindings()
+        self._create_buffers()
 
-        This method should be called after Newton's model/state is built so that the
-        data container can read particle positions and velocities on demand.
+    """
+    Properties - Primed state.
+    """
+
+    @property
+    def is_primed(self) -> bool:
+        """Whether the deformable object data is fully instantiated and ready to use."""
+        return self._is_primed
+
+    @is_primed.setter
+    def is_primed(self, value: bool) -> None:
+        """Set whether the deformable object data is fully instantiated and ready to use.
 
         .. note::
-            TODO: This needs runtime validation with an actual Newton XPBD soft body
-            simulation once the full solver integration is in place.
+            Once this quantity is set to True, it cannot be changed.
 
         Args:
-            particle_q: Newton state particle positions [m]. Flat array of shape
-                (total_particles,) with dtype vec3f.
-            particle_qd: Newton state particle velocities [m/s]. Flat array of shape
-                (total_particles,) with dtype vec3f.
+            value: The primed state.
+
+        Raises:
+            ValueError: If the deformable object data is already primed.
         """
-        self._sim_bind_particle_q = particle_q
-        self._sim_bind_particle_qd = particle_qd
+        if self._is_primed:
+            raise ValueError("The deformable object data is already primed.")
+        self._is_primed = value
 
     def update(self, dt: float) -> None:
         """Update the data for the deformable object.
@@ -103,32 +116,61 @@ class DeformableObjectData(BaseDeformableObjectData):
         # update the simulation timestamp
         self._sim_timestamp += dt
 
-    ##
-    # Defaults.
-    ##
-
-    default_nodal_state_w: wp.array = None
-    """Default nodal state ``[nodal_pos, nodal_vel]`` in simulation world frame.
-    Shape is (num_instances, max_sim_vertices_per_body) with dtype vec6f.
+    """
+    Defaults.
     """
 
-    ##
-    # Kinematic commands.
-    ##
+    @property
+    def default_nodal_state_w(self) -> wp.array:
+        """Default nodal state ``[nodal_pos, nodal_vel]`` in simulation world frame.
 
-    nodal_kinematic_target: wp.array = None
-    """Simulation mesh kinematic targets for the deformable bodies.
-    Shape is (num_instances, max_sim_vertices_per_body) with dtype vec4f.
+        Shape is (num_instances, max_sim_vertices_per_body) with dtype vec6f.
+        """
+        return self._default_nodal_state_w
 
-    The kinematic targets are used to drive the simulation mesh vertices to the target positions.
-    The targets are stored as (x, y, z, is_not_kinematic) where "is_not_kinematic" is a binary
-    flag indicating whether the vertex is kinematic or not. The flag is set to 0 for kinematic vertices
-    and 1 for non-kinematic vertices.
+    @default_nodal_state_w.setter
+    def default_nodal_state_w(self, value: wp.array) -> None:
+        """Set the default nodal state.
+
+        Args:
+            value: The default nodal state.
+
+        Raises:
+            ValueError: If the deformable object data is already primed.
+        """
+        if self._is_primed:
+            raise ValueError("The deformable object data is already primed.")
+        self._default_nodal_state_w = value
+
+    """
+    Kinematic commands.
     """
 
-    ##
-    # Properties.
-    ##
+    @property
+    def nodal_kinematic_target(self) -> wp.array:
+        """Simulation mesh kinematic targets for the deformable bodies.
+
+        Shape is (num_instances, max_sim_vertices_per_body) with dtype vec4f.
+
+        The kinematic targets are used to drive the simulation mesh vertices to the target positions.
+        The targets are stored as (x, y, z, is_not_kinematic) where ``is_not_kinematic`` is a binary
+        flag indicating whether the vertex is kinematic or not. The flag is set to 0 for kinematic vertices
+        and 1 for non-kinematic vertices.
+        """
+        return self._nodal_kinematic_target
+
+    @nodal_kinematic_target.setter
+    def nodal_kinematic_target(self, value: wp.array) -> None:
+        """Set the kinematic targets.
+
+        Args:
+            value: The kinematic targets.
+        """
+        self._nodal_kinematic_target = value
+
+    """
+    Properties - Nodal state.
+    """
 
     @property
     def nodal_pos_w(self) -> wp.array:
@@ -144,7 +186,6 @@ class DeformableObjectData(BaseDeformableObjectData):
                     dim=(self._num_instances, self._max_sim_vertices),
                     inputs=[
                         self._sim_bind_particle_q,
-                        self._particle_start_indices,
                         self._max_sim_vertices,
                     ],
                     outputs=[self._nodal_pos_w.data],
@@ -167,7 +208,6 @@ class DeformableObjectData(BaseDeformableObjectData):
                     dim=(self._num_instances, self._max_sim_vertices),
                     inputs=[
                         self._sim_bind_particle_qd,
-                        self._particle_start_indices,
                         self._max_sim_vertices,
                     ],
                     outputs=[self._nodal_vel_w.data],
@@ -195,9 +235,9 @@ class DeformableObjectData(BaseDeformableObjectData):
             self._nodal_state_w.timestamp = self._sim_timestamp
         return self._nodal_state_w.data
 
-    ##
-    # Derived properties.
-    ##
+    """
+    Derived properties.
+    """
 
     @property
     def root_pos_w(self) -> wp.array:
@@ -234,3 +274,29 @@ class DeformableObjectData(BaseDeformableObjectData):
             )
             self._root_vel_w.timestamp = self._sim_timestamp
         return self._root_vel_w.data
+    
+
+    def _create_simulation_bindings(self) -> None:
+        """Create bindings to the Newton simulation state arrays for lazy data retrieval.
+
+        This method should be called after Newton's model/state is built so that the
+        data container can read particle positions and velocities on demand.
+        """
+        # References to Newton state arrays (populated by _create_simulation_bindings)
+        self._sim_bind_particle_q: wp.array | None = None
+        self._sim_bind_particle_qd: wp.array | None = None
+
+    def _create_buffers(self) -> None:
+        """Create the buffers for the deformable object data."""
+        # Initialize the lazy buffers
+        # -- default state (set during _create_buffers)
+        self._default_nodal_state_w = wp.zeros((self._num_instances, self._max_sim_vertices), dtype=vec6f, device=self.device)
+        # -- kinematic targets (set during _create_buffers)
+        self._nodal_kinematic_target = wp.zeros((self._num_instances, self._max_sim_vertices), dtype=wp.vec4f, device=self.device)
+        # -- node state in simulation world frame
+        self._nodal_pos_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), self.device, wp.vec3f)
+        self._nodal_vel_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), self.device, wp.vec3f)
+        self._nodal_state_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), self.device, vec6f)
+        # -- derived: root pos/vel (mean over vertices)
+        self._root_pos_w = TimestampedBuffer((self._num_instances,), self.device, wp.vec3f)
+        self._root_vel_w = TimestampedBuffer((self._num_instances,), self.device, wp.vec3f)
