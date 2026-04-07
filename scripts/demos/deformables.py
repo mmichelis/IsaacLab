@@ -68,9 +68,8 @@ import torch
 import tqdm
 import warp as wp
 
-# deformables supported in PhysX
-from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
+from isaaclab.assets import DeformableObject, DeformableObjectCfg
+from isaaclab.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.sensors.camera import Camera, CameraCfg
