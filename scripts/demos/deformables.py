@@ -21,18 +21,6 @@ from isaaclab.app import AppLauncher
 
 # create argparser
 parser = argparse.ArgumentParser(description="This script demonstrates how to spawn deformable prims into the scene.")
-parser.add_argument(
-    "--total_time",
-    type=float,
-    default=4.0,
-    help="Total simulation time in seconds.",
-)
-parser.add_argument(
-    "--dt",
-    type=float,
-    default=1.0 / 60,
-    help="Simulation timestep.",
-)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # demos should open Kit visualizer by default
@@ -207,16 +195,14 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
     """Runs the simulation loop."""
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
-    num_steps = int(args_cli.total_time / sim_dt)
     sim_time = 0.0
     count = 0
 
     # Simulate physics
-    for t in range(num_steps):
+    while simulation_app.is_running():
         # reset
-        if sim_time > 4.0:
+        if count % int(3.0 / sim_dt) == 0:
             # reset counters
-            sim_time = 0.0
             count = 0
             # reset deformable object state
             for _, deform_body in enumerate(entities.values()):

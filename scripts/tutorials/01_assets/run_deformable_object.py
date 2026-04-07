@@ -22,18 +22,6 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on interacting with a deformable object.")
-parser.add_argument(
-    "--total_time",
-    type=float,
-    default=4.0,
-    help="Total simulation time in seconds.",
-)
-parser.add_argument(
-    "--dt",
-    type=float,
-    default=1.0 / 60,
-    help="Simulation timestep.",
-)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # demos should open Kit visualizer by default
@@ -106,7 +94,6 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
 
     # Define simulation stepping
     sim_dt = sim.get_physics_dt()
-    num_steps = int(args_cli.total_time / sim_dt)
     sim_time = 0.0
     count = 0
 
@@ -114,11 +101,10 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
     nodal_kinematic_target = wp.to_torch(cube_object.data.nodal_kinematic_target).clone()
 
     # Simulate physics
-    for t in range(num_steps):
-        # reset at start and after N seconds
-        if sim_time == 0.0 or sim_time > 3.0:
+    while simulation_app.is_running():
+        # reset at start and after 3 seconds
+        if count % int(3.0 / sim_dt) == 0:
             # reset counters
-            sim_time = 0.0
             count = 0
 
             # reset the nodal state of the object
@@ -163,16 +149,16 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         cube_object.update(sim_dt)
 
         # print the root positions every second
-        if t % int(1 / sim_dt) == 0:
+        if count % int(1.0 / sim_dt) == 0:
             print(
-                f"Time {t * sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}"
+                f"Time {sim_time:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}"
             )
 
 
 def main():
     """Main function."""
     # Load kit helper
-    sim_cfg = sim_utils.SimulationCfg(dt=args_cli.dt, device=args_cli.device)
+    sim_cfg = sim_utils.SimulationCfg(dt=0.01, device=args_cli.device)
     sim = SimulationContext(sim_cfg)
     # Set main camera
     sim.set_camera_view(eye=[2.0, 2.0, 2.0], target=[0.0, 0.0, 0.75])
