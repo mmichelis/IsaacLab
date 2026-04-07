@@ -26,6 +26,9 @@ class OmniPhysicsPropertiesCfg:
     kinematic_enabled: bool = False
     """Enables kinematic body. Defaults to False, which means that the body is not kinematic."""
 
+    mass: float | None = None
+    """The material mass in [kg]. Defaults to None, in which case the material density is used to compute the mass."""
+
 
 @configclass
 class PhysXDeformableBodyPropertiesCfg:

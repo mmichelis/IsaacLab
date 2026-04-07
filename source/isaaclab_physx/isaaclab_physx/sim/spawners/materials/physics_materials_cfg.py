@@ -23,7 +23,7 @@ class OmniPhysicsDeformableMaterialCfg:
     """
 
     density: float | None = None
-    """The material density. Defaults to None, in which case the simulation decides the default density."""
+    """The material density in [kg/m^3]. Defaults to None, in which case the simulation decides the default density."""
 
     static_friction: float = 0.25
     """The static friction. Defaults to 0.25."""
