@@ -377,7 +377,8 @@ def _spawn_from_usd_file(
             schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage, deformable_type)
         if cfg.mass_props is not None:
             raise ValueError(
-                "MassPropertiesCfg are not supported for deformable bodies and should be set through DeformableBodyPropertiesCfg(mass=<value>)."
+                """MassPropertiesCfg are not supported for deformable bodies
+                and should be set through DeformableBodyPropertiesCfg(mass=<value>)."""
             )
 
     # apply visual material

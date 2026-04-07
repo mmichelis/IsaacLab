@@ -399,7 +399,8 @@ def _spawn_mesh_geom_from_mesh(
         )
         if cfg.mass_props is not None:
             raise ValueError(
-                "MassPropertiesCfg are not supported for deformable bodies and should be set through DeformableBodyPropertiesCfg(mass=<value>)."
+                """MassPropertiesCfg are not supported for deformable bodies
+                and should be set through DeformableBodyPropertiesCfg(mass=<value>)."""
             )
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh
