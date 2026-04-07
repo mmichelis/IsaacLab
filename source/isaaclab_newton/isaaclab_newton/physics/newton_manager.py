@@ -31,6 +31,7 @@ from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from newton.sensors import SensorContact as NewtonContactSensor
 from newton.solvers import SolverBase, SolverFeatherstone, SolverMuJoCo, SolverNotifyFlags, SolverXPBD
 
+import isaaclab.sim as sim_utils
 from isaaclab.physics import PhysicsEvent, PhysicsManager
 from isaaclab.sim.utils.stage import get_current_stage
 from isaaclab.utils.timer import Timer
@@ -416,23 +417,28 @@ class NewtonManager(PhysicsManager):
             import usdrt
 
             body_paths = getattr(cls._model, "body_label", None) or getattr(cls._model, "body_key", None)
-            if body_paths is None:
-                raise RuntimeError("NewtonManager: model has no body_label/body_key, skipping USD/Fabric sync for RTX.")
-            cls._usdrt_stage = get_current_stage(fabric=True)
-            for i, prim_path in enumerate(body_paths):
-                prim = cls._usdrt_stage.GetPrimAtPath(prim_path)
-                prim.CreateAttribute(cls._newton_index_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
-                prim.GetAttribute(cls._newton_index_attr).Set(i)
-                # Tag with PhysicsRigidBodyAPI so cubric's eRigidBody mode
-                # applies Inverse propagation (preserves Newton's world
-                # transforms and derives local) instead of Forward.
-                prim.AddAppliedSchema("PhysicsRigidBodyAPI")
-                xformable_prim = usdrt.Rt.Xformable(prim)
-                if not xformable_prim.HasWorldXform():
-                    xformable_prim.SetWorldXformFromUsd()
+            if body_paths is None or len(body_paths) == 0:
+                logger.warning(
+                    "NewtonManager: model has no body_label/body_key (particle-only scene). "
+                    "Skipping USD/Fabric sync for RTX rendering."
+                )
+            else:
+                cls._usdrt_stage = get_current_stage(fabric=True)
 
-            cls._mark_transforms_dirty()
-            cls.sync_transforms_to_usd()
+                for i, prim_path in enumerate(body_paths):
+                    prim = cls._usdrt_stage.GetPrimAtPath(prim_path)
+                    prim.CreateAttribute(cls._newton_index_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                    prim.GetAttribute(cls._newton_index_attr).Set(i)
+                    # Tag with PhysicsRigidBodyAPI so cubric's eRigidBody mode
+                    # applies Inverse propagation (preserves Newton's world
+                    # transforms and derives local) instead of Forward.
+                    prim.AddAppliedSchema("PhysicsRigidBodyAPI")
+                    xformable_prim = usdrt.Rt.Xformable(prim)
+                    if not xformable_prim.HasWorldXform():
+                        xformable_prim.SetWorldXformFromUsd()
+
+                cls._mark_transforms_dirty()
+                cls.sync_transforms_to_usd()
 
     @classmethod
     def instantiate_builder_from_stage(cls):
@@ -466,7 +472,18 @@ class NewtonManager(PhysicsManager):
 
         if not env_paths:
             # No env Xforms — flat loading
-            builder.add_usd(stage, schema_resolvers=schema_resolvers)
+
+            # Check separately for deformables
+            deformable_prims = sim_utils.get_all_matching_child_prims(
+                "/World",
+                predicate=lambda prim: "OmniPhysicsDeformableBodyAPI" in prim.GetAppliedSchemas(),
+                traverse_instance_prims=False,
+            )
+            if len(deformable_prims) > 0:
+                for prim in deformable_prims:
+                    builder.add_cloth_mesh()
+            else:
+                builder.add_usd(stage, schema_resolvers=schema_resolvers)
         else:
             # Load everything except the env subtrees (ground plane, lights, etc.)
             ignore_paths = [path for _, path in env_paths]
