@@ -607,7 +607,9 @@ class DeformableObject(AssetBase):
             else:
                 # surface deformables must have a mesh in the hierarchy
                 has_mesh = (
-                    len(sim_utils.get_all_matching_child_prims(root_prim.GetPath(), lambda p: p.GetTypeName() == "Mesh"))
+                    len(
+                        sim_utils.get_all_matching_child_prims(root_prim.GetPath(), lambda p: p.GetTypeName() == "Mesh")
+                    )
                     > 0
                 )
                 if has_mesh:
