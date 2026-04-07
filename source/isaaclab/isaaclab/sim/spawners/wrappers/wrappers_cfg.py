@@ -3,10 +3,19 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import warnings
 from dataclasses import MISSING
 
 # deformables only supported in PhysX backend
-from isaaclab_physx.sim.spawners.spawner_cfg import DeformableObjectSpawnerCfg
+try:
+    from isaaclab_physx.sim.spawners.spawner_cfg import DeformableObjectSpawnerCfg
+except Exception as e:
+    warnings.warn(
+        f"""Could not import DeformableObjectSpawnerCfg, is isaaclab_physx installed?
+        Safe to ignore if using newton only. Complete exception: {e}"""
+    )
+    # import dummy class to avoid errors in type hints
+    from abc import ABC as DeformableObjectSpawnerCfg
 
 from isaaclab.sim.spawners.from_files import UsdFileCfg
 from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg, SpawnerCfg
