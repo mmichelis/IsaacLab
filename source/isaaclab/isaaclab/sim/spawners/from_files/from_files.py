@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from isaaclab.sim import converters, schemas
-from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg
+from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 from isaaclab.sim.utils import (
     add_labels,
     bind_physics_material,
@@ -363,9 +363,14 @@ def _spawn_from_usd_file(
     if cfg.joint_drive_props is not None:
         schemas.modify_joint_drive_properties(prim_path, cfg.joint_drive_props)
 
-    # modify deformable body properties
+    # define deformable body properties, or modify if deformable body API is present (PhysX only)
     if cfg.deformable_props is not None:
-        schemas.modify_deformable_body_properties(prim_path, cfg.deformable_props)
+        prim = stage.GetPrimAtPath(prim_path)
+        deformable_type = "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume"
+        if "OmniPhysicsDeformableBodyAPI" in prim.GetAppliedSchemas():
+            schemas.modify_deformable_body_properties(prim_path, cfg.deformable_props, stage)
+        else:
+            schemas.define_deformable_body_properties(prim_path, cfg.deformable_props, stage, deformable_type)
 
     # apply visual material
     if cfg.visual_material is not None:
@@ -380,6 +385,17 @@ def _spawn_from_usd_file(
         cfg.visual_material.func(material_path, cfg.visual_material)
         # apply material
         bind_visual_material(prim_path, material_path, stage=stage)
+
+    # apply physics material
+    if cfg.physics_material is not None:
+        if not cfg.physics_material_path.startswith("/"):
+            material_path = f"{prim_path}/{cfg.physics_material_path}"
+        else:
+            material_path = cfg.physics_material_path
+        # create material
+        cfg.physics_material.func(material_path, cfg.physics_material)
+        # apply material
+        bind_physics_material(prim_path, material_path, stage=stage)
 
     # return the prim
     return stage.GetPrimAtPath(prim_path)

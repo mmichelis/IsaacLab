@@ -9,6 +9,7 @@ __all__ = [
     "DeformableBodyMaterialCfg",
     "PhysicsMaterialCfg",
     "RigidBodyMaterialCfg",
+    "SurfaceDeformableBodyMaterialCfg",
     "spawn_from_mdl_file",
     "spawn_preview_surface",
     "GlassMdlCfg",
@@ -22,6 +23,7 @@ from .physics_materials_cfg import (
     DeformableBodyMaterialCfg,
     PhysicsMaterialCfg,
     RigidBodyMaterialCfg,
+    SurfaceDeformableBodyMaterialCfg,
 )
 from .visual_materials import spawn_from_mdl_file, spawn_preview_surface
 from .visual_materials_cfg import GlassMdlCfg, MdlFileCfg, PreviewSurfaceCfg, VisualMaterialCfg
