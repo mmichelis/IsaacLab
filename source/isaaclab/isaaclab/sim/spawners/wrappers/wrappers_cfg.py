@@ -15,7 +15,10 @@ except Exception as e:
         Safe to ignore if using newton only. Complete exception: {e}"""
     )
     # import dummy class to avoid errors in type hints
-    from abc import ABC as DeformableObjectSpawnerCfg
+    from isaaclab.utils import configclass
+    @configclass
+    class DeformableObjectSpawnerCfg:
+        deformable_props = None
 
 from isaaclab.sim.spawners.from_files import UsdFileCfg
 from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg, SpawnerCfg
