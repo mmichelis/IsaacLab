@@ -70,6 +70,7 @@ Guidelines for modifications:
 * David Leon
 * David Yang
 * Dhananjay Shendre
+* Dhyan Thakkar
 * Dongxuan Fan
 * Dorsa Rohani
 * Emily Sturman
