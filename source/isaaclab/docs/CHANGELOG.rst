@@ -1,7 +1,7 @@
 Changelog
 ---------
 
-4.5.26 (2026-04-05)
+4.5.27 (2026-04-08)
 ~~~~~~~~~~~~~~~~~~~
 
 Added
@@ -41,6 +41,20 @@ Removed
   Use ``isaaclab_physx.sim.spawners.materials`` instead.
 * Removed :class:`DeformableObjectSpawnerCfg` from ``isaaclab.sim.spawners``. Use
   ``isaaclab_physx.sim.spawners.spawner_cfg.DeformableObjectSpawnerCfg`` instead.
+
+
+4.5.26 (2026-04-08)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Changed ``SummaryMetrics`` backend to
+  dynamically render unknown benchmark phases. Previously only hard-coded phase
+  names (``startup``, ``runtime``, ``train``, ``frametime``) were printed in the
+  summary report; any other phases were silently dropped. Unknown phases now
+  render their ``SingleMeasurement`` and ``StatisticalMeasurement`` entries
+  automatically.
 
 
 4.5.25 (2026-04-01)
