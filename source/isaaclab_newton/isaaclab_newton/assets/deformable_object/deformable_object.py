@@ -25,7 +25,6 @@ from .kernels import (
     compute_nodal_state_w,
     set_kinematic_flags_to_one,
     vec6f,
-    write_nodal_buffer_to_particles,
     write_nodal_vec3f_to_buffer,
     write_nodal_vec4f_to_buffer,
 )
@@ -80,7 +79,7 @@ class DeformableObject(BaseDeformableObject):
 
     @property
     def num_instances(self) -> int:
-        return self._data._num_instances
+        return self.data._num_instances
 
     @property
     def num_bodies(self) -> int:
@@ -105,7 +104,7 @@ class DeformableObject(BaseDeformableObject):
     @property
     def max_sim_vertices_per_body(self) -> int:
         """The maximum number of simulation mesh vertices per deformable body."""
-        return self._data._max_sim_vertices
+        return self.data._max_sim_vertices
 
     @property
     def max_sim_elements_per_body(self) -> int:
@@ -134,7 +133,7 @@ class DeformableObject(BaseDeformableObject):
             env_ids = self._ALL_INDICES
 
         # reset nodal state to defaults
-        self.write_nodal_state_to_sim_index(self._data.default_nodal_state_w, env_ids=env_ids, full_data=True)
+        self.write_nodal_state_to_sim_index(self.data.default_nodal_state_w, env_ids=env_ids, full_data=True)
 
     def write_data_to_sim(self) -> None:
         """Write data to the simulation.
@@ -150,7 +149,7 @@ class DeformableObject(BaseDeformableObject):
         Args:
             dt: The time step size [s].
         """
-        self._data.update(dt)
+        self.data.update(dt)
 
     """
     Operations - Write to simulation.
@@ -235,34 +234,18 @@ class DeformableObject(BaseDeformableObject):
         # convert torch to warp if needed
         if isinstance(nodal_pos, torch.Tensor):
             nodal_pos = wp.from_torch(nodal_pos.contiguous(), dtype=wp.vec3f)
-        # write into internal buffer via kernel
+        # Write directly into Newton's particle state. nodal_pos_w is a strided view
+        # into state.particle_q with shape (num_instances, particles_per_world).
         wp.launch(
             write_nodal_vec3f_to_buffer,
             dim=(env_ids.shape[0], self.max_sim_vertices_per_body),
             inputs=[nodal_pos, env_ids, full_data],
-            outputs=[self._data._nodal_pos_w.data],
+            outputs=[self.data.nodal_pos_w],
             device=self.device,
         )
-        # update timestamp
-        self._data._nodal_pos_w.timestamp = self._data._sim_timestamp
-        # invalidate dependent buffers
-        self._data._nodal_state_w.timestamp = -1.0
-        self._data._root_pos_w.timestamp = -1.0
-        # sync to Newton particle state
-        if self._data._sim_bind_particle_q is not None:
-            wp.launch(
-                write_nodal_buffer_to_particles,
-                dim=(env_ids.shape[0], self.max_sim_vertices_per_body),
-                inputs=[
-                    self._data._nodal_pos_w.data,
-                    env_ids,
-                    self._data._particle_start_indices,
-                    self._max_sim_vertices_per_body,
-                    full_data,
-                ],
-                outputs=[self._data._sim_bind_particle_q],
-                device=self.device,
-            )
+        # invalidate derived buffers
+        self.data._nodal_state_w.timestamp = -1.0
+        self.data._root_pos_w.timestamp = -1.0
 
     def write_nodal_pos_to_sim_mask(
         self,
@@ -317,34 +300,18 @@ class DeformableObject(BaseDeformableObject):
         # convert torch to warp if needed
         if isinstance(nodal_vel, torch.Tensor):
             nodal_vel = wp.from_torch(nodal_vel.contiguous(), dtype=wp.vec3f)
-        # write into internal buffer via kernel
+        # Write directly into Newton's particle state. nodal_vel_w is a strided view
+        # into state.particle_qd with shape (num_instances, particles_per_world).
         wp.launch(
             write_nodal_vec3f_to_buffer,
             dim=(env_ids.shape[0], self.max_sim_vertices_per_body),
             inputs=[nodal_vel, env_ids, full_data],
-            outputs=[self._data._nodal_vel_w.data],
+            outputs=[self.data.nodal_vel_w],
             device=self.device,
         )
-        # update timestamp
-        self._data._nodal_vel_w.timestamp = self._data._sim_timestamp
-        # invalidate dependent buffers
-        self._data._nodal_state_w.timestamp = -1.0
-        self._data._root_vel_w.timestamp = -1.0
-        # sync to Newton particle state
-        if self._data._sim_bind_particle_qd is not None:
-            wp.launch(
-                write_nodal_buffer_to_particles,
-                dim=(env_ids.shape[0], self.max_sim_vertices_per_body),
-                inputs=[
-                    self._data._nodal_vel_w.data,
-                    env_ids,
-                    self._data._particle_start_indices,
-                    self._max_sim_vertices_per_body,
-                    full_data,
-                ],
-                outputs=[self._data._sim_bind_particle_qd],
-                device=self.device,
-            )
+        # invalidate derived buffers
+        self.data._nodal_state_w.timestamp = -1.0
+        self.data._root_vel_w.timestamp = -1.0
 
     def write_nodal_velocity_to_sim_mask(
         self,
@@ -410,7 +377,7 @@ class DeformableObject(BaseDeformableObject):
             write_nodal_vec4f_to_buffer,
             dim=(env_ids.shape[0], self.max_sim_vertices_per_body),
             inputs=[targets, env_ids, full_data],
-            outputs=[self._data.nodal_kinematic_target],
+            outputs=[self.data.nodal_kinematic_target],
             device=self.device,
         )
         # Note: Newton XPBD kinematic target application is handled during the solve step.
@@ -478,11 +445,11 @@ class DeformableObject(BaseDeformableObject):
         self._physics_sim_view = SimulationManager.get_physics_sim_view()
 
         # Create data container
-        self._data = DeformableObjectData(model=SimulationManager.get_model(), device=self.device)
+        self._data = DeformableObjectData(device=self.device)
 
         # Register callback to rebind after full resets (model/state recreation)
         self._physics_ready_handle = SimulationManager.register_callback(
-            lambda _: self._data._create_simulation_bindings(),
+            lambda _: self.data._create_simulation_bindings(),
             PhysicsEvent.PHYSICS_READY,
             name=f"deformable_rebind_{self.cfg.prim_path}",
         )

@@ -5,9 +5,7 @@
 
 from __future__ import annotations
 
-import weakref
-
-import newton
+import numpy as np
 import torch
 import warp as wp
 
@@ -17,7 +15,7 @@ from isaaclab.utils.math import normalize
 
 from isaaclab_newton.physics import NewtonManager as SimulationManager
 
-from .kernels import compute_mean_vec3f_over_vertices, compute_nodal_state_w, read_particles_to_nodal_buffer, vec6f
+from .kernels import compute_mean_vec3f_over_vertices, compute_nodal_state_w, vec6f
 
 
 class DeformableObjectData(BaseDeformableObjectData):
@@ -44,24 +42,25 @@ class DeformableObjectData(BaseDeformableObjectData):
 
     def __init__(
         self,
-        model: newton.Model,
         device: str,
     ):
         """Initialize the Newton deformable object data.
 
         Args:
-            model: The Newton model for the deformable object.
             device: The device used for processing.
-            num_instances: Number of deformable body instances (environments).
-            max_sim_vertices: Maximum number of simulation mesh vertices per body.
         """
         super().__init__(None, device)
-        # Store as weak reference if a view is provided (for API compatibility)
         self._root_view = None
 
-        # Store dimensions
-        self._num_instances = model.world_count
-        self._max_sim_vertices = model.particle_count # or model.tet_count for VBD in the future
+        model = SimulationManager.get_model()
+        self._num_instances = model.world_count # TODO: This should be the count of deformable bodies, not just the world count
+
+        # Compute per-world particle count from particle_world_start.
+        # particle_world_start has shape (world_count + 2,): entries 0..world_count-1
+        # are per-world start indices, second-last is global particle start, last is total.
+        pws = model.particle_world_start.numpy()
+        counts = np.diff(pws[:-1])
+        self._max_sim_vertices = np.max(counts)
 
         # Primed flag -- once True, default buffers cannot be reassigned
         self._is_primed = False
@@ -70,7 +69,7 @@ class DeformableObjectData(BaseDeformableObjectData):
         self._sim_timestamp = 0.0
 
         # Convert to direction vector
-        gravity = wp.to_torch(model.gravity)[0]
+        gravity = wp.to_torch(SimulationManager.get_model().gravity)[0]
         gravity_dir = torch.tensor((gravity[0], gravity[1], gravity[2]), device=self.device)
         gravity_dir = normalize(gravity_dir.unsqueeze(0)).squeeze(0)
         gravity_dir = gravity_dir.repeat(self._num_instances, 1)
@@ -179,46 +178,20 @@ class DeformableObjectData(BaseDeformableObjectData):
         """Nodal positions in simulation world frame [m].
 
         Shape is (num_instances, max_sim_vertices_per_body) with dtype vec3f.
+
+        This is a zero-copy strided view into Newton's ``state.particle_q``.
         """
-        if self._nodal_pos_w.timestamp < self._sim_timestamp:
-            if self._sim_bind_particle_q is not None:
-                # Read from Newton's flat particle array into per-instance buffer
-                # wp.launch(
-                #     read_particles_to_nodal_buffer,
-                #     dim=(self._num_instances, self._max_sim_vertices),
-                #     inputs=[
-                #         self._sim_bind_particle_q,
-                #         self._max_sim_vertices,
-                #     ],
-                #     outputs=[self._nodal_pos_w.data],
-                #     device=self.device,
-                # )
-                # Directly read from Newton's flat particle array into nodal_pos_w buffer
-                self._nodal_pos_w.data = SimulationManager.get_state_0().particle_q
-            self._nodal_pos_w.timestamp = self._sim_timestamp
-        return self._nodal_pos_w.data
+        return self._sim_bind_particle_q
 
     @property
     def nodal_vel_w(self) -> wp.array:
         """Nodal velocities in simulation world frame [m/s].
 
         Shape is (num_instances, max_sim_vertices_per_body) with dtype vec3f.
+
+        This is a zero-copy strided view into Newton's ``state.particle_qd``.
         """
-        if self._nodal_vel_w.timestamp < self._sim_timestamp:
-            if self._sim_bind_particle_qd is not None:
-                # Read from Newton's flat particle velocity array into per-instance buffer
-                wp.launch(
-                    read_particles_to_nodal_buffer,
-                    dim=(self._num_instances, self._max_sim_vertices),
-                    inputs=[
-                        self._sim_bind_particle_qd,
-                        self._max_sim_vertices,
-                    ],
-                    outputs=[self._nodal_vel_w.data],
-                    device=self.device,
-                )
-            self._nodal_vel_w.timestamp = self._sim_timestamp
-        return self._nodal_vel_w.data
+        return self._sim_bind_particle_qd
 
     @property
     def nodal_state_w(self) -> wp.array:
@@ -281,26 +254,69 @@ class DeformableObjectData(BaseDeformableObjectData):
     
 
     def _create_simulation_bindings(self) -> None:
-        """Create bindings to the Newton simulation state arrays for lazy data retrieval.
+        """Create strided views into Newton's flat particle arrays.
 
-        This method should be called after Newton's model/state is built so that the
-        data container can read particle positions and velocities on demand.
+        Creates ``wp.array`` views with shape ``(num_instances, particles_per_world)`` pointing
+        directly into ``state.particle_q`` and ``state.particle_qd`` via pointer arithmetic.
+        Since all worlds are cloned from the same prototype, particle counts are uniform and
+        the flat arrays are contiguous per world, allowing zero-copy reshaping.
+
+        This method is called during init and re-called on :attr:`PhysicsEvent.PHYSICS_READY`
+        when Newton recreates its model/state on full reset.
         """
-        # References to Newton state arrays (populated by _create_simulation_bindings)
-        self._sim_bind_particle_q: wp.array | None = None
-        self._sim_bind_particle_qd: wp.array | None = None
+        model = SimulationManager.get_model()
+        state = SimulationManager.get_state_0()
+
+        pws = model.particle_world_start.numpy()
+        offset = int(pws[0])
+        ppw = self._max_sim_vertices  # particles per world
+
+        # Verify all worlds have the same particle count
+        for w in range(self._num_instances):
+            count = int(pws[w + 1]) - int(pws[w])
+            assert count == ppw, (
+                f"World {w} has {count} particles but expected {ppw}. "
+                "All worlds must have the same particle count (cloned from prototype)."
+            )
+
+        # Strided view: flat particle_q → (num_instances, particles_per_world) vec3f
+        flat_q = state.particle_q
+        q_stride = flat_q.strides[0]
+        self._sim_bind_particle_q = wp.array(
+            ptr=int(flat_q.ptr) + offset * q_stride,
+            dtype=wp.vec3f,
+            shape=(self._num_instances, ppw),
+            strides=(ppw * q_stride, q_stride),
+            device=flat_q.device,
+            copy=False,
+        )
+
+        # Strided view: flat particle_qd → (num_instances, particles_per_world) vec3f
+        flat_qd = state.particle_qd
+        qd_stride = flat_qd.strides[0]
+        self._sim_bind_particle_qd = wp.array(
+            ptr=int(flat_qd.ptr) + offset * qd_stride,
+            dtype=wp.vec3f,
+            shape=(self._num_instances, ppw),
+            strides=(ppw * qd_stride, qd_stride),
+            device=flat_qd.device,
+            copy=False,
+        )
 
     def _create_buffers(self) -> None:
         """Create the buffers for the deformable object data."""
-        # Initialize the lazy buffers
-        # -- default state (set during _create_buffers)
-        self._default_nodal_state_w = wp.zeros((self._num_instances, self._max_sim_vertices), dtype=vec6f, device=self.device)
-        # -- kinematic targets (set during _create_buffers)
-        self._nodal_kinematic_target = wp.zeros((self._num_instances, self._max_sim_vertices), dtype=wp.vec4f, device=self.device)
-        # -- node state in simulation world frame
-        self._nodal_pos_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), self.device, wp.vec3f)
-        self._nodal_vel_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), self.device, wp.vec3f)
-        self._nodal_state_w = TimestampedBuffer((self._num_instances, self._max_sim_vertices), self.device, vec6f)
-        # -- derived: root pos/vel (mean over vertices)
+        # -- default state (set during _create_buffers, locked after priming)
+        self._default_nodal_state_w = wp.zeros(
+            (self._num_instances, self._max_sim_vertices), dtype=vec6f, device=self.device
+        )
+        # -- kinematic targets
+        self._nodal_kinematic_target = wp.zeros(
+            (self._num_instances, self._max_sim_vertices), dtype=wp.vec4f, device=self.device
+        )
+        # -- derived lazy buffers (nodal_pos_w and nodal_vel_w are direct pointer views,
+        #    so they don't need TimestampedBuffers)
+        self._nodal_state_w = TimestampedBuffer(
+            (self._num_instances, self._max_sim_vertices), self.device, vec6f
+        )
         self._root_pos_w = TimestampedBuffer((self._num_instances,), self.device, wp.vec3f)
         self._root_vel_w = TimestampedBuffer((self._num_instances,), self.device, wp.vec3f)

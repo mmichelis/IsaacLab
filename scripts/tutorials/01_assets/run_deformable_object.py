@@ -74,11 +74,11 @@ def design_scene():
     # Each group will have a robot in it
     origins = [[0.25, 0.25, 0.0], [-0.25, 0.25, 0.0], [0.25, -0.25, 0.0], [-0.25, -0.25, 0.0]]
     for i, origin in enumerate(origins):
-        sim_utils.create_prim(f"/World/Origin{i}", "Xform", translation=origin)
+        sim_utils.create_prim(f"/World/Env_{i}", "Xform", translation=origin)
 
     # 3D Deformable Object
     cfg = DeformableObjectCfg(
-        prim_path="/World/Origin.*/Cube",
+        prim_path="/World/Env_.*/Cube",
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.2, 0.2, 0.2),
             deformable_props=DeformableBodyPropertiesCfg(),
