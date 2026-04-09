@@ -92,7 +92,7 @@ PAD_SPAWN_CFG = sim_utils.UsdFileCfg(
     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.3, 0.7)),
     physics_material=DeformableBodyMaterialCfg(
         density=10.0,
-        youngs_modulus=1e4,
+        youngs_modulus=1e5,
         poissons_ratio=0.3,
         static_friction=0.6,
         dynamic_friction=0.6,
@@ -225,7 +225,7 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
     # humanoid robot — spawns on start platform
     robot: ArticulationCfg = G1_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(START_PLATFORM_X, 0.0, PLATFORM_Z+1.0)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(START_PLATFORM_X+1.0, 0.0, PLATFORM_Z+0.9)),
     )
 
     # -- 4x2 yoga pads --
@@ -278,7 +278,7 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.1, use_default_offset=True)
 
 
 @configclass
@@ -368,14 +368,14 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # -- task
-    robot_forward = RewTerm(func=robot_forward_vel, weight=1.5)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=5)
     goal_reached = RewTerm(
         func=reached_end_platform,
         weight=10.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
     # -- penalties
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
     dof_torques_l2 = RewTerm(
@@ -452,11 +452,7 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     fell_off = DoneTerm(
         func=mdp.root_height_below_minimum,
-        params={"minimum_height": 0.2, "asset_cfg": SceneEntityCfg("robot")},
-    )
-    torso_contact = DoneTerm(
-        func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="torso_link"), "threshold": 1.0},
+        params={"minimum_height": 0.7, "asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
     )
     out_of_bounds = DoneTerm(
         func=out_of_bounds,

@@ -45,3 +45,9 @@ class HumanoidBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class HumanoidYogaPadsPPORunnerCfg(HumanoidBalancePPORunnerCfg):
     experiment_name = "humanoid_yogapads"
+    save_interval = 100
+
+@configclass
+class HumanoidYogaballPPORunnerCfg(HumanoidBalancePPORunnerCfg):
+    experiment_name = "humanoid_yogaball"
+    save_interval = 100
