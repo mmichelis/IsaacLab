@@ -82,10 +82,31 @@ def ball_vel_y_penalty(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = Scene
     return ball_vel[:, 1].abs()
 
 
-def ball_vel_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("ball")) -> torch.Tensor:
-    """Ball velocity in world frame."""
-    asset = env.scene[asset_cfg.name]
-    return wp.to_torch(asset.data.root_vel_w)
+def ball_vel_in_robot_frame(
+    env: ManagerBasedEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ball_cfg: SceneEntityCfg = SceneEntityCfg("ball"),
+) -> torch.Tensor:
+    """Ball velocity in the robot's body frame (consistent with robot proprioception)."""
+    import isaaclab.utils.math as math_utils
+
+    robot = env.scene[robot_cfg.name]
+    ball = env.scene[ball_cfg.name]
+    ball_vel_w = wp.to_torch(ball.data.root_vel_w)
+    robot_quat = wp.to_torch(robot.data.root_quat_w)
+    return math_utils.quat_apply_inverse(robot_quat, ball_vel_w)
+
+
+def robot_heading_vec(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Robot forward direction projected onto the xy-plane. Shape: (num_envs, 2).
+
+    Returns [cos(yaw), sin(yaw)] — tells the policy which direction the robot faces in the world.
+    """
+    import isaaclab.utils.math as math_utils
+
+    robot = env.scene[asset_cfg.name]
+    heading = wp.to_torch(robot.data.heading_w)  # (N,) yaw angle
+    return torch.stack([torch.cos(heading), torch.sin(heading)], dim=-1)
 
 
 def robot_forward_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
@@ -117,7 +138,7 @@ def reset_ball(
     robot = env.scene[robot_cfg.name]
     ball = env.scene[ball_cfg.name]
 
-    # Get default ball nodal state and shift xy to match robot, keep default z (ball_height)
+    # Reset ball to default shape with zero velocities
     nodal_state = wp.to_torch(ball.data.default_nodal_state_w)[env_ids].clone()
     # Zero velocities
     nodal_state[..., 3:] = 0.0
@@ -140,8 +161,8 @@ class HumanoidYogaballSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.GroundPlaneCfg(
             size=(100.0, 100.0),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.0,
-                dynamic_friction=1.0,
+                static_friction=0.2,
+                dynamic_friction=0.2,
                 restitution=0.0,
             ),
         ),
@@ -158,7 +179,7 @@ class HumanoidYogaballSceneCfg(InteractiveSceneCfg):
     # humanoid robot
     robot: ArticulationCfg = G1_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 1.8)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.0, 0.0, 2.3)),
     )
 
     # deformable ball
@@ -166,23 +187,23 @@ class HumanoidYogaballSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Ball",
         spawn=sim_utils.UsdFileCfg(
             usd_path="/home/mmichelis/Documents/IsaacLab/scripts/demos/icosphere_3.usda",
-            scale=[0.5, 0.5, 0.5],
+            scale=[0.75, 0.75, 0.75],
             deformable_props=DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.9)),
             physics_material=SurfaceDeformableBodyMaterialCfg(
-                density=50.0,
-                youngs_modulus=1e5,
+                density=25.0,
+                youngs_modulus=5e5,
                 poissons_ratio=0.4,
                 surface_thickness=0.1,
-                surface_bend_stiffness=1e5,
-                surface_shear_stiffness=1e5,
-                surface_stretch_stiffness=1e5,
-                static_friction=0.5,
-                dynamic_friction=0.5,
+                surface_bend_stiffness=5e5,
+                surface_shear_stiffness=5e5,
+                surface_stretch_stiffness=5e5,
+                static_friction=0.9,
+                dynamic_friction=0.9,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 0.51),
+            pos=(0.0, 0.0, 0.76),
         ),
     )
 
@@ -209,13 +230,18 @@ class ObservationsCfg:
 
         # ball center of mass in env frame
         ball_pos = ObsTerm(func=ball_pos_env, params={"asset_cfg": SceneEntityCfg("ball")})
-        # ball velocity (so policy can anticipate ball dynamics)
-        ball_vel = ObsTerm(func=ball_vel_env, params={"asset_cfg": SceneEntityCfg("ball")})
+        # ball velocity in robot body frame (consistent with robot proprioception)
+        ball_vel = ObsTerm(
+            func=ball_vel_in_robot_frame,
+            params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
+        )
         # robot position relative to ball (so policy knows where it is on the ball)
         robot_rel_ball = ObsTerm(
             func=robot_pos_rel_ball,
             params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
         )
+        # robot heading direction in world frame (tells policy which way is +x)
+        heading = ObsTerm(func=robot_heading_vec, params={"asset_cfg": SceneEntityCfg("robot")})
         # standard proprioception
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
@@ -309,18 +335,18 @@ class RewardsCfg:
     # -- task: stay on the ball (penalize xy distance between robot and ball)
     stay_on_ball = RewTerm(
         func=robot_ball_xy_distance_sq,
-        weight=-10.0,
+        weight=-5.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
     )
     # -- alive bonus
     alive = RewTerm(func=mdp.is_alive, weight=0.5)
     # -- penalties
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-2.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
     # -- posture: maintain height (prevents leaning forward and toppling off)
     base_height = RewTerm(
         func=mdp.base_height_l2,
         weight=-2.0,
-        params={"target_height": 3.0, "asset_cfg": SceneEntityCfg("robot")},
+        params={"target_height": 2.25, "asset_cfg": SceneEntityCfg("robot")},
     )
     # -- penalize vertical velocity (prevents jumping)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
@@ -352,12 +378,12 @@ class RewardsCfg:
     # Penalize deviation from default of the joints that are not essential for locomotion
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.2,
+        weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.2,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -391,7 +417,7 @@ class RewardsCfg:
     )
     joint_deviation_torso = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.4,
+        weight=-0.2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
     )
 
@@ -405,6 +431,10 @@ class TerminationsCfg:
     fell_off = DoneTerm(
         func=mdp.root_height_below_minimum,
         params={"minimum_height": 1.0, "asset_cfg": SceneEntityCfg("robot")},
+    )
+    torso_contact = DoneTerm(
+        func=mdp.illegal_contact,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="torso_link"), "threshold": 1.0},
     )
 
 
