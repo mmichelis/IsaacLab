@@ -70,8 +70,10 @@ class PhysXDeformableBodyPropertiesCfg:
     """Enables self-collisions for the deformable body, preventing self-intersections."""
 
     self_collision_filter_distance: float | None = None
-    """Distance below which self-collision is disabled. The default value of -inf indicates that the simulation
-    selects a suitable value. Specified in units of distance and constrained to range [:attr:`rest_offset`*2, inf].
+    """Distance below which self-collision is disabled [m].
+
+    The default value of -inf indicates that the simulation selects a suitable value.
+    Constrained to range [:attr:`rest_offset` \* 2, inf].
     """
 
     enable_speculative_c_c_d: bool | None = None
@@ -117,7 +119,7 @@ class PhysXCollisionPropertiesCfg:
     """
 
     contact_offset: float | None = None
-    """Contact offset for the collision shape (in [m]).
+    """Contact offset for the collision shape [m].
 
     The collision detector generates contact points as soon as two shapes get closer than the sum of their
     contact offsets. This quantity should be non-negative which means that contact generation can potentially start
@@ -125,7 +127,7 @@ class PhysXCollisionPropertiesCfg:
     """
 
     rest_offset: float | None = None
-    """Rest offset for the collision shape (in [m]).
+    """Rest offset for the collision shape [m].
 
     The rest offset quantifies how close a shape gets to others at rest, At rest, the distance between two
     vertically stacked objects is the sum of their rest offsets. If a pair of shapes have a positive rest

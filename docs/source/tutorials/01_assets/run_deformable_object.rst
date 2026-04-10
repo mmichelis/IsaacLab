@@ -31,7 +31,7 @@ The tutorial corresponds to the ``run_deformable_object.py`` script in the ``scr
 
    .. literalinclude:: ../../../../scripts/tutorials/01_assets/run_deformable_object.py
       :language: python
-      :emphasize-lines: 79-96, 123-139, 144-152, 154-162
+      :emphasize-lines: 68-82, 110-126, 131-139, 141-149
       :linenos:
 
 
@@ -150,7 +150,7 @@ the average position of all the nodes in the mesh.
 .. literalinclude:: ../../../../scripts/tutorials/01_assets/run_deformable_object.py
    :language: python
    :start-at: # update buffers
-   :end-at: print(f"Time {t*sim_dt:.2f}s: \tRoot position (in world): {wp.to_torch(cube_object.data.root_pos_w)[:, :3]}")
+   :end-at: cube_object.data.root_pos_w
 
 
 The Code Execution
