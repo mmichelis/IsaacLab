@@ -16,9 +16,11 @@ except Exception as e:
     )
     # import dummy class to avoid errors in type hints
     from isaaclab.utils import configclass
+
     @configclass
     class DeformableObjectSpawnerCfg:
         deformable_props = None
+
 
 from isaaclab.sim.spawners.from_files import UsdFileCfg
 from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg, SpawnerCfg
