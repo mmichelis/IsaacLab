@@ -9,7 +9,7 @@ from dataclasses import MISSING
 # deformables only supported in PhysX backend
 try:
     from isaaclab_physx.sim.spawners.spawner_cfg import DeformableObjectSpawnerCfg
-except Exception as e:
+except ImportError as e:
     warnings.warn(
         f"""Could not import DeformableObjectSpawnerCfg, is isaaclab_physx installed?
         Safe to ignore if using newton only. Complete exception: {e}"""
