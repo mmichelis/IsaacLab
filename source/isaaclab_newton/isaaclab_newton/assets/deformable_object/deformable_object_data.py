@@ -287,7 +287,7 @@ class DeformableObjectData(BaseDeformableObjectData):
             dtype=wp.vec3f,
             shape=(self._num_instances, ppw),
             strides=(ppw * q_stride, q_stride),
-            device=flat_q.device,
+            device=self.device,
             copy=False,
         )
 
@@ -299,7 +299,7 @@ class DeformableObjectData(BaseDeformableObjectData):
             dtype=wp.vec3f,
             shape=(self._num_instances, ppw),
             strides=(ppw * qd_stride, qd_stride),
-            device=flat_qd.device,
+            device=self.device,
             copy=False,
         )
 
