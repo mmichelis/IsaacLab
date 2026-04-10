@@ -327,9 +327,9 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # -- task: reward ball forward velocity
-    ball_forward_vel = RewTerm(func=ball_vel_x, weight=4.0, params={"asset_cfg": SceneEntityCfg("ball")})
+    ball_forward_vel = RewTerm(func=ball_vel_x, weight=8.0, params={"asset_cfg": SceneEntityCfg("ball")})
     # -- task: reward robot moving forward (encourages moving WITH the ball, not kicking it away)
-    robot_forward = RewTerm(func=robot_forward_vel, weight=1.0, params={"asset_cfg": SceneEntityCfg("robot")})
+    robot_forward = RewTerm(func=robot_forward_vel, weight=2.0, params={"asset_cfg": SceneEntityCfg("robot")})
     # -- task: penalize ball lateral drift
     ball_lateral_vel = RewTerm(func=ball_vel_y_penalty, weight=-1.0, params={"asset_cfg": SceneEntityCfg("ball")})
     # -- task: stay on the ball (penalize xy distance between robot and ball)
@@ -339,7 +339,7 @@ class RewardsCfg:
         params={"robot_cfg": SceneEntityCfg("robot"), "ball_cfg": SceneEntityCfg("ball")},
     )
     # -- alive bonus
-    alive = RewTerm(func=mdp.is_alive, weight=0.5)
+    alive = RewTerm(func=mdp.is_alive, weight=1.0)
     # -- penalties
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
     # -- posture: maintain height (prevents leaning forward and toppling off)
@@ -365,7 +365,7 @@ class RewardsCfg:
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint"])
         }
     )
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
     # -- posture penalties
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
 
