@@ -49,7 +49,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 
 # Pad grid: 4 columns (x) x 2 rows (y)
-# soft_platform_98v.usda: extent [-1,1]^3 with baked scale (1,1,0.5)
+# soft_platform_386v.usda: extent [-1,1]^3 with baked scale (1,1,0.5)
 # At scale [0.5, 0.5, 0.5]: 1m x 1m x 0.5m pads
 PAD_HALF_X = 0.5  # half-width in x after scaling
 PAD_HALF_Y = 0.5  # half-width in y after scaling
@@ -91,11 +91,11 @@ PAD_SPAWN_CFG = sim_utils.UsdFileCfg(
     deformable_props=DeformableBodyPropertiesCfg(),
     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.3, 0.7)),
     physics_material=DeformableBodyMaterialCfg(
-        density=10.0,
-        youngs_modulus=1e5,
+        density=25.0,
+        youngs_modulus=5e4,
         poissons_ratio=0.3,
-        static_friction=0.6,
-        dynamic_friction=0.6,
+        static_friction=0.9,
+        dynamic_friction=0.9,
     ),
 )
 
@@ -136,6 +136,16 @@ def reset_all_pads(
             nodal_state = wp.to_torch(pad.data.default_nodal_state_w)[env_ids].clone()
             nodal_state[..., 3:] = 0.0
             pad.write_nodal_state_to_sim_index(nodal_state, env_ids=env_ids)
+
+
+def robot_heading_vec(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Robot forward direction projected onto the xy-plane. Shape: (num_envs, 2).
+
+    Returns [cos(yaw), sin(yaw)] — tells the policy which direction the robot faces.
+    """
+    robot = env.scene[asset_cfg.name]
+    heading = wp.to_torch(robot.data.heading_w)
+    return torch.stack([torch.cos(heading), torch.sin(heading)], dim=-1)
 
 
 def robot_forward_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
@@ -225,7 +235,7 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
     # humanoid robot — spawns on start platform
     robot: ArticulationCfg = G1_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(START_PLATFORM_X+1.0, 0.0, PLATFORM_Z+0.9)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(START_PLATFORM_X, 0.0, PLATFORM_Z+0.9)),
     )
 
     # -- 4x2 yoga pads --
@@ -297,6 +307,8 @@ class ObservationsCfg:
         )
         # pad centers (8 pads * 3 coords = 24 dims)
         pad_positions = ObsTerm(func=pad_centers_obs)
+        # robot heading direction in world frame (tells policy which way is +x)
+        heading = ObsTerm(func=robot_heading_vec, params={"asset_cfg": SceneEntityCfg("robot")})
         # standard proprioception
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
@@ -374,6 +386,8 @@ class RewardsCfg:
         weight=10.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
+    # -- alive bonus
+    alive = RewTerm(func=mdp.is_alive, weight=0.5)
     # -- penalties
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
@@ -401,12 +415,12 @@ class RewardsCfg:
     )
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.2,
+        weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.2,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -452,7 +466,11 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     fell_off = DoneTerm(
         func=mdp.root_height_below_minimum,
-        params={"minimum_height": 0.7, "asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
+        params={"minimum_height": 0.85, "asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
+    )
+    torso_contact = DoneTerm(
+        func=mdp.illegal_contact,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="torso_link"), "threshold": 1.0},
     )
     out_of_bounds = DoneTerm(
         func=out_of_bounds,
