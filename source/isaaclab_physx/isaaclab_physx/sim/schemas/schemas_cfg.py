@@ -70,7 +70,7 @@ class PhysXDeformableBodyPropertiesCfg:
     """Enables self-collisions for the deformable body, preventing self-intersections."""
 
     self_collision_filter_distance: float | None = None
-    """Distance below which self-collision is disabled [m].
+    r"""Distance below which self-collision is disabled [m].
 
     The default value of -inf indicates that the simulation selects a suitable value.
     Constrained to range [:attr:`rest_offset` \* 2, inf].
