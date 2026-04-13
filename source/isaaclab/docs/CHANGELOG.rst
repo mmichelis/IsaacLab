@@ -13,7 +13,7 @@ Added
 * Added physics material support to
   :func:`~isaaclab.sim.spawners.from_files.spawn_from_usd` for deformable bodies
   loaded from USD files.
-  
+
 Changed
 ^^^^^^^
 

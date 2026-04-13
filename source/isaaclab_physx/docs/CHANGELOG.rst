@@ -50,7 +50,7 @@ Changed
   ``max_simulation_nodes_per_body``, ``max_collision_nodes_per_body``.
 * Changed kinematic target operations to raise ``ValueError`` when called on
   surface deformable bodies, which do not support kinematic targets.
-  
+
 
 0.5.14 (2026-04-06)
 ~~~~~~~~~~~~~~~~~~~
