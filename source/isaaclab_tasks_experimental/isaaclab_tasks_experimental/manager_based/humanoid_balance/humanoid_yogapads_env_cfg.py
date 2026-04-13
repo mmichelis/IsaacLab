@@ -92,7 +92,7 @@ PAD_SPAWN_CFG = sim_utils.UsdFileCfg(
     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.3, 0.7)),
     physics_material=DeformableBodyMaterialCfg(
         density=25.0,
-        youngs_modulus=5e4,
+        youngs_modulus=8e4,
         poissons_ratio=0.3,
         static_friction=0.9,
         dynamic_friction=0.9,
@@ -152,6 +152,37 @@ def robot_forward_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneE
     """Robot base forward (x) velocity in world frame."""
     asset = env.scene[asset_cfg.name]
     return wp.to_torch(asset.data.root_vel_w)[:, 0]
+
+
+def robot_xy_vel_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize high horizontal speed (squared xy velocity magnitude).
+
+    This makes slow walking cheap and fast launching expensive.
+    At 0.3 m/s: penalty = 0.09. At 1.0 m/s: penalty = 1.0. At 2.0 m/s: penalty = 4.0.
+    """
+    asset = env.scene[asset_cfg.name]
+    vel_xy = wp.to_torch(asset.data.root_vel_w)[:, :2]
+    return (vel_xy ** 2).sum(dim=-1)
+
+
+def x_progress_beyond_start(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    platform_start_cfg: SceneEntityCfg = SceneEntityCfg("platform_start"),
+) -> torch.Tensor:
+    """Reward for how far past the start platform edge the robot has moved.
+
+    Returns 0 when still on or behind the start platform, positive value
+    proportional to distance into the pad zone. This incentivizes stepping
+    onto the pads rather than standing at the edge.
+    """
+    robot = env.scene[robot_cfg.name]
+    p_start = env.scene[platform_start_cfg.name]
+    robot_x = wp.to_torch(robot.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0]
+    # Start platform right edge: platform_x + 0.5 (half platform width)
+    start_edge_x = wp.to_torch(p_start.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0] + 0.5
+    progress = robot_x - start_edge_x
+    return torch.clamp(progress, min=0.0)
 
 
 def out_of_bounds(
@@ -379,18 +410,28 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task
-    robot_forward = RewTerm(func=robot_forward_vel, weight=5)
+    # -- task: forward velocity (encourages movement)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=5.0)
+    # -- task: position progress beyond start platform (rewards being on the pads, not at the edge)
+    pad_progress = RewTerm(
+        func=x_progress_beyond_start,
+        weight=2.0,
+        params={"robot_cfg": SceneEntityCfg("robot"), "platform_start_cfg": SceneEntityCfg("platform_start")},
+    )
+    # -- task: bonus for reaching end platform
     goal_reached = RewTerm(
         func=reached_end_platform,
         weight=10.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
-    # -- alive bonus
-    alive = RewTerm(func=mdp.is_alive, weight=0.5)
+    # -- alive bonus (reduced so standing still doesn't dominate)
+    alive = RewTerm(func=mdp.is_alive, weight=0.25)
     # -- penalties
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    # -- penalize high speed (quadratic — slow walking is cheap, fast launching is expensive)
+    speed_penalty = RewTerm(func=robot_xy_vel_l2, weight=-3.0)
+    # -- penalize vertical velocity (prevents launching off pads)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-5.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
