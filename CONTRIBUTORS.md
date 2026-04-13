@@ -35,6 +35,7 @@ Guidelines for modifications:
 * Matthew Trepte
 * Mayank Mittal
 * Mike Yan Michelis
+* Mikhail Yurasov
 * Nikita Rudin
 * Octi (Zhengyu) Zhang
 * Ossama Ahmed
@@ -124,7 +125,6 @@ Guidelines for modifications:
 * Michael Noseworthy
 * Miguel Alonso Jr
 * Mihir Kulkarni
-* Mikhail Yurasov
 * Mingxue Gu
 * Mingyu Lee
 * Muhong Guo

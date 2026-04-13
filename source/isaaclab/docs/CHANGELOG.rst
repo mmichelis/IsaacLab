@@ -1,7 +1,7 @@
 Changelog
 ---------
 
-4.5.28 (2026-04-10)
+4.5.31 (2026-04-13)
 ~~~~~~~~~~~~~~~~~~~
 
 Added
@@ -13,11 +13,11 @@ Added
 * Added physics material support to
   :func:`~isaaclab.sim.spawners.from_files.spawn_from_usd` for deformable bodies
   loaded from USD files.
-
+  
 Changed
 ^^^^^^^
 
-* Moved :class:`DeformableBodyPropertiesCfg`, :class:`DeformableBodyMaterialCfg`,
+  * Moved :class:`DeformableBodyPropertiesCfg`, :class:`DeformableBodyMaterialCfg`,
   and :class:`DeformableObjectSpawnerCfg` from ``isaaclab`` to ``isaaclab_physx``.
   These are PhysX-specific and are now imported from
   ``isaaclab_physx.sim.schemas``, ``isaaclab_physx.sim.spawners.materials``, and
@@ -41,6 +41,41 @@ Removed
   Use ``isaaclab_physx.sim.spawners.materials`` instead.
 * Removed :class:`DeformableObjectSpawnerCfg` from ``isaaclab.sim.spawners``. Use
   ``isaaclab_physx.sim.spawners.spawner_cfg.DeformableObjectSpawnerCfg`` instead.
+
+
+4.5.30 (2026-04-13)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added :func:`~isaaclab.utils.warp.math_ops.transform_to_vec_quat` utility for
+  zero-copy splitting of ``wp.transformf`` arrays into ``vec3f`` and ``quatf`` views.
+
+
+4.5.29 (2026-04-10)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added flag to toggle dataset compression in RecorderManager and dataset file handler.
+
+Changed
+^^^^^^^
+
+* Changed RecorderManager to clone value tensors before adding to episode data, removing multiple clones in ``episodes.add()`` and replacing with a single clone.
+
+
+4.5.28 (2026-04-10)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added :meth:`~isaaclab.physics.PhysicsManager.wait_for_playing` hook and
+  integrated it into :meth:`~isaaclab.sim.SimulationContext.step` so the
+  training loop blocks while the Kit GUI timeline is paused.
 
 
 4.5.27 (2026-04-08)
