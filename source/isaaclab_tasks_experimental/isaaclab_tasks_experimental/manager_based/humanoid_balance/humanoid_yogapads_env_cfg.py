@@ -411,11 +411,11 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # -- task: forward velocity (encourages movement)
-    robot_forward = RewTerm(func=robot_forward_vel, weight=5.0)
-    # -- task: position progress beyond start platform (rewards being on the pads, not at the edge)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=3.0)
+    # -- task: position progress beyond start platform (strong reward for being on the pads)
     pad_progress = RewTerm(
         func=x_progress_beyond_start,
-        weight=2.0,
+        weight=5.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_start_cfg": SceneEntityCfg("platform_start")},
     )
     # -- task: bonus for reaching end platform
@@ -424,8 +424,7 @@ class RewardsCfg:
         weight=10.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
-    # -- alive bonus (reduced so standing still doesn't dominate)
-    alive = RewTerm(func=mdp.is_alive, weight=0.25)
+    # -- no alive bonus: pad_progress already rewards surviving further along the course
     # -- penalties
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
     # -- penalize high speed (quadratic — slow walking is cheap, fast launching is expensive)
