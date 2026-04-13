@@ -1,6 +1,16 @@
 Changelog
 ---------
 
+0.5.12 (2026-04-13)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added ``set_friction_index/mask`` and ``set_restitution_index/mask`` methods to
+  Newton assets for native material property randomization.
+
+
 0.5.11 (2026-04-13)
 ~~~~~~~~~~~~~~~~~~~
 
@@ -10,6 +20,7 @@ Added
 * Added :class:`~isaaclab_newton.sensors.frame_transformer.FrameTransformer` sensor
   wrapping Newton's ``SensorFrameTransform``. Supports per-env source/target site
   registration, wildcard body matching, and zero-copy transform views.
+
 
 
 0.5.10 (2026-04-05)
