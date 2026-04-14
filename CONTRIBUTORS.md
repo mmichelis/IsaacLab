@@ -74,6 +74,7 @@ Guidelines for modifications:
 * Dhyan Thakkar
 * Dongxuan Fan
 * Dorsa Rohani
+* Ege Sekkin
 * Emily Sturman
 * Emmanuel Ferdman
 * Fabian Jenelten
