@@ -46,6 +46,7 @@ class HumanoidBalancePPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class HumanoidYogaPadsPPORunnerCfg(HumanoidBalancePPORunnerCfg):
     experiment_name = "humanoid_yogapads"
     save_interval = 100
+    num_steps_per_env = 96
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,

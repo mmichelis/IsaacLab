@@ -54,7 +54,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 PAD_HALF_X = 0.5  # half-width in x after scaling
 PAD_HALF_Y = 0.5  # half-width in y after scaling
 PAD_HALF_Z = 0.25  # half-height in z after scaling
-PAD_GAP = 0.1
+PAD_GAP = 0.01
 PAD_SPACING_X = 2 * PAD_HALF_X + PAD_GAP  # 1.1m center-to-center
 PAD_SPACING_Y = 2 * PAD_HALF_Y + PAD_GAP  # 1.1m center-to-center
 PAD_Z = PAD_HALF_Z + 0.02  # center z: half-height + 1cm elevation
@@ -72,7 +72,7 @@ BOX_X_LEN = BOX_X_MAX - BOX_X_MIN  # 4.3
 BOX_Y_LEN = BOX_Y_MAX - BOX_Y_MIN  # 2.1
 
 # Platform positions (5cm gap to box edges)
-PLATFORM_GAP = 0.05
+PLATFORM_GAP = 0.0
 START_PLATFORM_X = BOX_X_MIN - PLATFORM_GAP - 0.5  # -0.55
 END_PLATFORM_X = BOX_X_MAX + PLATFORM_GAP + 0.5  # 4.85
 PAD_TOP_Z = PAD_Z + PAD_HALF_Z  # ~0.51
@@ -91,8 +91,8 @@ PAD_SPAWN_CFG = sim_utils.UsdFileCfg(
     deformable_props=DeformableBodyPropertiesCfg(),
     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.3, 0.7)),
     physics_material=DeformableBodyMaterialCfg(
-        density=25.0,
-        youngs_modulus=8e4,
+        density=100.0,
+        youngs_modulus=5e5,
         poissons_ratio=0.3,
         static_friction=0.9,
         dynamic_friction=0.9,
@@ -165,45 +165,28 @@ def robot_xy_vel_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEnt
     return (vel_xy ** 2).sum(dim=-1)
 
 
-def x_progress_beyond_start(
-    env: ManagerBasedRLEnv,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    platform_start_cfg: SceneEntityCfg = SceneEntityCfg("platform_start"),
-) -> torch.Tensor:
-    """Reward for how far past the start platform edge the robot has moved.
-
-    Returns 0 when still on or behind the start platform, positive value
-    proportional to distance into the pad zone. This incentivizes stepping
-    onto the pads rather than standing at the edge.
-    """
-    robot = env.scene[robot_cfg.name]
-    p_start = env.scene[platform_start_cfg.name]
-    robot_x = wp.to_torch(robot.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0]
-    # Start platform right edge: platform_x + 0.5 (half platform width)
-    start_edge_x = wp.to_torch(p_start.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0] + 0.5
-    progress = robot_x - start_edge_x
-    return torch.clamp(progress, min=0.0)
-
-
 def out_of_bounds(
     env: ManagerBasedRLEnv,
-    margin: float = 0.5,
+    min_height: float = 0.85,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    platform_start_cfg: SceneEntityCfg = SceneEntityCfg("platform_start"),
     platform_end_cfg: SceneEntityCfg = SceneEntityCfg("platform_end"),
 ) -> torch.Tensor:
-    """Terminate if robot leaves the bounding box around the course."""
+    """Terminate if robot leaves the pad area or falls to the ground.
+
+    Checks that the robot stays within the pad grid xy bounds (plus end platform)
+    and above min_height. If the robot steps off any edge of the pads, it either
+    leaves the xy bounds or drops to the ground (below min_height).
+    """
     robot = env.scene[robot_cfg.name]
-    p_start = env.scene[platform_start_cfg.name]
     p_end = env.scene[platform_end_cfg.name]
 
     robot_pos = wp.to_torch(robot.data.root_pos_w) - env.scene.env_origins
-    start_x = wp.to_torch(p_start.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0]
     end_x = wp.to_torch(p_end.data.root_pos_w)[:, 0] - env.scene.env_origins[:, 0]
 
-    x_out = (robot_pos[:, 0] < start_x - margin) | (robot_pos[:, 0] > end_x + margin)
-    y_out = robot_pos[:, 1].abs() > (BOX_Y_MAX + margin)
-    return x_out | y_out
+    x_out = (robot_pos[:, 0] < BOX_X_MIN) | (robot_pos[:, 0] > end_x + 0.5)
+    y_out = (robot_pos[:, 1] < BOX_Y_MIN) | (robot_pos[:, 1] > BOX_Y_MAX)
+    z_out = robot_pos[:, 2] < min_height
+    return x_out | y_out | z_out
 
 
 def reached_end_platform(
@@ -263,10 +246,11 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    # humanoid robot — spawns on start platform
+    # humanoid robot — spawns on the first two pad columns (no rigid safe zone)
+    # Mid-point of first two pad columns, with reset randomization covering both
     robot: ArticulationCfg = G1_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(START_PLATFORM_X, 0.0, PLATFORM_Z+0.9)),
+        init_state=ArticulationCfg.InitialStateCfg(pos=(1.0, 0.0, PAD_TOP_Z + 0.8)),
     )
 
     # -- 4x2 yoga pads --
@@ -279,19 +263,7 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
     pad_3_0: DeformableObjectCfg = _pad_cfg("3_0", PAD_X_CENTERS[3], PAD_Y_CENTERS[0])
     pad_3_1: DeformableObjectCfg = _pad_cfg("3_1", PAD_X_CENTERS[3], PAD_Y_CENTERS[1])
 
-    # -- Platforms --
-    platform_start: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/PlatformStart",
-        spawn=sim_utils.MeshCuboidCfg(
-            size=(1.0, 1.0, 0.15),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=0.8, dynamic_friction=0.6),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.85, 0.65)),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(START_PLATFORM_X, 0.0, PLATFORM_Z)),
-    )
-
+    # -- End platform only (start platform removed — robot spawns on pads) --
     platform_end: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/PlatformEnd",
         spawn=sim_utils.MeshCuboidCfg(
@@ -319,7 +291,7 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.1, use_default_offset=True)
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
 
 
 @configclass
@@ -369,8 +341,8 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.6, 1.0),
-            "dynamic_friction_range": (0.4, 0.8),
+            "static_friction_range": (0.7, 0.9),
+            "dynamic_friction_range": (0.5, 0.7),
             "restitution_range": (0.0, 0.0),
             "num_buckets": 64,
         },
@@ -381,7 +353,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.1, 0.1), "yaw": (-0.3, 0.3)},
+            "pose_range": {"x": (-0.5, 0.0), "y": (-0.4, 0.4), "yaw": (-0.2, 0.2)},
             "velocity_range": {
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
@@ -412,25 +384,20 @@ class RewardsCfg:
 
     # -- task: forward velocity (encourages movement)
     robot_forward = RewTerm(func=robot_forward_vel, weight=3.0)
-    # -- task: position progress beyond start platform (strong reward for being on the pads)
-    pad_progress = RewTerm(
-        func=x_progress_beyond_start,
-        weight=5.0,
-        params={"robot_cfg": SceneEntityCfg("robot"), "platform_start_cfg": SceneEntityCfg("platform_start")},
-    )
     # -- task: bonus for reaching end platform
     goal_reached = RewTerm(
         func=reached_end_platform,
         weight=10.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
-    # -- no alive bonus: pad_progress already rewards surviving further along the course
+    # -- alive bonus (must exceed standing-still penalty budget of ~0.26/step)
+    alive = RewTerm(func=mdp.is_alive, weight=0.5)
     # -- penalties
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
-    # -- penalize high speed (quadratic — slow walking is cheap, fast launching is expensive)
-    speed_penalty = RewTerm(func=robot_xy_vel_l2, weight=-3.0)
-    # -- penalize vertical velocity (prevents launching off pads)
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-5.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
+    # -- penalize high speed (reduced — deformable surfaces need dynamic movement)
+    speed_penalty = RewTerm(func=robot_xy_vel_l2, weight=-0.5)
+    # -- penalize vertical velocity (reduced — stepping on deformable pads creates unavoidable z-velocity)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
@@ -447,7 +414,7 @@ class RewardsCfg:
         },
     )
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.1)
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-2.0,
@@ -460,7 +427,7 @@ class RewardsCfg:
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.05,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -494,7 +461,7 @@ class RewardsCfg:
     )
     joint_deviation_torso = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.4,
+        weight=-0.15,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
     )
 
@@ -504,10 +471,6 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    fell_off = DoneTerm(
-        func=mdp.root_height_below_minimum,
-        params={"minimum_height": 0.85, "asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
-    )
     torso_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="torso_link"), "threshold": 1.0},
@@ -515,9 +478,8 @@ class TerminationsCfg:
     out_of_bounds = DoneTerm(
         func=out_of_bounds,
         params={
-            "margin": 0.5,
+            "min_height": 0.65,
             "robot_cfg": SceneEntityCfg("robot"),
-            "platform_start_cfg": SceneEntityCfg("platform_start"),
             "platform_end_cfg": SceneEntityCfg("platform_end"),
         },
     )
@@ -534,7 +496,7 @@ class HumanoidYogaPadsEnvCfg(ManagerBasedRLEnvCfg):
 
     # Scene settings — fewer envs due to 8 deformable pads per env
     scene: HumanoidYogaPadsSceneCfg = HumanoidYogaPadsSceneCfg(
-        num_envs=256, env_spacing=8.0, replicate_physics=False
+        num_envs=256, env_spacing=6.0, replicate_physics=False
     )
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
@@ -549,7 +511,7 @@ class HumanoidYogaPadsEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 30.0
+        self.episode_length_s = 20.0
         # viewer settings
         self.viewer.resolution = (1920, 1080)
         # simulation settings
