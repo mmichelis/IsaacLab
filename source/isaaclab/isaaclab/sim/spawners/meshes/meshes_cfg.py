@@ -157,4 +157,4 @@ class MeshSquareCfg(MeshCfg):
     size: float = MISSING
     """Edge length of the square (in m)."""
     resolution: tuple[int, int] = (5, 5)
-    """Resolution of the square (in vertices per side)."""
+    """Resolution of the square (in elements/edges per side)."""
