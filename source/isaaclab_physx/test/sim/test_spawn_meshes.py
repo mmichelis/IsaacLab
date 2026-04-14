@@ -14,11 +14,11 @@ simulation_app = AppLauncher(headless=True).app
 
 
 import pytest
+from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
+from isaaclab_physx.sim.spawners.materials.physics_materials_cfg import DeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.sim import SimulationCfg, SimulationContext
-from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
-from isaaclab_physx.sim.spawners.materials.physics_materials_cfg import DeformableBodyMaterialCfg
 
 
 @pytest.fixture
@@ -42,6 +42,7 @@ def sim():
 """
 Physics properties.
 """
+
 
 def test_spawn_cone_with_deformable_props(sim):
     """Test spawning of UsdGeomMesh prim for a cone with deformable body API."""
@@ -87,7 +88,7 @@ def test_spawn_cone_with_deformable_and_mass_props(sim):
 
 
 def test_spawn_cone_with_deformable_and_density_props(sim):
-    """Test spawning of UsdGeomMesh prim for a cone with deformable body and mass API, 
+    """Test spawning of UsdGeomMesh prim for a cone with deformable body and mass API,
     specifying density instead of mass.
     """
     # Spawn cone
@@ -137,4 +138,3 @@ def test_spawn_cone_with_all_deformable_props(sim):
     sim.play()
     for _ in range(10):
         sim.step()
-

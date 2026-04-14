@@ -13,12 +13,11 @@ simulation_app = AppLauncher(headless=True).app
 """Rest everything follows."""
 
 
-from isaaclab_physx.sim.spawners.materials.physics_materials_cfg import DeformableBodyMaterialCfg
 import pytest
+from isaaclab_physx.sim.spawners.materials.physics_materials_cfg import DeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.sim import SimulationCfg, SimulationContext
-from isaaclab.utils.assets import NVIDIA_NUCLEUS_DIR
 
 
 @pytest.fixture
@@ -51,6 +50,4 @@ def test_spawn_deformable_body_material(sim):
     assert prim.GetAttribute("omniphysics:dynamicFriction").Get() == cfg.dynamic_friction
     assert prim.GetAttribute("omniphysics:youngsModulus").Get() == cfg.youngs_modulus
     assert prim.GetAttribute("omniphysics:poissonsRatio").Get() == cfg.poissons_ratio
-    assert prim.GetAttribute("physxDeformableBody:elasticityDamping").Get() == pytest.approx(
-        cfg.elasticity_damping
-    )
+    assert prim.GetAttribute("physxDeformableBody:elasticityDamping").Get() == pytest.approx(cfg.elasticity_damping)
