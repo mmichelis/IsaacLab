@@ -77,8 +77,7 @@ class PickClothPhysicsCfg(PresetCfg):
         ),
         model_cfg=MODEL_CFG,
         num_substeps=10,
-        # use_cuda_graph=True,
-        use_cuda_graph=False,
+        use_cuda_graph=True,
     )
 
     newton: NewtonCfg = default
