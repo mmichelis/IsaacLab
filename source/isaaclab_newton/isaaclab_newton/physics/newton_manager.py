@@ -348,7 +348,12 @@ class NewtonManager(PhysicsManager):
         No-op when there is no ``_usdrt_stage``, no simulation state, or no
         deformable bodies registered.
         """
-        if cls._usdrt_stage is None or cls._state_0 is None or not cls._deformable_registry or cls._state_0.particle_q is None:
+        if (
+            cls._usdrt_stage is None
+            or cls._state_0 is None
+            or not cls._deformable_registry
+            or cls._state_0.particle_q is None
+        ):
             return
         if not cls._particles_dirty:
             return
@@ -741,6 +746,7 @@ class NewtonManager(PhysicsManager):
             # Setup Fabric particle sync for deformable bodies.
             if cls._deformable_registry:
                 import re
+
                 from pxr import Usd, UsdGeom
 
                 if cls._usdrt_stage is None:
@@ -971,9 +977,8 @@ class NewtonManager(PhysicsManager):
                 cfg_dict = {k: v for k, v in cfg_dict.items() if k in valid_solver_args}
                 logger.info(f"VBD: Creating SolverVBD with args: {cfg_dict}")
                 logger.info(f"VBD: model particle_count={getattr(cls._model, 'particle_count', 'N/A')}")
-                logger.info(
-                    f"VBD: model particle_color_groups has {len(getattr(cls._model, 'particle_color_groups', []))} groups"
-                )
+                num_groups = len(getattr(cls._model, "particle_color_groups", []))
+                logger.info(f"VBD: model particle_color_groups has {num_groups} groups")
                 cls._solver = SolverVBD(cls._model, **cfg_dict)
                 logger.info("VBD: SolverVBD created successfully")
             elif cls._solver_type == "coupled":

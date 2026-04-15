@@ -49,6 +49,7 @@ Guidelines for modifications:
 * Alice Zhou
 * Amr Mousa
 * Andrej Orsula
+* Anka He Chen
 * Anke Zhao
 * Anton Bjørndahl Mortensen
 * Antonin Raffin
@@ -71,6 +72,7 @@ Guidelines for modifications:
 * David Yang
 * Dhananjay Shendre
 * Dhyan Thakkar
+* Donglai Xiang
 * Dongxuan Fan
 * Dorsa Rohani
 * Ege Sekkin
@@ -124,6 +126,7 @@ Guidelines for modifications:
 * Michael Lin
 * Michael Noseworthy
 * Miguel Alonso Jr
+* Mike Yan Michelis
 * Mihir Kulkarni
 * Mingxue Gu
 * Mingyu Lee
@@ -131,6 +134,7 @@ Guidelines for modifications:
 * Narendra Dahile
 * Neel Anand Jawale
 * Nicola Loi
+* Nicolas Moenne-Loccoz
 * Norbert Cygiert
 * Nuoyan Chen (Alvin)
 * Nuralem Abizov

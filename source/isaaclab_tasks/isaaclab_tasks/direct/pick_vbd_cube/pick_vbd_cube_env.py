@@ -66,7 +66,9 @@ class PickVBDCubeEnv(DirectRLEnv):
 
         logger.info(
             "PickVBDCubeEnv: control_mode=%s, action_scale=%s, interactive_ik=%s",
-            self.cfg.control_mode, cfg.action_scale, self._ik_available,
+            self.cfg.control_mode,
+            cfg.action_scale,
+            self._ik_available,
         )
 
     _SPHERE_PRIM_PATH = "/World/ik_target"
@@ -287,7 +289,7 @@ class PickVBDCubeEnv(DirectRLEnv):
             (
                 self.joint_pos[:, self._arm_joint_idx],  # (num_envs, 7)
                 self.joint_vel[:, self._arm_joint_idx],  # (num_envs, 7)
-                self._cube_centroid,                     # (num_envs, 3)
+                self._cube_centroid,  # (num_envs, 3)
             ),
             dim=-1,
         )

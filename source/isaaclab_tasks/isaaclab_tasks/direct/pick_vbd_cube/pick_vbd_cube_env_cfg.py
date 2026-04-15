@@ -5,20 +5,27 @@
 
 """Configuration for the Pick-VBD-Cube environment: Franka robot + deformable cube with coupled solver."""
 
+from isaaclab_newton.physics import (
+    CoupledSolverCfg,
+    FeatherstoneSolverCfg,
+    MJWarpSolverCfg,
+    NewtonCfg,
+    NewtonModelCfg,
+    VBDSolverCfg,
+)
+from isaaclab_visualizers.newton import NewtonVisualizerCfg
+
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 from isaaclab.utils import configclass
-from isaaclab_newton.physics import CoupledSolverCfg, FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonCfg, NewtonModelCfg, VBDSolverCfg
-from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
-from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG, FRANKA_PANDA_CFG
 from isaaclab_tasks.utils import PresetCfg, preset
 
+from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG
 
 MODEL_CFG = NewtonModelCfg(
     soft_contact_ke=1e4,

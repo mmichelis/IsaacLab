@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Literal
 
 import warp as wp
 from newton import CollisionPipeline, Contacts, Control, Model, State
-from newton.solvers import SolverBase, SolverFeatherstone, SolverMuJoCo, SolverVBD
+from newton.solvers import SolverFeatherstone, SolverMuJoCo, SolverVBD
 
 if TYPE_CHECKING:
     from .newton_manager_cfg import CoupledSolverCfg
@@ -132,8 +132,12 @@ def _kernel_body_particle_reaction(
         body_f,
         body_idx,
         wp.spatial_vector(
-            reaction[0], reaction[1], reaction[2],
-            torque[0], torque[1], torque[2],
+            reaction[0],
+            reaction[1],
+            reaction[2],
+            torque[0],
+            torque[1],
+            torque[2],
         ),
     )
 
@@ -257,12 +261,8 @@ class CoupledSolver:
         else:
             self._step_two_way(state_in, state_out, control, dt)
 
-    def _step_one_way(
-        self, state_in: State, state_out: State, control: Control, dt: float
-    ) -> None:
+    def _step_one_way(self, state_in: State, state_out: State, control: Control, dt: float) -> None:
         """One-way coupling: rigid step, then collide, then VBD."""
-        model = self._model
-
         # 1. Clear forces
         state_in.clear_forces()
         state_out.clear_forces()
@@ -279,17 +279,13 @@ class CoupledSolver:
         # 5. VBD step — particles only, reads updated rigid poses
         self.vbd.step(state_in, state_out, control, self.contacts, dt)
 
-    def _step_two_way(
-        self, state_in: State, state_out: State, control: Control, dt: float
-    ) -> None:
+    def _step_two_way(self, state_in: State, state_out: State, control: Control, dt: float) -> None:
         """Two-way coupling: collide, inject reactions into body_f, rigid step, VBD step.
 
         Both solvers use the same contact geometry within a single substep
         (zero-lag same-substep coupling). The rigid solver reads ``body_f``
         and feels resistance from the deformable object.
         """
-        model = self._model
-
         # 1. Clear forces
         state_in.clear_forces()
         state_out.clear_forces()
@@ -310,18 +306,16 @@ class CoupledSolver:
         # 6. VBD step — uses same contacts detected in step 2
         self.vbd.step(state_in, state_out, control, self.contacts, dt)
 
-    def _rigid_step(
-        self, state_in: State, state_out: State, control: Control, dt: float
-    ) -> None:
+    def _rigid_step(self, state_in: State, state_out: State, control: Control, dt: float) -> None:
         """Advance rigid bodies with the configured sub-solver."""
         model = self._model
 
         # if self._is_featherstone:
-            # Mask particles so Featherstone only integrates rigid bodies.
-            # With particle_count=0, all particle-related kernels (spring,
-            # triangle, bending, tet, contact) are skipped, including
-            # integrate_particles(). Gravity is left enabled so rigid bodies
-            # feel their own weight during the CRBA solve.
+        # Mask particles so Featherstone only integrates rigid bodies.
+        # With particle_count=0, all particle-related kernels (spring,
+        # triangle, bending, tet, contact) are skipped, including
+        # integrate_particles(). Gravity is left enabled so rigid bodies
+        # feel their own weight during the CRBA solve.
         saved_particle_count = model.particle_count
         # saved_shape_contact_pair_count = model.shape_contact_pair_count
         model.particle_count = 0

@@ -55,6 +55,7 @@ class DeformableRegistryEntry:
     particle_offsets: list[int] = field(default_factory=list)
     particles_per_body: int = 0
 
+
 from .deformable_object_data import DeformableObjectData
 from .kernels import (
     compute_nodal_state_w,
@@ -181,7 +182,6 @@ class DeformableObject(BaseDeformableObject):
                     outputs=[state.particle_qd],
                     device=self.device,
                 )
-
 
     def write_data_to_sim(self):
         """Apply kinematic targets to the Newton simulation.
@@ -387,9 +387,7 @@ class DeformableObject(BaseDeformableObject):
         # Find the mesh descendant — either UsdGeom.TetMesh or UsdGeom.Mesh
         has_tet_type = hasattr(UsdGeom, "TetMesh")
         mesh_prim = None
-        if has_tet_type and template_prim.IsA(UsdGeom.TetMesh):
-            mesh_prim = template_prim
-        elif template_prim.IsA(UsdGeom.Mesh):
+        if has_tet_type and template_prim.IsA(UsdGeom.TetMesh) or template_prim.IsA(UsdGeom.Mesh):
             mesh_prim = template_prim
         else:
             for desc in Usd.PrimRange(template_prim):
@@ -419,9 +417,7 @@ class DeformableObject(BaseDeformableObject):
             indices = []
             for vec4i in raw_tet_indices:
                 indices.extend([int(vec4i[0]), int(vec4i[1]), int(vec4i[2]), int(vec4i[3])])
-            logger.info(
-                f"Registered UsdGeom.TetMesh: {len(pts)} vertices, {len(indices) // 4} tetrahedra."
-            )
+            logger.info(f"Registered UsdGeom.TetMesh: {len(pts)} vertices, {len(indices) // 4} tetrahedra.")
         else:
             usd_mesh = UsdGeom.Mesh(mesh_prim)
             pts = np.array(usd_mesh.GetPointsAttr().Get(), dtype=np.float32)
@@ -553,7 +549,6 @@ class DeformableObject(BaseDeformableObject):
         else:
             self._default_particle_inv_mass = None
 
-
         # Kinematic targets — allocate and initialize with free flags
         self._data.nodal_kinematic_target = wp.zeros(
             (self._num_instances, self._particles_per_body), dtype=wp.vec4f, device=self.device
@@ -584,7 +579,7 @@ class DeformableObject(BaseDeformableObject):
 
         Finds the spawned ``UsdGeom.Mesh`` or ``UsdGeom.TetMesh`` prim for each instance
         (typically at ``{prim_path}/geometry/mesh``), clears parent Xform transforms
-        (Newton writes world-space positions), writes initial points, where the surface mesh prim stores 
+        (Newton writes world-space positions), writes initial points, where the surface mesh prim stores
         particle offsets that are read while updating the visualization.
         """
         from pxr import Gf, Vt
@@ -611,7 +606,9 @@ class DeformableObject(BaseDeformableObject):
             # Both have GetPointsAttr() for dynamic point updates
             geom_prim = None
             for candidate in [base_prim] + list(Usd.PrimRange(base_prim)):
-                if candidate == base_prim and not (candidate.IsA(UsdGeom.Mesh) or (has_tet_type and candidate.IsA(UsdGeom.TetMesh))):
+                if candidate == base_prim and not (
+                    candidate.IsA(UsdGeom.Mesh) or (has_tet_type and candidate.IsA(UsdGeom.TetMesh))
+                ):
                     continue
                 if has_tet_type and candidate.IsA(UsdGeom.TetMesh):
                     geom_prim = UsdGeom.TetMesh(candidate)
@@ -621,7 +618,10 @@ class DeformableObject(BaseDeformableObject):
                     break
 
             if geom_prim is None:
-                logger.warning(f"No UsdGeom.Mesh or TetMesh found under '{base_path}' — skipping Kit visualization for env {inst_idx}.")
+                logger.warning(
+                    f"No UsdGeom.Mesh or TetMesh found under '{base_path}'"
+                    f" — skipping Kit visualization for env {inst_idx}."
+                )
                 continue
 
             # Clear Xform transforms on all ancestors under base_prim — Newton's
@@ -652,7 +652,11 @@ class DeformableObject(BaseDeformableObject):
                     from pxr import UsdShade
 
                     geom_path = geom_prim.GetPath().GetParentPath()
-                    mat_path = str(geom_path) + "/" + self.cfg.spawn.visual_material_path if hasattr(self.cfg.spawn, "visual_material_path") else None
+                    mat_path = (
+                        str(geom_path) + "/" + self.cfg.spawn.visual_material_path
+                        if hasattr(self.cfg.spawn, "visual_material_path")
+                        else None
+                    )
                     if mat_path is not None:
                         mat_prim = stage.GetPrimAtPath(mat_path)
                         if mat_prim.IsValid():
@@ -669,7 +673,6 @@ class DeformableObject(BaseDeformableObject):
             geom_prim.GetPointsAttr().Set(points)
 
             self._vis_prims.append((geom_prim, offset))
-
 
     """
     Internal simulation callbacks.
