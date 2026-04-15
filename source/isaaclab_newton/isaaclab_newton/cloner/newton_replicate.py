@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import torch
@@ -15,8 +16,6 @@ from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from pxr import Usd, UsdGeom
 
 from isaaclab.physics.scene_data_requirements import VisualizerPrebuiltArtifacts
-
-import logging
 
 from isaaclab_newton.physics import NewtonManager
 

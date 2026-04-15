@@ -61,9 +61,7 @@ class TetMesh:
         """
         self.vertices = np.asarray(vertices, dtype=np.float32)
         self.tet_indices = np.asarray(tet_indices, dtype=np.int32)
-        self._surface_indices = (
-            np.asarray(surface_indices, dtype=np.int32) if surface_indices is not None else None
-        )
+        self._surface_indices = np.asarray(surface_indices, dtype=np.int32) if surface_indices is not None else None
 
     @property
     def surface_indices(self) -> np.ndarray:
@@ -84,11 +82,11 @@ class TetMesh:
                 del faces[key]
 
         for tet in self.tet_indices:
-            i, j, k, l = int(tet[0]), int(tet[1]), int(tet[2]), int(tet[3])
+            i, j, k, m = int(tet[0]), int(tet[1]), int(tet[2]), int(tet[3])
             add_face(i, k, j)
-            add_face(j, k, l)
-            add_face(i, j, l)
-            add_face(i, l, k)
+            add_face(j, k, m)
+            add_face(i, j, m)
+            add_face(i, m, k)
 
         return np.array(list(faces.values()), dtype=np.int32)
 
@@ -168,9 +166,21 @@ class TetMesh:
                     v7 = grid_index(ix, iy + 1, iz + 1)
 
                     if (ix & 1) ^ (iy & 1) ^ (iz & 1):
-                        tets = [(v0, v1, v4, v3), (v2, v3, v6, v1), (v5, v4, v1, v6), (v7, v6, v3, v4), (v4, v1, v6, v3)]
+                        tets = [
+                            (v0, v1, v4, v3),
+                            (v2, v3, v6, v1),
+                            (v5, v4, v1, v6),
+                            (v7, v6, v3, v4),
+                            (v4, v1, v6, v3),
+                        ]
                     else:
-                        tets = [(v1, v2, v5, v0), (v3, v0, v7, v2), (v4, v7, v0, v5), (v6, v5, v2, v7), (v5, v2, v7, v0)]
+                        tets = [
+                            (v1, v2, v5, v0),
+                            (v3, v0, v7, v2),
+                            (v4, v7, v0, v5),
+                            (v6, v5, v2, v7),
+                            (v5, v2, v7, v0),
+                        ]
 
                     tet_indices.extend(tets)
 

@@ -82,8 +82,13 @@ class PickClothEnv(DirectRLEnv):
         if self._has_robot and cfg.interactive_ik:
             self._setup_interactive_ik()
 
-        logger.info("PickClothEnv: has_robot=%s, control_mode=%s, action_scale=%s, interactive_ik=%s",
-                     self._has_robot, self.cfg.control_mode, cfg.action_scale, self._ik_available)
+        logger.info(
+            "PickClothEnv: has_robot=%s, control_mode=%s, action_scale=%s, interactive_ik=%s",
+            self._has_robot,
+            self.cfg.control_mode,
+            cfg.action_scale,
+            self._ik_available,
+        )
 
     _SPHERE_PRIM_PATH = "/World/ik_target"
 
@@ -324,9 +329,9 @@ class PickClothEnv(DirectRLEnv):
         if self._has_robot:
             obs = torch.cat(
                 (
-                    self.joint_pos[:, self._arm_joint_idx],   # (num_envs, 7)
-                    self.joint_vel[:, self._arm_joint_idx],   # (num_envs, 7)
-                    self._cloth_centroid,                      # (num_envs, 3)
+                    self.joint_pos[:, self._arm_joint_idx],  # (num_envs, 7)
+                    self.joint_vel[:, self._arm_joint_idx],  # (num_envs, 7)
+                    self._cloth_centroid,  # (num_envs, 3)
                 ),
                 dim=-1,
             )

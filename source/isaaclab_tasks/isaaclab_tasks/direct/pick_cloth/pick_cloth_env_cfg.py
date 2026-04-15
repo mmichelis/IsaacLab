@@ -8,19 +8,27 @@
 import importlib.util
 import os.path
 
+from isaaclab_newton.physics import (
+    CoupledSolverCfg,
+    FeatherstoneSolverCfg,
+    MJWarpSolverCfg,
+    NewtonCfg,
+    NewtonModelCfg,
+    VBDSolverCfg,
+)
+from isaaclab_visualizers.newton import NewtonVisualizerCfg
+
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.sim.spawners.meshes import MeshFromFileCfg
 from isaaclab.utils import configclass
-from isaaclab_newton.physics import CoupledSolverCfg, FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonCfg, NewtonModelCfg, VBDSolverCfg
-from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
-from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG, FRANKA_PANDA_CFG
 from isaaclab_tasks.utils import PresetCfg, preset
+
+from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG
 
 # Locate shirt USD from Newton package (defer import to avoid pxr before SimulationApp).
 _newton_spec = importlib.util.find_spec("newton")
@@ -104,7 +112,6 @@ class PickClothPhysicsCfg(PresetCfg):
         num_substeps=30,
         use_cuda_graph=True,
     )
-
 
 
 @configclass
