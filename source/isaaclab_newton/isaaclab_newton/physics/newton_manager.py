@@ -223,9 +223,9 @@ class NewtonManager(PhysicsManager):
 
         Called at render cadence by :meth:`pre_render` (via
         :meth:`~isaaclab.sim.SimulationContext.render`).
-        Physics stepping marks transforms and particles dirty via :meth:`_mark_transforms_dirty` and 
-        :meth:`_mark_particles_dirty`, respectively, so that the expensive Fabric hierarchy update only 
-        runs once per render frame rather than after every physics step.
+        Physics stepping marks transforms dirty via :meth:`_mark_transforms_dirty`
+        so that the expensive Fabric hierarchy update only runs once per render
+        frame rather than after every physics step.
 
         Uses ``wp.fabricarray`` directly (no ``isaacsim.physics.newton`` extension needed).
         The Warp kernel reads ``state_0.body_q[newton_index[i]]`` and writes the
@@ -313,14 +313,32 @@ class NewtonManager(PhysicsManager):
             logger.exception("[NewtonManager] sync_transforms_to_usd FAILED")
 
     @classmethod
-    def _mark_state_dirty(cls) -> None:
-        """Flag that physics state has changed and Fabric needs re-sync.
+    def _mark_transforms_dirty(cls) -> None:
+        """Flag that rigid-body transforms have changed and Fabric needs re-sync.
 
-        Called by :meth:`_simulate` after stepping. The actual sync is deferred
-        to :meth:`sync_transforms_to_usd` and :meth:`sync_particles_to_usd`, which run at render cadence.
+        The actual sync is deferred to :meth:`sync_transforms_to_usd`,
+        which runs at render cadence via :meth:`pre_render`.
         """
         cls._transforms_dirty = True
+
+    @classmethod
+    def _mark_particles_dirty(cls) -> None:
+        """Flag that particle positions have changed and Fabric needs re-sync.
+
+        The actual sync is deferred to :meth:`sync_particles_to_usd`,
+        which runs at render cadence via the scene data provider.
+        """
         cls._particles_dirty = True
+
+    @classmethod
+    def _mark_state_dirty(cls) -> None:
+        """Flag that all physics state has changed and Fabric needs re-sync.
+
+        Convenience method that marks both transforms and particles dirty.
+        Called by :meth:`_simulate` after stepping.
+        """
+        cls._mark_transforms_dirty()
+        cls._mark_particles_dirty()
 
     @classmethod
     def sync_particles_to_usd(cls) -> None:
@@ -758,7 +776,7 @@ class NewtonManager(PhysicsManager):
                     if not xformable_prim.HasWorldXform():
                         xformable_prim.SetWorldXformFromUsd()
 
-                cls._transforms_dirty = True
+                cls._mark_transforms_dirty()
                 cls.sync_transforms_to_usd()
 
             # Setup Fabric particle sync for deformable bodies.
@@ -807,7 +825,7 @@ class NewtonManager(PhysicsManager):
                             fab_prim.CreateAttribute(cls._particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
                             fab_prim.GetAttribute(cls._particle_offset_attr).Set(offset)
 
-                    cls._particles_dirty = True
+                    cls._mark_particles_dirty()
                     cls.sync_particles_to_usd()
 
     @classmethod
