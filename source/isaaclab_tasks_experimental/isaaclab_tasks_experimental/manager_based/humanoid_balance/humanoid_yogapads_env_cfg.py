@@ -91,8 +91,8 @@ PAD_SPAWN_CFG = sim_utils.UsdFileCfg(
     deformable_props=DeformableBodyPropertiesCfg(),
     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.3, 0.7)),
     physics_material=DeformableBodyMaterialCfg(
-        density=100.0,
-        youngs_modulus=5e5,
+        density=50.0,
+        youngs_modulus=2e5,
         poissons_ratio=0.3,
         static_friction=0.9,
         dynamic_friction=0.9,
@@ -511,7 +511,7 @@ class HumanoidYogaPadsEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 20.0
+        self.episode_length_s = 15.0
         # viewer settings
         self.viewer.resolution = (1920, 1080)
         # simulation settings
