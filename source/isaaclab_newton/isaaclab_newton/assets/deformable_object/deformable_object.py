@@ -60,9 +60,7 @@ from .deformable_object_data import DeformableObjectData
 from .kernels import (
     compute_nodal_state_w,
     enforce_kinematic_targets,
-    scatter_default_pos_index,
     scatter_particles_vec3f_index,
-    scatter_zero_vel_index,
     set_kinematic_flags_to_one,
     vec6f,
 )

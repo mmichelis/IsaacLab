@@ -74,11 +74,9 @@ def design_scene():
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         density=500.0,
-        tri_ke=1e5,
-        tri_ka=1e5,
-        tri_kd=1e-4,
-        edge_ke=100.0,
-        edge_kd=1e-2,
+        k_mu=1e5,
+        k_lambda=1e5,
+        k_damp=0.0,
         particle_radius=0.005,
     )
     cube_object = DeformableObject(cfg=cfg)

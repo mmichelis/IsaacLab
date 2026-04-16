@@ -22,7 +22,6 @@ import warp as wp
 from flaky import flaky
 from isaaclab_newton.assets import DeformableObject
 from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
-from isaaclab_newton.physics import NewtonManager as SimulationManager
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -122,7 +121,6 @@ def test_initialization(sim, num_cubes):
     # root_vel_w: (N, 3)
     root_vel = wp.to_torch(cube_object.data.root_vel_w)
     assert root_vel.shape == (num_cubes, 3)
-
 
 
 @pytest.mark.parametrize("num_cubes", [1, 2])
@@ -250,9 +248,9 @@ def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, random
 def test_freefall_analytical(sim):
     """Test that one step of free-fall matches the inertia target prediction.
 
-    VBD computes an inertia target per substep::
+    VBD computes an inertia target per substep (h = sub_dt)::
 
-        v_new = v + g * h       (h = sub_dt)
+        v_new = v + g * h
         x_new = x + v_new * h
 
     then optimizes elastic + contact potentials around it. For free-fall
