@@ -17,7 +17,6 @@ simulation_app = AppLauncher(headless=True).app
 """Rest everything follows."""
 
 import pytest
-import torch
 import warp as wp
 from isaaclab_newton.assets import Articulation, DeformableObject
 from isaaclab_newton.physics import CoupledSolverCfg, MJWarpSolverCfg, NewtonCfg, NewtonModelCfg, VBDSolverCfg
@@ -141,31 +140,35 @@ def generate_robot_and_two_cubes(
     robot_cfg = FRANKA_PANDA_CFG.replace(prim_path="/World/env_.*/Robot")
     robot = Articulation(robot_cfg)
 
-    colliding_cube = DeformableObject(cfg=DeformableObjectCfg(
-        prim_path="/World/env_.*/cube_collide",
-        spawn=TetMeshCuboidCfg(
-            size=(0.05, 0.05, 0.05),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
-        ),
-        init_state=DeformableObjectCfg.InitialStateCfg(pos=colliding_cube_pos),
-        density=500.0,
-        k_mu=1e5,
-        k_lambda=1e5,
-        particle_radius=0.005,
-    ))
+    colliding_cube = DeformableObject(
+        cfg=DeformableObjectCfg(
+            prim_path="/World/env_.*/cube_collide",
+            spawn=TetMeshCuboidCfg(
+                size=(0.05, 0.05, 0.05),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
+            ),
+            init_state=DeformableObjectCfg.InitialStateCfg(pos=colliding_cube_pos),
+            density=500.0,
+            k_mu=1e5,
+            k_lambda=1e5,
+            particle_radius=0.005,
+        )
+    )
 
-    free_cube = DeformableObject(cfg=DeformableObjectCfg(
-        prim_path="/World/env_.*/cube_free",
-        spawn=TetMeshCuboidCfg(
-            size=(0.05, 0.05, 0.05),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
-        ),
-        init_state=DeformableObjectCfg.InitialStateCfg(pos=free_cube_pos),
-        density=500.0,
-        k_mu=1e4,
-        k_lambda=1e4,
-        particle_radius=0.005,
-    ))
+    free_cube = DeformableObject(
+        cfg=DeformableObjectCfg(
+            prim_path="/World/env_.*/cube_free",
+            spawn=TetMeshCuboidCfg(
+                size=(0.05, 0.05, 0.05),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
+            ),
+            init_state=DeformableObjectCfg.InitialStateCfg(pos=free_cube_pos),
+            density=500.0,
+            k_mu=1e4,
+            k_lambda=1e4,
+            particle_radius=0.005,
+        )
+    )
 
     return robot, colliding_cube, free_cube
 

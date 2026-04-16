@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import weakref
-
 import warp as wp
 
 from isaaclab.assets.deformable_object.base_deformable_object_data import BaseDeformableObjectData
@@ -68,8 +66,8 @@ class DeformableObjectData(BaseDeformableObjectData):
             particle_q: Flat particle positions from Newton state. Shape is (total_particles,) vec3f.
             particle_qd: Flat particle velocities from Newton state. Shape is (total_particles,) vec3f.
         """
-        self._particle_q = weakref.proxy(particle_q) if particle_q is not None else None
-        self._particle_qd = weakref.proxy(particle_qd) if particle_qd is not None else None
+        self._particle_q = particle_q
+        self._particle_qd = particle_qd
 
     ##
     # Properties.
