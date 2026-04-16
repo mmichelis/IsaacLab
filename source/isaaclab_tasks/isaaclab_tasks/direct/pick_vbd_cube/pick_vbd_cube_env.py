@@ -345,8 +345,8 @@ class PickVBDCubeEnv(DirectRLEnv):
         self.robot.write_joint_position_to_sim_index(position=joint_pos, env_ids=env_ids)
         self.robot.write_joint_velocity_to_sim_index(velocity=joint_vel, env_ids=env_ids)
 
-        # Reset deformable cube: restore default nodal positions then zero velocities.
-        # reset() only zeros velocities, so we must write positions explicitly.
+        # Reset deformable cube: restore default nodal state (positions + zero velocities).
+        # reset() is a no-op (matches PhysX convention); state is restored via write.
         env_ids_list = env_ids.cpu().tolist() if hasattr(env_ids, "cpu") else list(env_ids)
         default_state = wp.to_torch(self.cube.data.default_nodal_state_w)
         self.cube.write_nodal_state_to_sim_index(default_state, env_ids=env_ids_list)
