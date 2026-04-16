@@ -213,6 +213,7 @@ class NewtonManager(PhysicsManager):
     def pre_render(cls) -> None:
         """Flush deferred Fabric writes before cameras/visualizers read the scene."""
         cls.sync_transforms_to_usd()
+        cls.sync_particles_to_usd()
 
     @classmethod
     def sync_transforms_to_usd(cls) -> None:
