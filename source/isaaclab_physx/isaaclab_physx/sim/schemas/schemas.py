@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import logging
 
+import numpy as np
+
 from omni.physx.scripts import deformableUtils
-from pxr import Usd
+from pxr import Usd, UsdPhysics, UsdGeom, Sdf
 
 from isaaclab.sim.utils import (
     apply_nested,
+    create_prim,
     get_all_matching_child_prims,
     safe_set_attribute_on_usd_prim,
 )
@@ -67,9 +70,9 @@ def define_deformable_body_properties(
         stage = get_current_stage()
 
     # get USD prim
-    prim = stage.GetPrimAtPath(prim_path)
+    root_prim = stage.GetPrimAtPath(prim_path)
     # check if prim path is valid
-    if not prim.IsValid():
+    if not root_prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
 
     # traverse the prim and get the mesh. If none or multiple meshes are found, raise error.
@@ -82,7 +85,7 @@ def define_deformable_body_properties(
         mesh_paths = [p.GetPrimPath() for p in matching_prims]
         raise ValueError(
             f"Found multiple meshes in '{prim_path}': {mesh_paths}."
-            " Deformable body schema can only be applied to one mesh."
+            " Deformable body schema can only be applied to one mesh for now."
         )
     mesh_prim = matching_prims[0]
     mesh_prim_path = mesh_prim.GetPrimPath()
@@ -92,8 +95,8 @@ def define_deformable_body_properties(
         raise ValueError(f"Mesh prim path '{mesh_prim_path}' is not valid.")
 
     # set root prim properties based on the type of the deformable mesh (surface vs volume)
+    sim_mesh_prim_path = prim_path + "/sim_mesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
     if deformable_type == "surface":
-        sim_mesh_prim_path = prim_path + "/sim_mesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
         success = deformableUtils.create_auto_surface_deformable_hierarchy(
             stage=stage,
             root_prim_path=prim_path,
@@ -102,27 +105,62 @@ def define_deformable_body_properties(
             cooking_src_simplification_enabled=False,
             set_visibility_with_guide_purpose=True,
         )
+        if not success:
+            raise RuntimeError(f"Failed to set deformable body properties on prim '{mesh_prim_path}'.")
     elif deformable_type == "volume":
-        sim_mesh_prim_path = prim_path + "/sim_tetmesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
-        success = deformableUtils.create_auto_volume_deformable_hierarchy(
+        # remove potential previous configuration
+        deformableUtils.remove_deformable_body(stage, prim_path)
+
+        # extract surface mesh vertices and faces, create tetrahedral volume mesh
+        vertices = np.array(mesh_prim.GetAttribute("points").Get())
+        faces = np.array(mesh_prim.GetAttribute("faceVertexIndices").Get()).flatten()
+        tet_mesh_points, tet_mesh_indices = deformableUtils.compute_conforming_tetrahedral_mesh(vertices, faces)
+        _, surface_face_indices = deformableUtils.extractTriangleSurfaceFromTetra(tet_mesh_points, tet_mesh_indices)
+        tet_mesh_indices = np.asarray(tet_mesh_indices).reshape(-1, 4)
+        sim_mesh_prim = create_prim(
+            sim_mesh_prim_path,
+            prim_type="TetMesh",
+            attributes={
+                "points": tet_mesh_points,
+                "tetVertexIndices": tet_mesh_indices,
+            },
             stage=stage,
-            root_prim_path=prim_path,
-            simulation_tetmesh_path=sim_mesh_prim_path,
-            collision_tetmesh_path=sim_mesh_prim_path,
-            cooking_src_mesh_path=mesh_prim_path,
-            simulation_hex_mesh_enabled=False,
-            cooking_src_simplification_enabled=False,
-            set_visibility_with_guide_purpose=True,
         )
+
+        # apply sim API
+        if not sim_mesh_prim.ApplyAPI("OmniPhysicsVolumeDeformableSimAPI"):
+            raise RuntimeError(f"Failed to set volume deformable body API on prim '{sim_mesh_prim_path}'.")
+
+        # apply collision API
+        if not sim_mesh_prim.ApplyAPI(UsdPhysics.CollisionAPI):
+            raise RuntimeError(f"Failed to set volume deformable collision API on prim '{sim_mesh_prim_path}'.")
+        
+        # set surface faces and rest-shape attributes required by OmniPhysicsVolumeDeformableSimAPI
+        surface_face_indices = UsdGeom.TetMesh.ComputeSurfaceFaces(UsdGeom.TetMesh(sim_mesh_prim), Usd.TimeCode.Default())
+        UsdGeom.TetMesh(sim_mesh_prim).GetSurfaceFaceVertexIndicesAttr().Set(surface_face_indices)
+        sim_mesh_prim.GetAttribute("omniphysics:restShapePoints").Set(tet_mesh_points)
+        sim_mesh_prim.GetAttribute("omniphysics:restTetVtxIndices").Set(tet_mesh_indices)
+
+        # apply bind pose deformable pose API
+        purposes = ["bindPose"]
+        mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
+        mesh_prim.CreateAttribute("deformablePose:default:omniphysics:purposes", Sdf.ValueTypeNames.TokenArray).Set(purposes)
+        point_based = UsdGeom.PointBased(mesh_prim)
+        points = point_based.GetPointsAttr().Get()
+        mesh_prim.CreateAttribute("deformablePose:default:omniphysics:points", Sdf.ValueTypeNames.Point3fArray).Set(points)
+
+        sim_mesh_prim.GetPrim().ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
+        sim_mesh_prim.GetPrim().CreateAttribute("deformablePose:default:omniphysics:purposes", Sdf.ValueTypeNames.TokenArray).Set(purposes)
+
+        # apply deformable body api
+        if not root_prim.ApplyAPI("OmniPhysicsDeformableBodyAPI"):
+            raise RuntimeError(f"Failed to set volume deformable body API on prim '{prim_path}'.")
+
     else:
         raise ValueError(
             f"""Unsupported deformable type: '{deformable_type}'.
             Only surface and volume deformables are supported."""
         )
-
-    # api failure
-    if not success:
-        raise RuntimeError(f"Failed to set deformable body properties on prim '{mesh_prim_path}'.")
 
     # set deformable body properties
     modify_deformable_body_properties(prim_path, cfg, stage)
