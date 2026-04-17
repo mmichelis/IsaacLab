@@ -23,7 +23,6 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on interacting with a deformable object.")
 parser.add_argument("--physics", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
-parser.add_argument("--physics", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # demos should open Kit visualizer by default
@@ -46,9 +45,7 @@ from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyM
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
-from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.sim import SimulationContext
-from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 
 
@@ -69,7 +66,6 @@ def design_scene():
     origins = [[0.25, 0.25, 0.0], [-0.25, 0.25, 0.0], [0.25, -0.25, 0.0], [-0.25, -0.25, 0.0]]
     for i, origin in enumerate(origins):
         sim_utils.create_prim(f"/World/env_{i}", "Xform", translation=origin)
-        sim_utils.create_prim(f"/World/env_{i}", "Xform", translation=origin)
 
     # 3D Deformable Object
     cfg = DeformableObjectCfg(
@@ -78,8 +74,8 @@ def design_scene():
             size=(0.2, 0.2, 0.2),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
-            # physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
+            # physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+            physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
         ),
         # spawn=TetMeshCuboidCfg(
         #     size=(0.2, 0.2, 0.2),
@@ -119,15 +115,11 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
 
     # Simulate physics
     # for _ in range(200):
-    # for _ in range(200):
     while simulation_app.is_running():
         # reset at start and after 3 seconds
         if count % int(3.0 / sim_dt) == 0:
             # reset counters
             count = 0
-
-            # reset buffers
-            cube_object.reset()
 
             # reset buffers
             cube_object.reset()
@@ -180,16 +172,6 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
 def main():
     """Main function."""
     # Load kit helper
-    if args_cli.physics == "newton":
-        from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
-
-        # physics_cfg = NewtonCfg(solver_cfg=XPBDSolverCfg(iterations=100), num_substeps=8)
-        physics_cfg = NewtonCfg(solver_cfg=VBDSolverCfg(iterations=10), num_substeps=4)
-    else:
-        from isaaclab_physx.physics import PhysxCfg
-
-        physics_cfg = PhysxCfg()
-    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, physics=physics_cfg)
     if args_cli.physics == "newton":
         from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
 
