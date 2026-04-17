@@ -46,7 +46,6 @@ import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.sim import SimulationContext
-from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 
 
 def design_scene():
@@ -77,10 +76,6 @@ def design_scene():
             # physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
             physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
         ),
-        # spawn=TetMeshCuboidCfg(
-        #     size=(0.2, 0.2, 0.2),
-        #     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
-        # ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         # density=500.0,
         # tri_ke=1e5,

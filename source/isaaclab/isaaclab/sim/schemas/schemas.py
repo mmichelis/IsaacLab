@@ -1096,6 +1096,7 @@ def define_deformable_body_properties(
     # extract visual surface mesh vertices and faces
     vertices = np.array(mesh_prim.GetAttribute("points").Get())
     faces = np.array(mesh_prim.GetAttribute("faceVertexIndices").Get()).flatten()
+    face_counts = np.array(mesh_prim.GetAttribute("faceVertexCounts").Get())
     if deformable_type == "surface":
         # create simulation mesh as copy of visual mesh
         sim_mesh_prim = create_prim(
@@ -1104,6 +1105,7 @@ def define_deformable_body_properties(
             attributes={
                 "points": vertices,
                 "faceVertexIndices": faces,
+                "faceVertexCounts": face_counts,
             },
             stage=stage,
         )
