@@ -435,8 +435,8 @@ class PickClothEnv(DirectRLEnv):
             s1_jqd = wp.to_torch(s1.joint_qd).view(model.world_count, dofs_per_env)
             s1_jqd[env_ids] = s0_jqd[env_ids]
 
-        # Reset cloth: restore default nodal positions then zero velocities.
-        # reset() only zeros velocities, so we must write positions explicitly.
+        # Reset cloth: restore default nodal state (positions + zero velocities).
+        # reset() is a no-op (matches PhysX convention); state is restored via write.
         env_ids_list = env_ids.cpu().tolist() if hasattr(env_ids, "cpu") else list(env_ids)
         default_state = wp.to_torch(self.cloth.data.default_nodal_state_w)
         self.cloth.write_nodal_state_to_sim_index(default_state, env_ids=env_ids_list)

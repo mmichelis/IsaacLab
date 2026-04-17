@@ -62,9 +62,7 @@ from .deformable_object_data import DeformableObjectData
 from .kernels import (
     compute_nodal_state_w,
     enforce_kinematic_targets,
-    scatter_default_pos_index,
     scatter_particles_vec3f_index,
-    scatter_zero_vel_index,
     set_kinematic_flags_to_one,
     vec6f,
 )
@@ -144,46 +142,16 @@ class DeformableObject(BaseDeformableObject):
     def reset(self, env_ids: Sequence[int] | None = None, env_mask: wp.array | None = None) -> None:
         """Reset the deformable object.
 
-        For selected environments, restores default particle positions and zeros velocities
-        in both Newton states. Also zeros VBD solver internal buffers for the affected particles.
+        No-op to match the PhysX deformable object convention. Users are
+        responsible for restoring state via :meth:`write_nodal_state_to_sim_index`
+        or the individual position/velocity write methods.
 
         Args:
             env_ids: Environment indices. If None, then all indices are used.
             env_mask: Environment mask. If None, then all the instances are updated.
                 Shape is (num_instances,).
         """
-        # Resolve env_ids
-        if env_mask is not None:
-            env_ids_wp = wp.nonzero(env_mask)
-        elif env_ids is None:
-            env_ids_wp = self._ALL_INDICES
-        else:
-            env_ids_wp = self._resolve_env_ids(env_ids)
-
-        num_selected = env_ids_wp.shape[0]
-        if num_selected == 0:
-            return
-
-        # Reset particle positions and velocities in both states
-        for state in (SimulationManager._state_0, SimulationManager._state_1):
-            if state is None:
-                continue
-            if state.particle_q is not None:
-                wp.launch(
-                    scatter_default_pos_index,
-                    dim=(num_selected, self._particles_per_body),
-                    inputs=[self._default_nodal_pos_w, env_ids_wp, self._particle_offsets],
-                    outputs=[state.particle_q],
-                    device=self.device,
-                )
-            if state.particle_qd is not None:
-                wp.launch(
-                    scatter_zero_vel_index,
-                    dim=(num_selected, self._particles_per_body),
-                    inputs=[env_ids_wp, self._particle_offsets, self._particles_per_body],
-                    outputs=[state.particle_qd],
-                    device=self.device,
-                )
+        pass
 
     def write_data_to_sim(self):
         """Apply kinematic targets to the Newton simulation.
