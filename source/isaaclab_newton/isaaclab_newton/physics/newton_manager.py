@@ -788,8 +788,7 @@ class NewtonManager(PhysicsManager):
             # Setup Fabric particle sync for deformable bodies.
             if cls._deformable_registry:
                 import re
-
-                from pxr import Usd, UsdGeom
+                from pxr import UsdGeom, Vt, Gf
 
                 if cls._usdrt_stage is None:
                     cls._usdrt_stage = get_current_stage(fabric=True)
@@ -797,19 +796,35 @@ class NewtonManager(PhysicsManager):
                 if cls._usdrt_stage is not None:
                     stage = get_current_stage()
                     for entry in cls._deformable_registry:
-                        prim_path_pattern = entry.sim_mesh_prim_path
                         particle_offsets = entry.particle_offsets
                         for inst_idx, offset in enumerate(particle_offsets):
                             # Resolve regex pattern to concrete instance path 
                             # TODO: Generalize this specific path and env indexing
-                            resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), prim_path_pattern)
+                            # simulation mesh
+                            resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), entry.sim_mesh_prim_path)
                             resolved = re.sub(r"\.\*", str(inst_idx), resolved)
                             mesh_prim = stage.GetPrimAtPath(resolved)
+                            # visual mesh
+                            resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), entry.vis_mesh_prim_path)
+                            resolved = re.sub(r"\.\*", str(inst_idx), resolved)
+                            vis_prim = stage.GetPrimAtPath(resolved)
                             if not mesh_prim or not mesh_prim.IsValid():
                                 logger.debug("[NewtonManager] particle setup: prim not found at %s", resolved)
                                 continue
-                            mesh_path = mesh_prim.GetPath().pathString
-                            fab_prim = cls._usdrt_stage.GetPrimAtPath(mesh_path)
+                            # This can similarly be done to update the tet mesh prim if needed, 
+                            # but since kit visualizer does not support tet meshes we can skip it for now
+                            # TODO: Temporary solution: Overwrite visual mesh with tet mesh surface points. 
+                            # In the future ideally we can have a separate visual from simulation mesh.
+                            tet_mesh = UsdGeom.TetMesh(mesh_prim)
+                            surface_indices = tet_mesh.GetSurfaceFaceVertexIndicesAttr().Get()
+                            if surface_indices is not None and len(surface_indices) > 0:
+                                UsdGeom.Mesh(vis_prim).GetFaceVertexIndicesAttr().Set(np.asarray(surface_indices).flatten())
+                                UsdGeom.Mesh(vis_prim).GetFaceVertexCountsAttr().Set([3] * len(surface_indices))
+                                pts_np = cls._state_0.particle_q.numpy()[offset : offset + entry.particles_per_body]
+                                points = Vt.Vec3fArray([Gf.Vec3f(float(p[0]), float(p[1]), float(p[2])) for p in pts_np])
+                                UsdGeom.Mesh(vis_prim).GetPointsAttr().Set(points)
+                            vis_path = vis_prim.GetPath().pathString
+                            fab_prim = cls._usdrt_stage.GetPrimAtPath(vis_path)
                             fab_prim.CreateAttribute(cls._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
                             fab_prim.GetAttribute(cls._newton_particle_offset_attr).Set(offset)
 
