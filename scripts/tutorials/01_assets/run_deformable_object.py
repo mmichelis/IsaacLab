@@ -23,6 +23,7 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on interacting with a deformable object.")
 parser.add_argument("--physics", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
+parser.add_argument("--physics", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # demos should open Kit visualizer by default
@@ -45,7 +46,9 @@ from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyM
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
+from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.sim import SimulationContext
+from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 
 
@@ -65,6 +68,7 @@ def design_scene():
     # Each group will have a robot in it
     origins = [[0.25, 0.25, 0.0], [-0.25, 0.25, 0.0], [0.25, -0.25, 0.0], [-0.25, -0.25, 0.0]]
     for i, origin in enumerate(origins):
+        sim_utils.create_prim(f"/World/env_{i}", "Xform", translation=origin)
         sim_utils.create_prim(f"/World/env_{i}", "Xform", translation=origin)
 
     # 3D Deformable Object
@@ -115,11 +119,15 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
 
     # Simulate physics
     # for _ in range(200):
+    # for _ in range(200):
     while simulation_app.is_running():
         # reset at start and after 3 seconds
         if count % int(3.0 / sim_dt) == 0:
             # reset counters
             count = 0
+
+            # reset buffers
+            cube_object.reset()
 
             # reset buffers
             cube_object.reset()
@@ -172,6 +180,16 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
 def main():
     """Main function."""
     # Load kit helper
+    if args_cli.physics == "newton":
+        from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
+
+        # physics_cfg = NewtonCfg(solver_cfg=XPBDSolverCfg(iterations=100), num_substeps=8)
+        physics_cfg = NewtonCfg(solver_cfg=VBDSolverCfg(iterations=10), num_substeps=4)
+    else:
+        from isaaclab_physx.physics import PhysxCfg
+
+        physics_cfg = PhysxCfg()
+    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, physics=physics_cfg)
     if args_cli.physics == "newton":
         from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
 

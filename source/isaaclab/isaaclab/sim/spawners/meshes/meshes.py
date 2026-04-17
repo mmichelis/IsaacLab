@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -24,6 +25,169 @@ from ..materials import RigidBodyMaterialCfg
 
 if TYPE_CHECKING:
     from . import meshes_cfg
+
+
+# ---------------------------------------------------------------------------
+# TetMesh data class
+# ---------------------------------------------------------------------------
+
+
+class TetMesh:
+    """Lightweight container for tetrahedral mesh data.
+
+    Holds vertex positions, tet connectivity, and (optionally) surface triangle
+    indices. Surface triangles are computed lazily from the tet connectivity on
+    first access if not provided at construction time.
+
+    Use the classmethods to construct from different sources:
+
+    - :meth:`from_meshio` — from a ``meshio.Mesh`` (e.g. loaded from a ``.msh`` file).
+    - :meth:`cuboid` — procedurally generated cuboid with hex→tet decomposition.
+    """
+
+    def __init__(
+        self,
+        vertices: np.ndarray,
+        tet_indices: np.ndarray,
+        surface_indices: np.ndarray | None = None,
+    ):
+        """
+        Args:
+            vertices: Vertex positions, shape ``(N, 3)``, float.
+            tet_indices: Tet connectivity, shape ``(T, 4)``, int.
+            surface_indices: Surface triangle indices, shape ``(F, 3)``, int.
+                If ``None``, computed automatically from ``tet_indices`` on
+                first access via :attr:`surface_indices`.
+        """
+        self.vertices = np.asarray(vertices, dtype=np.float32)
+        self.tet_indices = np.asarray(tet_indices, dtype=np.int32)
+        self._surface_indices = np.asarray(surface_indices, dtype=np.int32) if surface_indices is not None else None
+
+    @property
+    def surface_indices(self) -> np.ndarray:
+        """Surface triangle indices, shape ``(F, 3)``. Computed lazily if not provided."""
+        if self._surface_indices is None:
+            self._surface_indices = self._extract_surface_triangles()
+        return self._surface_indices
+
+    def _extract_surface_triangles(self) -> np.ndarray:
+        """Extract boundary triangles via open-face tracking."""
+        faces: dict[tuple[int, ...], tuple[int, int, int]] = {}
+
+        def add_face(i: int, j: int, k: int):
+            key = tuple(sorted((i, j, k)))
+            if key not in faces:
+                faces[key] = (i, j, k)
+            else:
+                del faces[key]
+
+        for tet in self.tet_indices:
+            i, j, k, m = int(tet[0]), int(tet[1]), int(tet[2]), int(tet[3])
+            add_face(i, k, j)
+            add_face(j, k, m)
+            add_face(i, j, m)
+            add_face(i, m, k)
+
+        return np.array(list(faces.values()), dtype=np.int32)
+
+    @classmethod
+    def from_meshio(cls, mesh) -> TetMesh:
+        """Construct from a ``meshio.Mesh`` with ``"tetra"`` cells.
+
+        Args:
+            mesh: A ``meshio.Mesh`` object.
+
+        Raises:
+            ValueError: If the mesh has no tetrahedral cells.
+        """
+        tets = mesh.cells_dict.get("tetra")
+        if tets is None:
+            raise ValueError("meshio.Mesh has no tetrahedral cells.")
+        return cls(vertices=mesh.points, tet_indices=tets)
+
+    @classmethod
+    def from_file(cls, file_path: str) -> TetMesh:
+        """Load a tet mesh from a file (Gmsh ``.msh`` or any meshio-supported format).
+
+        Args:
+            file_path: Path to the mesh file.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            ImportError: If meshio is not installed.
+        """
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"Tet mesh file not found: {file_path}")
+
+        import meshio
+
+        return cls.from_meshio(meshio.read(file_path))
+
+    @classmethod
+    def cuboid(
+        cls,
+        size: tuple[float, float, float],
+        resolution: int = 4,
+    ) -> TetMesh:
+        """Generate a cuboid tet mesh centered at the origin.
+
+        Decomposes a regular hexahedral grid into 5 tetrahedra per cell
+        (matching Newton's ``add_soft_grid`` convention).
+
+        Args:
+            size: Cuboid dimensions ``(sx, sy, sz)`` [m].
+            resolution: Number of cells along each axis. Total tets = ``resolution^3 * 5``.
+        """
+        sx, sy, sz = size
+        n = resolution
+        cell_x, cell_y, cell_z = sx / n, sy / n, sz / n
+        ox, oy, oz = -sx / 2, -sy / 2, -sz / 2
+
+        vertices = []
+        for iz in range(n + 1):
+            for iy in range(n + 1):
+                for ix in range(n + 1):
+                    vertices.append([ox + ix * cell_x, oy + iy * cell_y, oz + iz * cell_z])
+
+        def grid_index(x, y, z):
+            return (n + 1) * (n + 1) * z + (n + 1) * y + x
+
+        tet_indices = []
+        for iz in range(n):
+            for iy in range(n):
+                for ix in range(n):
+                    v0 = grid_index(ix, iy, iz)
+                    v1 = grid_index(ix + 1, iy, iz)
+                    v2 = grid_index(ix + 1, iy, iz + 1)
+                    v3 = grid_index(ix, iy, iz + 1)
+                    v4 = grid_index(ix, iy + 1, iz)
+                    v5 = grid_index(ix + 1, iy + 1, iz)
+                    v6 = grid_index(ix + 1, iy + 1, iz + 1)
+                    v7 = grid_index(ix, iy + 1, iz + 1)
+
+                    if (ix & 1) ^ (iy & 1) ^ (iz & 1):
+                        tets = [
+                            (v0, v1, v4, v3),
+                            (v2, v3, v6, v1),
+                            (v5, v4, v1, v6),
+                            (v7, v6, v3, v4),
+                            (v4, v1, v6, v3),
+                        ]
+                    else:
+                        tets = [
+                            (v1, v2, v5, v0),
+                            (v3, v0, v7, v2),
+                            (v4, v7, v0, v5),
+                            (v6, v5, v2, v7),
+                            (v5, v2, v7, v0),
+                        ]
+
+                    tet_indices.extend(tets)
+
+        return cls(
+            vertices=np.array(vertices, dtype=np.float32),
+            tet_indices=np.array(tet_indices, dtype=np.int32),
+        )
 
 
 # ---------------------------------------------------------------------------

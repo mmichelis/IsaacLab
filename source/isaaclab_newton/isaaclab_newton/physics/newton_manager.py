@@ -82,6 +82,20 @@ def _sync_particle_points(
         fabric_points[i][j] = particle_q[offset + j]
 
 
+@wp.kernel(enable_backward=False)
+def _sync_particle_points(
+    fabric_points: wp.fabricarrayarray(dtype=wp.vec3f),
+    offsets: wp.fabricarray(dtype=wp.uint32),
+    particle_q: wp.array(dtype=wp.vec3f),
+    num_points: int,
+):
+    """Write Newton particle positions into Fabric mesh point arrays."""
+    i = wp.tid()
+    offset = int(offsets[i])
+    for j in range(num_points):
+        fabric_points[i][j] = particle_q[offset + j]
+
+
 class NewtonManager(PhysicsManager):
     """Newton physics manager for Isaac Lab.
 
@@ -116,6 +130,7 @@ class NewtonManager(PhysicsManager):
     _collision_pipeline = None
     _collision_cfg: NewtonCollisionPipelineCfg | None = None
     _soft_contact_margin: float = 0.01
+    _soft_contact_margin: float = 0.01
     _newton_contact_sensors: dict = {}  # Maps sensor_key to NewtonContactSensor
     _newton_frame_transform_sensors: list = []  # List of SensorFrameTransform
     _newton_imu_sensors: list = []  # List of NewtonSensorIMU
@@ -133,8 +148,10 @@ class NewtonManager(PhysicsManager):
     _usdrt_stage = None
     _newton_index_attr = "newton:index"
     _particle_offset_attr = "newton:particleOffset"
+    _particle_offset_attr = "newton:particleOffset"
     _clone_physics_only = False
     _transforms_dirty: bool = False
+    _particles_dirty: bool = False
     _particles_dirty: bool = False
 
     # cubric GPU transform hierarchy (replaces CPU update_world_xforms)
@@ -160,6 +177,10 @@ class NewtonManager(PhysicsManager):
     _LocalSite = tuple[None, list[list[int]]]
     _SiteEntry = _GlobalSite | _LocalSite
     _cl_site_index_map: dict[str, _SiteEntry] = {}
+
+    # Deformable body registry — DeformableObject instances register here before clone_environments.
+    # newton_physics_replicate consumes this inside begin_world/end_world for proper world assignment.
+    _deformable_registry: list = []
 
     # Deformable body registry — DeformableObject instances register here before clone_environments.
     # newton_physics_replicate consumes this inside begin_world/end_world for proper world assignment.
@@ -213,6 +234,7 @@ class NewtonManager(PhysicsManager):
     def pre_render(cls) -> None:
         """Flush deferred Fabric writes before cameras/visualizers read the scene."""
         cls.sync_transforms_to_usd()
+        cls.sync_particles_to_usd()
         cls.sync_particles_to_usd()
 
     @classmethod
@@ -316,11 +338,80 @@ class NewtonManager(PhysicsManager):
     @classmethod
     def _mark_transforms_dirty(cls) -> None:
         """Flag that rigid-body transforms have changed and Fabric needs re-sync.
+        """Flag that rigid-body transforms have changed and Fabric needs re-sync.
 
+        The actual sync is deferred to :meth:`sync_transforms_to_usd`,
+        which runs at render cadence via :meth:`pre_render`.
         The actual sync is deferred to :meth:`sync_transforms_to_usd`,
         which runs at render cadence via :meth:`pre_render`.
         """
         cls._transforms_dirty = True
+
+    @classmethod
+    def _mark_particles_dirty(cls) -> None:
+        """Flag that particle positions have changed and Fabric needs re-sync.
+
+        The actual sync is deferred to :meth:`sync_particles_to_usd`,
+        which runs at render cadence via the scene data provider.
+        """
+        cls._particles_dirty = True
+
+    @classmethod
+    def _mark_state_dirty(cls) -> None:
+        """Flag that all physics state has changed and Fabric needs re-sync.
+
+        Convenience method that marks both transforms and particles dirty.
+        Called by :meth:`_simulate` after stepping.
+        """
+        cls._mark_transforms_dirty()
+        cls._mark_particles_dirty()
+
+    @classmethod
+    def sync_particles_to_usd(cls) -> None:
+        """Write Newton particle_q to Fabric mesh point arrays for Kit viewport rendering.
+
+        For each deformable body whose mesh prim carries a ``newton:particleOffset``
+        attribute, this method copies the corresponding slice of ``state_0.particle_q``
+        into the Fabric ``points`` array so the Kit viewport reflects the current
+        deformation.
+
+        No-op when there is no ``_usdrt_stage``, no simulation state, or no
+        deformable bodies registered.
+        """
+        if (
+            cls._usdrt_stage is None
+            or cls._state_0 is None
+            or not cls._deformable_registry
+            or cls._state_0.particle_q is None
+        ):
+            return
+        if not cls._particles_dirty:
+            return
+        pq = cls._state_0.particle_q
+        try:
+            import usdrt
+
+            selection = cls._usdrt_stage.SelectPrims(
+                require_attrs=[
+                    (usdrt.Sdf.ValueTypeNames.Point3fArray, "points", usdrt.Usd.Access.ReadWrite),
+                    (usdrt.Sdf.ValueTypeNames.UInt, cls._particle_offset_attr, usdrt.Usd.Access.Read),
+                ],
+                device=str(PhysicsManager._device),
+            )
+            if selection.GetCount() == 0:
+                return
+            fabric_points = wp.fabricarrayarray(data=selection, attrib="points", dtype=wp.vec3f)
+            fabric_offsets = wp.fabricarray(data=selection, attrib=cls._particle_offset_attr)
+            num_points = cls._deformable_registry[0].particles_per_body
+            wp.launch(
+                _sync_particle_points,
+                dim=selection.GetCount(),
+                inputs=[fabric_points, fabric_offsets, pq, num_points],
+                device=PhysicsManager._device,
+            )
+            cls._particles_dirty = False
+        except Exception as exc:
+            logger.debug("[NewtonManager] sync_particles_to_usd: %s", exc)
 
     @classmethod
     def _mark_particles_dirty(cls) -> None:
@@ -427,6 +518,7 @@ class NewtonManager(PhysicsManager):
             wp.capture_launch(cls._graph)
             if cls._usdrt_stage is not None:
                 cls._mark_state_dirty()
+                cls._mark_state_dirty()
         else:
             with wp.ScopedDevice(device):
                 cls._simulate()
@@ -482,6 +574,7 @@ class NewtonManager(PhysicsManager):
         cls._collision_pipeline = None
         cls._collision_cfg = None
         cls._soft_contact_margin = 0.01
+        cls._soft_contact_margin = 0.01
         cls._newton_contact_sensors = {}
         cls._newton_frame_transform_sensors = []
         cls._newton_imu_sensors = []
@@ -499,6 +592,7 @@ class NewtonManager(PhysicsManager):
         cls._pending_extended_state_attributes = set()
         cls._pending_extended_contact_attributes = set()
         cls._views = []
+        cls._deformable_registry = []
         cls._deformable_registry = []
 
     @classmethod
@@ -781,9 +875,81 @@ class NewtonManager(PhysicsManager):
                     xformable_prim = usdrt.Rt.Xformable(prim)
                     if not xformable_prim.HasWorldXform():
                         xformable_prim.SetWorldXformFromUsd()
+            if not body_paths:
+                logger.warning(
+                    "NewtonManager: model has no rigid bodies (body_label/body_key is empty). "
+                    "USD/Fabric body sync for RTX is skipped. "
+                    "Particle-only scenes (e.g. cloth) must register their own USD mesh update."
+                )
+                cls._usdrt_stage = None
+            else:
+                cls._usdrt_stage = get_current_stage(fabric=True)
+                for i, prim_path in enumerate(body_paths):
+                    prim = cls._usdrt_stage.GetPrimAtPath(prim_path)
+                    prim.CreateAttribute(cls._newton_index_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                    prim.GetAttribute(cls._newton_index_attr).Set(i)
+                    # Tag with PhysicsRigidBodyAPI so cubric's eRigidBody mode
+                    # applies Inverse propagation (preserves Newton's world
+                    # transforms and derives local) instead of Forward.
+                    prim.AddAppliedSchema("PhysicsRigidBodyAPI")
+                    xformable_prim = usdrt.Rt.Xformable(prim)
+                    if not xformable_prim.HasWorldXform():
+                        xformable_prim.SetWorldXformFromUsd()
 
                 cls._mark_transforms_dirty()
                 cls.sync_transforms_to_usd()
+                cls._mark_transforms_dirty()
+                cls.sync_transforms_to_usd()
+
+            # Setup Fabric particle sync for deformable bodies.
+            if cls._deformable_registry:
+                import re
+
+                from pxr import Usd, UsdGeom
+
+                if cls._usdrt_stage is None:
+                    cls._usdrt_stage = get_current_stage(fabric=True)
+
+                if cls._usdrt_stage is not None:
+                    stage = get_current_stage()
+                    for entry in cls._deformable_registry:
+                        prim_path_pattern = entry.prim_path
+                        particle_offsets = entry.particle_offsets
+                        for inst_idx, offset in enumerate(particle_offsets):
+                            # Resolve regex pattern to concrete instance path
+                            resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), prim_path_pattern)
+                            resolved = re.sub(r"\.\*", str(inst_idx), resolved)
+                            base_prim = stage.GetPrimAtPath(resolved)
+                            if not base_prim or not base_prim.IsValid():
+                                logger.debug("[NewtonManager] particle setup: prim not found at %s", resolved)
+                                continue
+                            # Find the renderable mesh prim under the base prim.
+                            # For TetMesh, _bind_cloth_vis_prims creates a companion Mesh at
+                            # {tet_path}_vis — that's what Kit actually renders, so tag it.
+                            has_tet_type = hasattr(UsdGeom, "TetMesh")
+                            mesh_prim = None
+                            for p in Usd.PrimRange(base_prim):
+                                if has_tet_type and p.IsA(UsdGeom.TetMesh):
+                                    vis_path = p.GetPath().pathString + "_vis"
+                                    vis_prim = stage.GetPrimAtPath(vis_path)
+                                    if vis_prim and vis_prim.IsValid() and vis_prim.IsA(UsdGeom.Mesh):
+                                        mesh_prim = vis_prim
+                                    else:
+                                        mesh_prim = p
+                                    break
+                                if p.IsA(UsdGeom.Mesh):
+                                    mesh_prim = p
+                                    break
+                            if mesh_prim is None:
+                                logger.debug("[NewtonManager] particle setup: no mesh prim found under %s", resolved)
+                                continue
+                            mesh_path = mesh_prim.GetPath().pathString
+                            fab_prim = cls._usdrt_stage.GetPrimAtPath(mesh_path)
+                            fab_prim.CreateAttribute(cls._particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                            fab_prim.GetAttribute(cls._particle_offset_attr).Set(offset)
+
+                    cls._mark_particles_dirty()
+                    cls.sync_particles_to_usd()
 
             # Setup Fabric particle sync for deformable bodies.
             if cls._deformable_registry:
@@ -867,9 +1033,15 @@ class NewtonManager(PhysicsManager):
 
         from isaaclab_newton.cloner.newton_replicate import add_deformable_entry_to_builder
 
+        from isaaclab_newton.cloner.newton_replicate import add_deformable_entry_to_builder
+
         if not env_paths:
             # No env Xforms — flat loading
             builder.add_usd(stage, schema_resolvers=schema_resolvers)
+
+            # Add deformable bodies from the registry (single world at origin).
+            for entry in cls._deformable_registry:
+                add_deformable_entry_to_builder(builder, entry, 0, [0.0, 0.0, 0.0])
 
             # Add deformable bodies from the registry (single world at origin).
             for entry in cls._deformable_registry:
@@ -921,6 +1093,11 @@ class NewtonManager(PhysicsManager):
                 for entry in cls._deformable_registry:
                     add_deformable_entry_to_builder(builder, entry, col, list(pos))
 
+
+                # Add deformable bodies from the registry into this world.
+                for entry in cls._deformable_registry:
+                    add_deformable_entry_to_builder(builder, entry, col, list(pos))
+
                 builder.end_world()
 
             cls._cl_site_index_map = {
@@ -928,6 +1105,10 @@ class NewtonManager(PhysicsManager):
                 **{label: (None, per_world) for label, per_world in local_site_map.items()},
             }
             cls._num_envs = len(env_paths)
+
+        # Call builder.color() if any deformable entries were added (required by VBD solver)
+        if cls._deformable_registry:
+            builder.color()
 
         # Call builder.color() if any deformable entries were added (required by VBD solver)
         if cls._deformable_registry:
@@ -954,9 +1135,17 @@ class NewtonManager(PhysicsManager):
                         soft_contact_margin=cls._soft_contact_margin,
                     )
                 logger.info("CollisionPipeline created")
+                    logger.info(f"Creating CollisionPipeline (soft_contact_margin={cls._soft_contact_margin})")
+                    cls._collision_pipeline = CollisionPipeline(
+                        cls._model,
+                        soft_contact_margin=cls._soft_contact_margin,
+                    )
+                logger.info("CollisionPipeline created")
             if cls._contacts is None:
                 logger.info("VBD/XPBD: Creating contacts buffer")
+                logger.info("VBD/XPBD: Creating contacts buffer")
                 cls._contacts = cls._collision_pipeline.contacts()
+                logger.info("VBD/XPBD: contacts buffer created")
                 logger.info("VBD/XPBD: contacts buffer created")
 
         elif cls._solver is not None and isinstance(cls._solver, SolverMuJoCo):
@@ -1039,6 +1228,33 @@ class NewtonManager(PhysicsManager):
                     collision_pipeline=cls._collision_pipeline,
                     contacts=cls._contacts,
                 )
+            elif cls._solver_type == "vbd":
+                cls._use_single_state = False
+                solver_sig = inspect.signature(SolverVBD.__init__)
+                valid_solver_args = set(solver_sig.parameters.keys()) - {"self", "model"}
+                cfg_dict = {k: v for k, v in cfg_dict.items() if k in valid_solver_args}
+                logger.info(f"VBD: Creating SolverVBD with args: {cfg_dict}")
+                logger.info(f"VBD: model particle_count={getattr(cls._model, 'particle_count', 'N/A')}")
+                num_groups = len(getattr(cls._model, "particle_color_groups", []))
+                logger.info(f"VBD: model particle_color_groups has {num_groups} groups")
+                cls._solver = SolverVBD(cls._model, **cfg_dict)
+                logger.info("VBD: SolverVBD created successfully")
+            elif cls._solver_type == "coupled":
+                from .coupled_solver import CoupledSolver
+
+                cls._use_single_state = False
+                cls._soft_contact_margin = solver_cfg.soft_contact_margin
+
+                # Initialize collision pipeline to pass into the coupled solver
+                cls._needs_collision_pipeline = True
+                cls._initialize_contacts()
+
+                cls._solver = CoupledSolver(
+                    model=cls._model,
+                    cfg=solver_cfg,
+                    collision_pipeline=cls._collision_pipeline,
+                    contacts=cls._contacts,
+                )
             else:
                 raise ValueError(f"Invalid solver type: {cls._solver_type}")
 
@@ -1056,6 +1272,8 @@ class NewtonManager(PhysicsManager):
                         "NewtonManager: collision_cfg cannot be set when use_mujoco_contacts=True."
                         " Either set use_mujoco_contacts=False or remove collision_cfg."
                     )
+            elif cls._solver_type == "coupled":
+                cls._needs_collision_pipeline = False
             elif cls._solver_type == "coupled":
                 cls._needs_collision_pipeline = False
             else:
@@ -1236,6 +1454,10 @@ class NewtonManager(PhysicsManager):
         if hasattr(cls._solver, "rebuild_bvh"):
             cls._solver.rebuild_bvh(cls._state_0)
 
+        # Rebuild BVH once per step for solvers that require it (e.g., VBD cloth).
+        if hasattr(cls._solver, "rebuild_bvh"):
+            cls._solver.rebuild_bvh(cls._state_0)
+
         if cls._needs_collision_pipeline:
             cls._collision_pipeline.collide(cls._state_0, cls._contacts)
             contacts = cls._contacts
@@ -1283,10 +1505,12 @@ class NewtonManager(PhysicsManager):
 
         Delegates physics work to :meth:`_simulate_physics_only` and then
         marks state dirty for the next render-cadence sync.
+        marks state dirty for the next render-cadence sync.
         """
         cls._simulate_physics_only()
 
         if cls._usdrt_stage is not None:
+            cls._mark_state_dirty()
             cls._mark_state_dirty()
 
     @classmethod
