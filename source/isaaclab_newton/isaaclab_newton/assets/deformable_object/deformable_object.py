@@ -34,6 +34,7 @@ class DeformableRegistryEntry:
     """
 
     prim_path: str
+    sim_mesh_prim_path: str # the simulation mesh prim path (TetMesh for volume deformables, Mesh for surface deformables)
     vertices: list  # list of wp.vec3
     indices: list  # flat list of ints
     is_tet: bool
@@ -379,37 +380,37 @@ class DeformableObject(BaseDeformableObject):
         Returns:
             The registry entry (also stored on NewtonManager._deformable_registry).
         """
-        # Find the spawned mesh prim
+        # Find the first spawned mesh prim in regex path
         template_prim = sim_utils.find_first_matching_prim(self.cfg.prim_path)
         if template_prim is None:
             raise RuntimeError(f"Failed to find prim for expression: '{self.cfg.prim_path}'.")
+        template_prim_path = template_prim.GetPrimPath()
 
         # Find the mesh descendant — either UsdGeom.TetMesh or UsdGeom.Mesh
-        has_tet_type = hasattr(UsdGeom, "TetMesh")
-        mesh_prim = None
-        if has_tet_type and template_prim.IsA(UsdGeom.TetMesh) or template_prim.IsA(UsdGeom.Mesh):
-            mesh_prim = template_prim
-        else:
-            for desc in Usd.PrimRange(template_prim):
-                if desc == template_prim:
-                    continue
-                if has_tet_type and desc.IsA(UsdGeom.TetMesh):
-                    mesh_prim = desc
-                    break
-                if desc.IsA(UsdGeom.Mesh):
-                    mesh_prim = desc
-                    break
-
-        if mesh_prim is None:
-            raise RuntimeError(
-                f"No UsdGeom.Mesh or UsdGeom.TetMesh found at or under '{self.cfg.prim_path}'. "
-                "Please ensure the spawn config creates a mesh prim (e.g. MeshFromFileCfg or TetMeshCuboidCfg)."
+        # traverse the prim and get the mesh.
+        matching_prims = sim_utils.get_all_matching_child_prims(template_prim_path, lambda p: p.GetTypeName() == "TetMesh")
+        deformable_type = None
+        if len(matching_prims) > 1:
+            # get list of all meshes found
+            mesh_paths = [p.GetPrimPath() for p in matching_prims]
+            raise ValueError(
+                f"Found multiple meshes in '{template_prim_path}': {mesh_paths}."
+                " Deformable body schema can only be applied to one mesh for now."
             )
+        # if no tetmeshes were found, we have a surface deformable.
+        if len(matching_prims) == 0:
+            matching_prims = sim_utils.get_all_matching_child_prims(template_prim_path, lambda p: p.GetTypeName() == "Mesh")
+            # TODO: Need to figure out how to find sim mesh vs visual mesh.
+            if len(matching_prims) == 0:
+                raise ValueError(f"Could not find any surface or volume mesh in '{template_prim_path}'. Please check asset.")
+            deformable_type = "surface"
+        else:
+            deformable_type = "volume"
+    
+        mesh_prim = matching_prims[0]
 
         # Read mesh data
-        is_tet = mesh_prim.IsA(UsdGeom.TetMesh) if has_tet_type else False
-
-        if is_tet:
+        if deformable_type == "volume":
             tet_mesh = UsdGeom.TetMesh(mesh_prim)
             pts = np.array(tet_mesh.GetPointsAttr().Get(), dtype=np.float32)
             vertices = [wp.vec3(float(p[0]), float(p[1]), float(p[2])) for p in pts]
@@ -418,21 +419,24 @@ class DeformableObject(BaseDeformableObject):
             for vec4i in raw_tet_indices:
                 indices.extend([int(vec4i[0]), int(vec4i[1]), int(vec4i[2]), int(vec4i[3])])
             logger.info(f"Registered UsdGeom.TetMesh: {len(pts)} vertices, {len(indices) // 4} tetrahedra.")
-        else:
+        elif deformable_type == "surface":
             usd_mesh = UsdGeom.Mesh(mesh_prim)
             pts = np.array(usd_mesh.GetPointsAttr().Get(), dtype=np.float32)
             vertices = [wp.vec3(float(p[0]), float(p[1]), float(p[2])) for p in pts]
             indices = list(usd_mesh.GetFaceVertexIndicesAttr().Get())
             logger.info(f"Registered UsdGeom.Mesh: {len(pts)} vertices.")
+        else:
+            raise ValueError(f"Unsupported deformable type for prim '{mesh_prim.GetPrimPath()}': {deformable_type}.")
 
         init_pos = self.cfg.init_state.pos if hasattr(self.cfg.init_state, "pos") else (0.0, 0.0, 0.0)
         init_rot = self.cfg.init_state.rot if hasattr(self.cfg.init_state, "rot") else (1.0, 0.0, 0.0, 0.0)
 
         entry = DeformableRegistryEntry(
             prim_path=self.cfg.prim_path,
+            sim_mesh_prim_path=str(mesh_prim.GetPrimPath()),
             vertices=vertices,
             indices=indices,
-            is_tet=is_tet,
+            is_tet=deformable_type == "volume",
             init_pos=init_pos,
             init_rot=init_rot,
             density=self.cfg.density,

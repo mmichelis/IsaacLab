@@ -132,7 +132,7 @@ class NewtonManager(PhysicsManager):
     _newton_stage_path = None
     _usdrt_stage = None
     _newton_index_attr = "newton:index"
-    _particle_offset_attr = "newton:particleOffset"
+    _newton_particle_offset_attr = "newton:particleOffset"
     _clone_physics_only = False
     _transforms_dirty: bool = False
     _particles_dirty: bool = False
@@ -369,14 +369,14 @@ class NewtonManager(PhysicsManager):
             selection = cls._usdrt_stage.SelectPrims(
                 require_attrs=[
                     (usdrt.Sdf.ValueTypeNames.Point3fArray, "points", usdrt.Usd.Access.ReadWrite),
-                    (usdrt.Sdf.ValueTypeNames.UInt, cls._particle_offset_attr, usdrt.Usd.Access.Read),
+                    (usdrt.Sdf.ValueTypeNames.UInt, cls._newton_particle_offset_attr, usdrt.Usd.Access.Read),
                 ],
                 device=str(PhysicsManager._device),
             )
             if selection.GetCount() == 0:
                 return
             fabric_points = wp.fabricarrayarray(data=selection, attrib="points", dtype=wp.vec3f)
-            fabric_offsets = wp.fabricarray(data=selection, attrib=cls._particle_offset_attr)
+            fabric_offsets = wp.fabricarray(data=selection, attrib=cls._newton_particle_offset_attr)
             num_points = cls._deformable_registry[0].particles_per_body
             wp.launch(
                 _sync_particle_points,
@@ -797,40 +797,21 @@ class NewtonManager(PhysicsManager):
                 if cls._usdrt_stage is not None:
                     stage = get_current_stage()
                     for entry in cls._deformable_registry:
-                        prim_path_pattern = entry.prim_path
+                        prim_path_pattern = entry.sim_mesh_prim_path
                         particle_offsets = entry.particle_offsets
                         for inst_idx, offset in enumerate(particle_offsets):
-                            # Resolve regex pattern to concrete instance path
+                            # Resolve regex pattern to concrete instance path 
+                            # TODO: Generalize this specific path and env indexing
                             resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), prim_path_pattern)
                             resolved = re.sub(r"\.\*", str(inst_idx), resolved)
-                            base_prim = stage.GetPrimAtPath(resolved)
-                            if not base_prim or not base_prim.IsValid():
+                            mesh_prim = stage.GetPrimAtPath(resolved)
+                            if not mesh_prim or not mesh_prim.IsValid():
                                 logger.debug("[NewtonManager] particle setup: prim not found at %s", resolved)
-                                continue
-                            # Find the renderable mesh prim under the base prim.
-                            # For TetMesh, _bind_cloth_vis_prims creates a companion Mesh at
-                            # {tet_path}_vis — that's what Kit actually renders, so tag it.
-                            has_tet_type = hasattr(UsdGeom, "TetMesh")
-                            mesh_prim = None
-                            for p in Usd.PrimRange(base_prim):
-                                if has_tet_type and p.IsA(UsdGeom.TetMesh):
-                                    vis_path = p.GetPath().pathString + "_vis"
-                                    vis_prim = stage.GetPrimAtPath(vis_path)
-                                    if vis_prim and vis_prim.IsValid() and vis_prim.IsA(UsdGeom.Mesh):
-                                        mesh_prim = vis_prim
-                                    else:
-                                        mesh_prim = p
-                                    break
-                                if p.IsA(UsdGeom.Mesh):
-                                    mesh_prim = p
-                                    break
-                            if mesh_prim is None:
-                                logger.debug("[NewtonManager] particle setup: no mesh prim found under %s", resolved)
                                 continue
                             mesh_path = mesh_prim.GetPath().pathString
                             fab_prim = cls._usdrt_stage.GetPrimAtPath(mesh_path)
-                            fab_prim.CreateAttribute(cls._particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
-                            fab_prim.GetAttribute(cls._particle_offset_attr).Set(offset)
+                            fab_prim.CreateAttribute(cls._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                            fab_prim.GetAttribute(cls._newton_particle_offset_attr).Set(offset)
 
                     cls._mark_particles_dirty()
                     cls.sync_particles_to_usd()
