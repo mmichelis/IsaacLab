@@ -23,7 +23,7 @@ import torch
 import warp as wp
 from flaky import flaky
 from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 import carb
 
@@ -68,7 +68,7 @@ def generate_cubes_scene(
     if has_api:
         spawn_cfg = sim_utils.MeshCuboidCfg(
             size=(0.2, 0.2, 0.2),
-            deformable_props=DeformableBodyPropertiesCfg(kinematic_enabled=kinematic_enabled),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(kinematic_enabled=kinematic_enabled),
         )
         # Add physics material if provided
         if material_path is not None:

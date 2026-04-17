@@ -13,9 +13,6 @@ from isaaclab.utils import configclass
 if TYPE_CHECKING:
     from isaaclab.sim import schemas
 
-    # deformables only supported on PhysX backend
-    from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
-
 
 @configclass
 class DeformableObjectSpawnerCfg(SpawnerCfg):
@@ -35,5 +32,5 @@ class DeformableObjectSpawnerCfg(SpawnerCfg):
     mass_props: schemas.MassPropertiesCfg | None = None
     """Mass properties."""
 
-    deformable_props: DeformableBodyPropertiesCfg | None = None
+    deformable_props: schemas.DeformableBodyPropertiesCfg | None = None
     """Deformable body properties. Only supported on PhysX backend for now."""

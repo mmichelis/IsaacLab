@@ -13,7 +13,6 @@ import trimesh
 import trimesh.transformations
 
 # deformables only supported on PhysX backend
-from isaaclab_physx.sim import schemas as schemas_physx
 from isaaclab_physx.sim.spawners.materials import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 from pxr import Gf, Usd, UsdGeom, UsdPhysics, Vt
@@ -717,9 +716,13 @@ def _spawn_tet_mesh_geom_from_tet_mesh(
 
     # Apply property schemas (mirrors _spawn_mesh_geom_from_mesh)
     if cfg.deformable_props is not None:
+        # deformable body properties are PhysX-specific
+        schemas.define_deformable_body_properties(prim_path, cfg.deformable_props, stage=stage)
         if cfg.mass_props is not None:
-            schemas.define_mass_properties(mesh_prim_path, cfg.mass_props, stage=stage)
-        schemas.define_deformable_body_properties(mesh_prim_path, cfg.deformable_props, stage=stage)
+            raise ValueError(
+                """MassPropertiesCfg are not supported for deformable bodies
+                and should be set through DeformableBodyPropertiesCfg(mass=<value>)."""
+            )
     elif cfg.collision_props is not None:
         schemas.define_collision_properties(mesh_prim_path, cfg.collision_props, stage=stage)
 
@@ -834,7 +837,7 @@ def _spawn_mesh_geom_from_mesh(
     if cfg.deformable_props is not None:
         # apply deformable body properties
         deformable_type = "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume"
-        schemas_physx.define_deformable_body_properties(
+        schemas.define_deformable_body_properties(
             prim_path, cfg.deformable_props, stage=stage, deformable_type=deformable_type
         )
         if cfg.mass_props is not None:

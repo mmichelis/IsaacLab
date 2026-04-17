@@ -83,47 +83,47 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # spawn a red cone
     cfg_sphere = sim_utils.MeshSphereCfg(
         radius=0.4,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cuboid = sim_utils.MeshCuboidCfg(
         size=(0.6, 0.6, 0.6),
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cylinder = sim_utils.MeshCylinderCfg(
         radius=0.25,
         height=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
         radius=0.35,
         height=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cone = sim_utils.MeshConeCfg(
         radius=0.35,
         height=0.75,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
     )
     cfg_cloth = sim_utils.MeshSquareCfg(
         size=1.5,
         resolution=(21, 21),
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=SurfaceDeformableBodyMaterialCfg(),
     )
     cfg_usd = sim_utils.UsdFileCfg(
         usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
         physics_material=DeformableBodyMaterialCfg(),
         scale=[0.05, 0.05, 0.05],

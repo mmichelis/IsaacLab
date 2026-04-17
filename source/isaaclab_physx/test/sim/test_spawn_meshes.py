@@ -14,7 +14,6 @@ simulation_app = AppLauncher(headless=True).app
 
 
 import pytest
-from isaaclab_physx.sim.schemas.schemas_cfg import DeformableBodyPropertiesCfg
 from isaaclab_physx.sim.spawners.materials.physics_materials_cfg import DeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
@@ -50,7 +49,7 @@ def test_spawn_cone_with_deformable_props(sim):
     cfg = sim_utils.MeshConeCfg(
         radius=1.0,
         height=2.0,
-        deformable_props=DeformableBodyPropertiesCfg(deformable_body_enabled=True),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(deformable_body_enabled=True),
     )
     prim = cfg.func("/World/Cone", cfg)
 
@@ -70,7 +69,7 @@ def test_spawn_cone_with_deformable_and_mass_props(sim):
     cfg = sim_utils.MeshConeCfg(
         radius=1.0,
         height=2.0,
-        deformable_props=DeformableBodyPropertiesCfg(deformable_body_enabled=True, mass=1.0),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(deformable_body_enabled=True, mass=1.0),
     )
     prim = cfg.func("/World/Cone", cfg)
 
@@ -95,7 +94,7 @@ def test_spawn_cone_with_deformable_and_density_props(sim):
     cfg = sim_utils.MeshConeCfg(
         radius=1.0,
         height=2.0,
-        deformable_props=DeformableBodyPropertiesCfg(deformable_body_enabled=True),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(deformable_body_enabled=True),
         physics_material=DeformableBodyMaterialCfg(density=10.0),
     )
     prim = cfg.func("/World/Cone", cfg)
@@ -119,7 +118,7 @@ def test_spawn_cone_with_all_deformable_props(sim):
     cfg = sim_utils.MeshConeCfg(
         radius=1.0,
         height=2.0,
-        deformable_props=DeformableBodyPropertiesCfg(mass=1.0),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(mass=1.0),
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.75, 0.5)),
         physics_material=DeformableBodyMaterialCfg(),
     )
