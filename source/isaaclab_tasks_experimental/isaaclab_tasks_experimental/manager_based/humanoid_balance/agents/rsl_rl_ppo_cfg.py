@@ -54,12 +54,12 @@ class HumanoidYogaPadsPPORunnerCfg(HumanoidBalancePPORunnerCfg):
         entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-3,
+        learning_rate=5.0e-4,
         schedule="adaptive",
         gamma=0.995,
         lam=0.95,
         desired_kl=0.01,
-        max_grad_norm=1.0,
+        max_grad_norm=2.0,
     )
 
 @configclass

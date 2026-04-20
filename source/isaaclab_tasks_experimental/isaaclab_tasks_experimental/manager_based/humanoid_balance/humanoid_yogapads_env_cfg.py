@@ -92,7 +92,7 @@ PAD_SPAWN_CFG = sim_utils.UsdFileCfg(
     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.3, 0.7)),
     physics_material=DeformableBodyMaterialCfg(
         density=50.0,
-        youngs_modulus=2e5,
+        youngs_modulus=1e5,
         poissons_ratio=0.3,
         static_friction=0.9,
         dynamic_friction=0.9,
@@ -149,9 +149,29 @@ def robot_heading_vec(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEnt
 
 
 def robot_forward_vel(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """Robot base forward (x) velocity in world frame."""
+    """Robot forward velocity in body frame (projected onto heading), clipped to [-1, 1.5] m/s.
+
+    Using body-frame prevents rewarding forward-pitch falls that harvest world-frame +x velocity
+    before termination. Clipping prevents physics spikes from blowing up the value target.
+    """
     asset = env.scene[asset_cfg.name]
-    return wp.to_torch(asset.data.root_vel_w)[:, 0]
+    heading = wp.to_torch(asset.data.heading_w)
+    vel_w = wp.to_torch(asset.data.root_vel_w)
+    vx_body = torch.cos(heading) * vel_w[:, 0] + torch.sin(heading) * vel_w[:, 1]
+    return torch.clamp(vx_body, -1.0, 1.5)
+
+
+def heading_alignment(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Reward for facing +x direction: exp(-2 * (1 - cos(yaw))) ∈ (0, 1]."""
+    asset = env.scene[asset_cfg.name]
+    heading = wp.to_torch(asset.data.heading_w)
+    return torch.exp(-2.0 * (1.0 - torch.cos(heading)))
+
+
+def root_pos_env(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Env-local root position. Shape: (num_envs, 3)."""
+    asset = env.scene[asset_cfg.name]
+    return wp.to_torch(asset.data.root_pos_w) - env.scene.env_origins
 
 
 def robot_xy_vel_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
@@ -250,7 +270,8 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
     # Mid-point of first two pad columns, with reset randomization covering both
     robot: ArticulationCfg = G1_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(pos=(1.0, 0.0, PAD_TOP_Z + 0.8)),
+        # G1 root sits ~0.74m above feet — spawn root so feet start just above pad top.
+        init_state=ArticulationCfg.InitialStateCfg(pos=(0.5, 0.0, PAD_TOP_Z + 0.78)),
     )
 
     # -- 4x2 yoga pads --
@@ -291,7 +312,7 @@ class HumanoidYogaPadsSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.2, use_default_offset=True)
 
 
 @configclass
@@ -302,8 +323,8 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        # spatial awareness
-        root_pos = ObsTerm(func=mdp.root_pos_w)
+        # spatial awareness (env-local — world-frame root_pos was leaking env offsets into obs norm)
+        root_pos = ObsTerm(func=root_pos_env)
         dist_to_goal = ObsTerm(
             func=distance_to_end_platform,
             params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
@@ -320,7 +341,7 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5))
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
@@ -353,7 +374,8 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.5, 0.0), "y": (-0.4, 0.4), "yaw": (-0.2, 0.2)},
+            # keep robot on pad_0 (x∈[0,1]) — avoids the inter-pad gap at x≈1.05
+            "pose_range": {"x": (-0.25, 0.25), "y": (-0.35, 0.35), "yaw": (-0.2, 0.2)},
             "velocity_range": {
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
@@ -382,16 +404,18 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task: forward velocity (encourages movement)
-    robot_forward = RewTerm(func=robot_forward_vel, weight=3.0)
+    # -- task: forward velocity in body frame, clipped (encourages walking, not forward-pitch falls)
+    robot_forward = RewTerm(func=robot_forward_vel, weight=4.0)
+    # -- task: face +x (prevents spinning for drift velocity)
+    heading_align = RewTerm(func=heading_alignment, weight=0.5)
     # -- task: bonus for reaching end platform
     goal_reached = RewTerm(
         func=reached_end_platform,
-        weight=10.0,
+        weight=20.0,
         params={"robot_cfg": SceneEntityCfg("robot"), "platform_cfg": SceneEntityCfg("platform_end")},
     )
-    # -- alive bonus (must exceed standing-still penalty budget of ~0.26/step)
-    alive = RewTerm(func=mdp.is_alive, weight=0.5)
+    # -- alive bonus (small — robot should seek the goal, not survive in place)
+    alive = RewTerm(func=mdp.is_alive, weight=0.25)
     # -- penalties
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
     # -- penalize high speed (reduced — deformable surfaces need dynamic movement)
@@ -417,7 +441,7 @@ class RewardsCfg:
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.1)
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-2.0,
+        weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
     )
     joint_deviation_hip = RewTerm(
