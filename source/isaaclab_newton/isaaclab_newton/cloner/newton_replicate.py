@@ -129,10 +129,14 @@ def _build_newton_builder_from_mapping(
 
     schema_resolvers = [SchemaResolverNewton(), SchemaResolverPhysx()]
 
+    # Deformables are handled via ``add_soft_mesh`` in :func:`add_deformable_entry_to_builder`;
+    # skip their sim/visual mesh prims here so ``add_usd`` doesn't also load them as colliders.
+    deformable_ignore_paths = NewtonManager._get_deformable_ignore_paths()
+
     builder = NewtonManager.create_builder(up_axis=up_axis)
     stage_info = builder.add_usd(
         stage,
-        ignore_paths=["/World/envs"] + sources,
+        ignore_paths=["/World/envs"] + sources + deformable_ignore_paths,
         schema_resolvers=schema_resolvers,
     )
 
@@ -148,6 +152,7 @@ def _build_newton_builder_from_mapping(
             root_path=src_path,
             load_visual_shapes=True,
             skip_mesh_approximation=True,
+            ignore_paths=deformable_ignore_paths,
             schema_resolvers=schema_resolvers,
         )
         if simplify_meshes:

@@ -867,6 +867,28 @@ class NewtonManager(PhysicsManager):
                     cls.sync_particles_to_usd()
 
     @classmethod
+    def _get_deformable_ignore_paths(cls) -> list[str]:
+        """Return USD prim paths to skip when calling ``builder.add_usd``.
+        TODO: This solution will become unnecessary once Newton ``builder.add_usd`` supports deformables.
+
+        For each registered deformable body, both the simulation mesh (which carries
+        ``UsdPhysics.CollisionAPI`` from PhysX's ``deformableUtils`` setup) and the
+        visual mesh are returned. The sim mesh must be skipped so Newton does not
+        create a redundant static mesh collider alongside the particles produced by
+        :func:`add_soft_mesh`. The visual mesh is skipped so Newton does not treat it
+        as a collider or duplicate it as a Newton visual shape — Kit reads it directly
+        from USD for rendering.
+
+        Paths may contain regex patterns (e.g. ``/World/env_.*/Cube/...``); Newton's
+        ``add_usd`` matches them via :func:`re.match`.
+        """
+        paths: list[str] = []
+        for entry in cls._deformable_registry:
+            paths.append(entry.sim_mesh_prim_path)
+            paths.append(entry.vis_mesh_prim_path)
+        return paths
+
+    @classmethod
     def instantiate_builder_from_stage(cls):
         """Create builder from USD stage.
 
@@ -898,16 +920,20 @@ class NewtonManager(PhysicsManager):
 
         from isaaclab_newton.cloner.newton_replicate import add_deformable_entry_to_builder
 
+        # Deformable sim/visual mesh paths must be skipped by ``add_usd`` so they don't get duplicated as static colliders
+        deformable_ignore_paths = cls._get_deformable_ignore_paths()
+
         if not env_paths:
             # No env Xforms — flat loading
-            builder.add_usd(stage, schema_resolvers=schema_resolvers)
+            builder.add_usd(stage, ignore_paths=deformable_ignore_paths, schema_resolvers=schema_resolvers)
 
             # Add deformable bodies from the registry (single world at origin).
             for entry in cls._deformable_registry:
                 add_deformable_entry_to_builder(builder, entry, 0, [0.0, 0.0, 0.0])
         else:
             # Load everything except the env subtrees (ground plane, lights, etc.)
-            ignore_paths = [path for _, path in env_paths]
+            # and the deformable sim/visual meshes.
+            ignore_paths = [path for _, path in env_paths] + deformable_ignore_paths
             builder.add_usd(stage, ignore_paths=ignore_paths, schema_resolvers=schema_resolvers)
 
             # Build a prototype from the first env (all envs assumed identical)
@@ -916,6 +942,7 @@ class NewtonManager(PhysicsManager):
             proto.add_usd(
                 stage,
                 root_path=proto_path,
+                ignore_paths=deformable_ignore_paths,
                 schema_resolvers=schema_resolvers,
             )
 

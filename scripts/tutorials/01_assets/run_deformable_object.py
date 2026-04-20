@@ -141,10 +141,10 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         kinematic_cubes = [0, 3]
         # we slightly move the cube in the z-direction by picking the vertex at index 0
         # nodal_kinematic_target[kinematic_cubes, 0, 2] += 0.2 * sim_dt
-        # set vertex at index 0 to be kinematically constrained
-        # 0: constrained, 1: free
+        # # set vertex at index 0 to be kinematically constrained
+        # # 0: constrained, 1: free
         # nodal_kinematic_target[kinematic_cubes, 0, 3] = 0.0
-        # write kinematic target to simulation
+        # # write kinematic target to simulation
         # cube_object.write_nodal_kinematic_target_to_sim_index(nodal_kinematic_target)
 
         # write internal data to simulation
