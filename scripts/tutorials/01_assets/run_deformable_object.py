@@ -22,7 +22,7 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on interacting with a deformable object.")
-parser.add_argument("--physics", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
+parser.add_argument("--backend", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # demos should open Kit visualizer by default
@@ -45,7 +45,6 @@ from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyM
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
-from isaaclab.sim import SimulationContext
 
 
 def design_scene():
@@ -73,8 +72,8 @@ def design_scene():
             size=(0.2, 0.2, 0.2),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-            # physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
-            physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
+            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+            # physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         # density=500.0,
@@ -167,17 +166,14 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
 def main():
     """Main function."""
     # Load kit helper
-    if args_cli.physics == "newton":
+    if args_cli.backend == "newton":
         from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
-
-        # physics_cfg = NewtonCfg(solver_cfg=XPBDSolverCfg(iterations=100), num_substeps=8)
         physics_cfg = NewtonCfg(solver_cfg=VBDSolverCfg(iterations=10), num_substeps=4)
     else:
         from isaaclab_physx.physics import PhysxCfg
-
         physics_cfg = PhysxCfg()
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, physics=physics_cfg)
-    sim = SimulationContext(sim_cfg)
+    sim = sim_utils.SimulationContext(sim_cfg)
     # Set main camera
     sim.set_camera_view(eye=[2.0, 2.0, 2.0], target=[0.0, 0.0, 0.75])
     # Design scene

@@ -21,6 +21,7 @@ from isaaclab.app import AppLauncher
 
 # create argparser
 parser = argparse.ArgumentParser(description="This script demonstrates how to spawn deformable prims into the scene.")
+parser.add_argument("--backend", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # demos should open Kit visualizer by default
@@ -41,10 +42,10 @@ import tqdm
 import warp as wp
 
 # deformables supported in PhysX
-from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
+from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
+from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 
@@ -225,7 +226,13 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
 def main():
     """Main function."""
     # Initialize the simulation context
-    sim_cfg = sim_utils.SimulationCfg(dt=0.01, device=args_cli.device)
+    if args_cli.backend == "newton":
+        from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
+        physics_cfg = NewtonCfg(solver_cfg=VBDSolverCfg(iterations=10), num_substeps=4)
+    else:
+        from isaaclab_physx.physics import PhysxCfg
+        physics_cfg = PhysxCfg()
+    sim_cfg = sim_utils.SimulationCfg(dt=0.01, device=args_cli.device, physics=physics_cfg)
     sim = sim_utils.SimulationContext(sim_cfg)
     # Set main camera
     sim.set_camera_view([4.0, 4.0, 3.0], [0.5, 0.5, 0.0])
