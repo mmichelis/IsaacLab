@@ -1030,9 +1030,10 @@ def define_deformable_body_properties(
     deformable_type: str = "volume",
     sim_mesh_prim_path: str | None = None,
 ):
-    """Apply the deformable body schema on the input prim and set its properties. Volume deformables will have 
-    their simulation tetrahedral mesh automatically computed from the surface mesh of the input prim.
-    Surface deformables simply copy the visual mesh as simulation mesh. 
+    """Apply the deformable body schema on the input prim and set its properties. The input prim should 
+    have a visual surface mesh as child. Volume deformables will have their simulation tetrahedral mesh 
+    automatically computed from the surface mesh of the input prim. Surface deformables simply copy the visual mesh 
+    as simulation mesh. 
 
     See :func:`modify_deformable_body_properties` for more details on how the properties are set.
 
@@ -1069,24 +1070,23 @@ def define_deformable_body_properties(
     if not root_prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
 
-    # traverse the prim and get the mesh. If none or multiple meshes are found, raise error.
+    # traverse the prim and get the visual mesh. If none or multiple meshes are found, raise error.
     matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
-    # check if the volume deformable mesh is valid
+    # check if the visual surface mesh is valid
     if len(matching_prims) == 0:
-        raise ValueError(f"Could not find any mesh in '{prim_path}'. Please check asset.")
+        raise ValueError(f"Could not find any visual mesh in '{prim_path}'. Please check asset.")
     if len(matching_prims) > 1:
         # get list of all meshes found
         mesh_paths = [p.GetPrimPath() for p in matching_prims]
         raise ValueError(
-            f"Found multiple meshes in '{prim_path}': {mesh_paths}."
+            f"Found multiple visual meshes in '{prim_path}': {mesh_paths}."
             " Deformable body schema can only be applied to one mesh for now."
         )
-    mesh_prim = matching_prims[0]
-    mesh_prim_path = mesh_prim.GetPrimPath()
+    vis_mesh_prim = matching_prims[0]
 
     # check if the prim is valid
-    if not mesh_prim.IsValid():
-        raise ValueError(f"Mesh prim path '{mesh_prim_path}' is not valid.")
+    if not vis_mesh_prim.IsValid():
+        raise ValueError(f"Mesh prim path '{vis_mesh_prim.GetPrimPath()}' is not valid.")
     
     # remove potential previous configuration
     deformableUtils.remove_deformable_body(stage, prim_path)
@@ -1094,9 +1094,9 @@ def define_deformable_body_properties(
     # create and set simulation/root prim properties based on the type of the deformable mesh (surface vs volume)
     sim_mesh_prim_path = prim_path + "/sim_mesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
     # extract visual surface mesh vertices and faces
-    vertices = np.array(mesh_prim.GetAttribute("points").Get())
-    faces = np.array(mesh_prim.GetAttribute("faceVertexIndices").Get()).flatten()
-    face_counts = np.array(mesh_prim.GetAttribute("faceVertexCounts").Get())
+    vertices = np.array(vis_mesh_prim.GetAttribute("points").Get())
+    faces = np.array(vis_mesh_prim.GetAttribute("faceVertexIndices").Get()).flatten()
+    face_counts = np.array(vis_mesh_prim.GetAttribute("faceVertexCounts").Get())
     if deformable_type == "surface":
         # create simulation mesh as copy of visual mesh
         sim_mesh_prim = create_prim(
@@ -1159,14 +1159,16 @@ def define_deformable_body_properties(
     
     # bind visual to sim mesh by applying bind pose deformable pose API
     purposes = ["bindPose"]
-    mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
-    mesh_prim.CreateAttribute("deformablePose:default:omniphysics:purposes", Sdf.ValueTypeNames.TokenArray).Set(purposes)
-    point_based = UsdGeom.PointBased(mesh_prim)
-    points = point_based.GetPointsAttr().Get()
-    mesh_prim.CreateAttribute("deformablePose:default:omniphysics:points", Sdf.ValueTypeNames.Point3fArray).Set(points)
+    vis_mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
+    vis_mesh_prim.CreateAttribute("deformablePose:default:omniphysics:purposes", Sdf.ValueTypeNames.TokenArray).Set(purposes)
+    points = UsdGeom.PointBased(vis_mesh_prim).GetPointsAttr().Get()
+    vis_mesh_prim.CreateAttribute("deformablePose:default:omniphysics:points", Sdf.ValueTypeNames.Point3fArray).Set(points)
 
-    sim_mesh_prim.GetPrim().ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
-    sim_mesh_prim.GetPrim().CreateAttribute("deformablePose:default:omniphysics:purposes", Sdf.ValueTypeNames.TokenArray).Set(purposes)
+    sim_mesh_prim.ApplyAPI("OmniPhysicsDeformablePoseAPI", "default")
+    sim_mesh_prim.CreateAttribute("deformablePose:default:omniphysics:purposes", Sdf.ValueTypeNames.TokenArray).Set(purposes)
+
+    # disable simulation mesh for rendering
+    UsdGeom.Imageable(sim_mesh_prim).GetPurposeAttr().Set(UsdGeom.Tokens.guide)
 
     # apply deformable body api
     if not root_prim.ApplyAPI("OmniPhysicsDeformableBodyAPI"):
