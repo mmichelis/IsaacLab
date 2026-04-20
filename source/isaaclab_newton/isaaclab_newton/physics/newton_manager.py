@@ -71,15 +71,45 @@ def _set_fabric_transforms(
 @wp.kernel(enable_backward=False)
 def _sync_particle_points(
     fabric_points: wp.fabricarrayarray(dtype=wp.vec3f),
+    fabric_world_matrices: wp.fabricarray(dtype=wp.mat44d),
     offsets: wp.fabricarray(dtype=wp.uint32),
     particle_q: wp.array(dtype=wp.vec3f),
     num_points: int,
 ):
-    """Write Newton particle positions into Fabric mesh point arrays."""
+    """Write Newton particle positions into Fabric mesh point arrays as local-frame points.
+
+    Newton stores particle positions in world space in ``state.particle_q``. The Fabric
+    ``points`` attribute on a ``UsdGeom.Mesh`` is local-space — Kit multiplies by the
+    mesh prim's resolved ``omni:fabric:worldMatrix`` at render time.
+
+    This kernel inverts the mesh prim's world matrix to convert each world-space particle
+    position into local-space before writing. Kit's hierarchy multiplication then recovers
+    the correct world position.
+    """
     i = wp.tid()
     offset = int(offsets[i])
+
+    # Un-transpose Fabric's stored matrix to get the standard homogeneous form
+    world_matrix = wp.transpose(wp.mat44f(fabric_world_matrices[i]))
+    inv_world_matrix = wp.inverse(world_matrix)
+
     for j in range(num_points):
-        fabric_points[i][j] = particle_q[offset + j]
+        wp_in = particle_q[offset + j]
+        # Apply inverse transform to homogeneous point (w=1).
+        fabric_points[i][j] = wp.vec3f(
+            inv_world_matrix[0, 0] * wp_in[0]
+            + inv_world_matrix[0, 1] * wp_in[1]
+            + inv_world_matrix[0, 2] * wp_in[2]
+            + inv_world_matrix[0, 3],
+            inv_world_matrix[1, 0] * wp_in[0]
+            + inv_world_matrix[1, 1] * wp_in[1]
+            + inv_world_matrix[1, 2] * wp_in[2]
+            + inv_world_matrix[1, 3],
+            inv_world_matrix[2, 0] * wp_in[0]
+            + inv_world_matrix[2, 1] * wp_in[1]
+            + inv_world_matrix[2, 2] * wp_in[2]
+            + inv_world_matrix[2, 3],
+        )
 
 
 class NewtonManager(PhysicsManager):
@@ -370,6 +400,7 @@ class NewtonManager(PhysicsManager):
                 require_attrs=[
                     (usdrt.Sdf.ValueTypeNames.Point3fArray, "points", usdrt.Usd.Access.ReadWrite),
                     (usdrt.Sdf.ValueTypeNames.UInt, cls._newton_particle_offset_attr, usdrt.Usd.Access.Read),
+                    (usdrt.Sdf.ValueTypeNames.Matrix4d, "omni:fabric:worldMatrix", usdrt.Usd.Access.Read),
                 ],
                 device=str(PhysicsManager._device),
             )
@@ -377,11 +408,12 @@ class NewtonManager(PhysicsManager):
                 return
             fabric_points = wp.fabricarrayarray(data=selection, attrib="points", dtype=wp.vec3f)
             fabric_offsets = wp.fabricarray(data=selection, attrib=cls._newton_particle_offset_attr)
+            fabric_world_matrices = wp.fabricarray(data=selection, attrib="omni:fabric:worldMatrix")
             num_points = cls._deformable_registry[0].particles_per_body
             wp.launch(
                 _sync_particle_points,
                 dim=selection.GetCount(),
-                inputs=[fabric_points, fabric_offsets, pq, num_points],
+                inputs=[fabric_points, fabric_world_matrices, fabric_offsets, pq, num_points],
                 device=PhysicsManager._device,
             )
             cls._particles_dirty = False
@@ -826,16 +858,10 @@ class NewtonManager(PhysicsManager):
                             vis_mesh.GetFaceVertexIndicesAttr().Set(sim_mesh.GetFaceVertexIndicesAttr().Get())
                             vis_mesh.GetFaceVertexCountsAttr().Set(sim_mesh.GetFaceVertexCountsAttr().Get())
                         
-                        pts_np = cls._state_0.particle_q.numpy()[offset:offset+entry.particles_per_body]
-                        points = Vt.Vec3fArray([Gf.Vec3f(float(p[0]), float(p[1]), float(p[2])) for p in pts_np])
-                        vis_mesh.GetPointsAttr().Set(points)
-
-                        vis_path = vis_prim.GetPath().pathString
-                        fab_prim = cls._usdrt_stage.GetPrimAtPath(vis_path)
+                        # Create per-instance particle offset attribute on the visual mesh prim so the Fabric sync kernel can find the right slice of particle_q.
+                        fab_prim = cls._usdrt_stage.GetPrimAtPath(vis_prim.GetPath().pathString)
                         fab_prim.CreateAttribute(cls._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
                         fab_prim.GetAttribute(cls._newton_particle_offset_attr).Set(offset)
-                        # This can similarly be done to update the tet mesh prim if needed, 
-                        # but since kit visualizer does not support tet meshes we can skip it for now
 
                     cls._mark_particles_dirty()
                     cls.sync_particles_to_usd()
