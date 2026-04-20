@@ -11,10 +11,12 @@ import math
 from typing import Any
 
 import numpy as np
+import warp as wp
 from pxr import Usd, UsdPhysics, UsdGeom, Sdf
 
 from isaaclab.sim.utils.stage import get_current_stage
 from isaaclab.utils.string import to_camel_case
+from isaaclab.physics import PhysicsManager
 
 from ..utils import (
     apply_nested,
@@ -1023,6 +1025,32 @@ Deformable body properties.
 """
 
 
+@wp.kernel(enable_backward=False)
+def _fix_tet_winding_kernel(
+    points: wp.array(dtype=wp.vec3),
+    tet_indices: wp.array(ndim=2, dtype=wp.int32),
+):
+    """Flip any tet with negative signed volume by swapping its last two vertex indices.
+
+    ``UsdGeom.TetMesh`` and :meth:`UsdGeom.TetMesh.ComputeSurfaceFaces` require a
+    right-handed tet winding (positive signed volume). Swapping indices 2 and 3
+    reverses the orientation without changing which four vertices form the tet.
+    """
+    i = wp.tid()
+    v0 = tet_indices[i, 0]
+    v1 = tet_indices[i, 1]
+    v2 = tet_indices[i, 2]
+    v3 = tet_indices[i, 3]
+    p0 = points[v0]
+    e1 = points[v1] - p0
+    e2 = points[v2] - p0
+    e3 = points[v3] - p0
+    signed_volume = wp.dot(e1, wp.cross(e2, e3))
+    if signed_volume < 0.0:
+        tet_indices[i, 2] = v3
+        tet_indices[i, 3] = v2
+
+
 def define_deformable_body_properties(
     prim_path: str,
     cfg: schemas_cfg.DeformableBodyPropertiesCfg,
@@ -1123,10 +1151,21 @@ def define_deformable_body_properties(
         sim_mesh_prim.GetAttribute("omniphysics:restTriVtxIndices").Set(faces)
         
     elif deformable_type == "volume":
+        from pytetwild import tetrahedralize
         # create tetrahedral volume mesh
-        tet_mesh_points, tet_mesh_indices = deformableUtils.compute_conforming_tetrahedral_mesh(vertices, faces)
-        _, surface_face_indices = deformableUtils.extractTriangleSurfaceFromTetra(tet_mesh_points, tet_mesh_indices)
-        tet_mesh_indices = np.asarray(tet_mesh_indices).reshape(-1, 4)
+        tet_mesh_points, tet_mesh_indices = tetrahedralize(vertices, faces.reshape(-1, 3), edge_length_fac=0.2, simplify=False, epsilon=1e-3)
+        # pytetwild's default ordering does not guarantee positive signed volume, which
+        # ``UsdGeom.TetMesh`` and ``ComputeSurfaceFaces`` require. Flip any inverted tets.
+        device = PhysicsManager._device
+        _tet_points_wp = wp.array(tet_mesh_points.astype(np.float32), dtype=wp.vec3, device=device)
+        _tet_indices_wp = wp.array(np.asarray(tet_mesh_indices, dtype=np.int32).reshape(-1, 4), dtype=wp.int32, device=device)
+        wp.launch(
+            _fix_tet_winding_kernel,
+            dim=_tet_indices_wp.shape[0],
+            inputs=[_tet_points_wp, _tet_indices_wp],
+            device=device,
+        )
+        tet_mesh_indices = _tet_indices_wp.numpy()
         sim_mesh_prim = create_prim(
             sim_mesh_prim_path,
             prim_type="TetMesh",
