@@ -14,7 +14,7 @@ import numpy as np
 import torch
 import warp as wp
 
-from pxr import Usd, UsdGeom
+from pxr import Gf, Usd, UsdGeom
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
@@ -410,11 +410,16 @@ class DeformableObject(BaseDeformableObject):
         sim_mesh_prim_path = self.cfg.prim_path + sim_mesh_prim_path[len(template_prim_path.pathString):]
         logger.info(f"Registered visual UsdGeom.Mesh at {vis_mesh_prim_path}.")
 
-        # Read mesh data for the simulation mesh.
+        # Read mesh data for the simulation mesh. Apply xform scale directly on vertices.
+        xform_scale = [float(x) for x in UsdGeom.XformOp(template_prim.GetAttribute("xformOp:scale")).Get()]
         if deformable_type == "volume":
             tet_mesh = UsdGeom.TetMesh(mesh_prim)
             pts = np.array(tet_mesh.GetPointsAttr().Get(), dtype=np.float32)
-            vertices = [wp.vec3(float(p[0]), float(p[1]), float(p[2])) for p in pts]
+            vertices = [wp.vec3(
+                float(p[0])*xform_scale[0], 
+                float(p[1])*xform_scale[1], 
+                float(p[2])*xform_scale[2]
+                ) for p in pts]
             raw_tet_indices = tet_mesh.GetTetVertexIndicesAttr().Get()
             indices = []
             for vec4i in raw_tet_indices:
@@ -423,7 +428,11 @@ class DeformableObject(BaseDeformableObject):
         else:  # surface
             usd_mesh = UsdGeom.Mesh(mesh_prim)
             pts = np.array(usd_mesh.GetPointsAttr().Get(), dtype=np.float32)
-            vertices = [wp.vec3(float(p[0]), float(p[1]), float(p[2])) for p in pts]
+            vertices = [wp.vec3(
+                float(p[0])*xform_scale[0], 
+                float(p[1])*xform_scale[1], 
+                float(p[2])*xform_scale[2]
+                ) for p in pts]
             indices = list(usd_mesh.GetFaceVertexIndicesAttr().Get())
             logger.info(f"Registered UsdGeom.Mesh: {len(pts)} vertices.")
 
