@@ -843,13 +843,20 @@ class NewtonManager(PhysicsManager):
                         if not mesh_prim or not mesh_prim.IsValid():
                             logger.debug("[NewtonManager] particle setup: prim not found at %s", resolved)
                             continue
-                        # TODO: Temporary solution: Overwrite visual mesh with tet mesh surface points or copy 
+                        # TODO: Temporary solution: Overwrite visual mesh with tet mesh surface points or copy
                         # surface sim mesh to vis mesh. In the future we can have separate visual from simulation mesh.
                         if mesh_prim.GetTypeName() == "TetMesh":
                             # volume
-                            surface_indices = UsdGeom.TetMesh(mesh_prim).GetSurfaceFaceVertexIndicesAttr().Get()
+                            tet_mesh = UsdGeom.TetMesh(mesh_prim)
+                            surface_indices = tet_mesh.GetSurfaceFaceVertexIndicesAttr().Get()
                             if surface_indices is None or len(surface_indices) == 0:
                                 raise ValueError(f"Deformable body '{entry}' has no surface indices on its TetMesh prim; cannot sync to visual mesh.")
+                            # The visual mesh was authored with the cube's 8 corner points; its
+                            # ``points`` buffer must be resized to match the TetMesh vertex count
+                            # (and therefore ``particles_per_body``) so that the surface face
+                            # indices resolve and so that Fabric's per-frame particle sync has a
+                            # correctly-sized points buffer to write into.
+                            vis_mesh.GetPointsAttr().Set(tet_mesh.GetPointsAttr().Get())
                             vis_mesh.GetFaceVertexIndicesAttr().Set(np.asarray(surface_indices).flatten())
                             vis_mesh.GetFaceVertexCountsAttr().Set([3] * len(surface_indices))
                         else:

@@ -1152,8 +1152,14 @@ def define_deformable_body_properties(
         
     elif deformable_type == "volume":
         from pytetwild import tetrahedralize
-        # create tetrahedral volume mesh
-        tet_mesh_points, tet_mesh_indices = tetrahedralize(vertices, faces.reshape(-1, 3), edge_length_fac=0.2, simplify=False, epsilon=1e-3)
+        tet_mesh_points, tet_mesh_indices = tetrahedralize(
+            vertices,
+            faces.reshape(-1, 3),
+            edge_length_fac=0.2,
+            simplify=False,
+            epsilon=1e-2,
+            coarsen=True,
+        )
         # pytetwild's default ordering does not guarantee positive signed volume, which
         # ``UsdGeom.TetMesh`` and ``ComputeSurfaceFaces`` require. Flip any inverted tets.
         device = PhysicsManager._device
