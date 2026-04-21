@@ -152,12 +152,17 @@ def build_cable_articulation_cfg(
     link_length: float = 0.02,
     link_radius: float = 0.005,
     handle_size: tuple[float, float, float] = (0.03, 0.02, 0.02),
-    handle_mass: float = 0.008,
-    total_cable_mass: float = 0.02,
-    joint_damping: float = 0.01,
-    joint_limit_deg: float = 90.0,
+    handle_mass: float = 0.02,
+    # Heavier cable links (~5 g each) are more stable under random-policy whipping.
+    # Real cables are ~1 g/link but the extra inertia keeps the solver well-behaved.
+    total_cable_mass: float = 0.1,
+    # Strong joint damping keeps the chain from whipping when the gripper collides
+    # with it under random-action exploration early in training.
+    joint_damping: float = 0.5,
+    joint_limit_deg: float = 60.0,
     joint_effort: float = 100.0,
-    joint_velocity_limit: float = 10.0,
+    # Cap joint velocity so solver blowups don't produce NaN values downstream.
+    joint_velocity_limit: float = 5.0,
     self_collision: bool = False,
 ) -> ArticulationCfg:
     """Build an :class:`ArticulationCfg` for a procedurally generated cable.

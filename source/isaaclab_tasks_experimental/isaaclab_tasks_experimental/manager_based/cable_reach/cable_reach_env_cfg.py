@@ -294,6 +294,15 @@ class RewardsCfg:
 class TerminationsCfg:
     time_out = DoneTerm(func=base_mdp.time_out, time_out=True)
 
+    # Physics-solver failure detection. ``time_out=False`` marks the episode as a
+    # genuine failure, so the framework resets the env instead of letting NaN state
+    # persist and poison subsequent observations.
+    invalid_state = DoneTerm(
+        func=cable_mdp.invalid_cable_state,
+        params={"cable_cfg": _CABLE, "robot_cfg": SceneEntityCfg("robot")},
+        time_out=False,
+    )
+
 
 ##
 # Top-level env cfg

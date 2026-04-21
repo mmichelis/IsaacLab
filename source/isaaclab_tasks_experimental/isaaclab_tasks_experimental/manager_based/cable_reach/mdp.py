@@ -37,25 +37,56 @@ if TYPE_CHECKING:
 ##
 
 
+def _safe_pos(pos: torch.Tensor) -> torch.Tensor:
+    """Replace NaN/Inf in a position tensor with 0.0.
+
+    This is a last-resort sanitizer on the *terminal* observation of a failing episode
+    so the RSL-RL ``check_nan`` pre-loop check does not crash the whole run. The real
+    handling lives in :func:`invalid_cable_state`, which fires an actual failure
+    termination so the framework resets the offending env next step.
+    """
+    return torch.nan_to_num(pos, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _safe_quat(quat: torch.Tensor) -> torch.Tensor:
+    """Replace NaN/Inf quats with identity (x=0, y=0, z=0, w=1) and renormalize."""
+    quat = torch.nan_to_num(quat, nan=0.0, posinf=0.0, neginf=0.0)
+    # Detect zero-norm (all zeros after nan_to_num) and substitute identity.
+    norm = torch.linalg.norm(quat, dim=-1, keepdim=True)
+    identity = torch.zeros_like(quat)
+    identity[..., 3] = 1.0  # (x, y, z, w) identity
+    quat = torch.where(norm > 1e-6, quat, identity)
+    # Renormalize for numerical cleanliness before feeding to math ops.
+    return quat / torch.linalg.norm(quat, dim=-1, keepdim=True).clamp(min=1e-6)
+
+
 def _handle_pos_w(env: ManagerBasedRLEnv, cable_cfg: SceneEntityCfg) -> torch.Tensor:
     cable: Articulation = env.scene[cable_cfg.name]
-    return wp.to_torch(cable.data.root_pos_w)
+    return _safe_pos(wp.to_torch(cable.data.root_pos_w))
 
 
 def _handle_quat_w(env: ManagerBasedRLEnv, cable_cfg: SceneEntityCfg) -> torch.Tensor:
     cable: Articulation = env.scene[cable_cfg.name]
-    return wp.to_torch(cable.data.root_quat_w)
+    return _safe_quat(wp.to_torch(cable.data.root_quat_w))
+
+
+def _robot_root_pose_w(
+    env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg
+) -> tuple[torch.Tensor, torch.Tensor]:
+    robot: Articulation = env.scene[robot_cfg.name]
+    return (
+        _safe_pos(wp.to_torch(robot.data.root_pos_w)),
+        _safe_quat(wp.to_torch(robot.data.root_quat_w)),
+    )
 
 
 def _target_pose_w(
     env: ManagerBasedRLEnv, command_name: str, robot_cfg: SceneEntityCfg
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    robot: Articulation = env.scene[robot_cfg.name]
     command = env.command_manager.get_command(command_name)
     des_pos_b = command[:, :3]
-    des_quat_b = command[:, 3:7]
-    root_pos_w = wp.to_torch(robot.data.root_pos_w)
-    root_quat_w = wp.to_torch(robot.data.root_quat_w)
+    des_quat_b = _safe_quat(command[:, 3:7])
+    root_pos_w, root_quat_w = _robot_root_pose_w(env, robot_cfg)
     des_pos_w, des_quat_w = combine_frame_transforms(
         root_pos_w, root_quat_w, des_pos_b, des_quat_b
     )
@@ -73,26 +104,29 @@ def handle_pose_in_robot_frame(
     cable_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
 ) -> torch.Tensor:
     """Handle pose expressed in the robot root frame. Returns ``[pos(3), quat(x,y,z,w)]``."""
-    robot: Articulation = env.scene[robot_cfg.name]
     handle_pos_w = _handle_pos_w(env, cable_cfg)
     handle_quat_w = _handle_quat_w(env, cable_cfg)
-    root_pos_w = wp.to_torch(robot.data.root_pos_w)
-    root_quat_w = wp.to_torch(robot.data.root_quat_w)
+    root_pos_w, root_quat_w = _robot_root_pose_w(env, robot_cfg)
     handle_pos_b, handle_quat_b = subtract_frame_transforms(
         root_pos_w, root_quat_w, handle_pos_w, handle_quat_w
     )
-    return torch.cat([handle_pos_b, handle_quat_b], dim=-1)
+    return torch.cat([_safe_pos(handle_pos_b), _safe_quat(handle_quat_b)], dim=-1)
 
 
 def handle_velocity(
     env: ManagerBasedRLEnv,
     cable_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
+    velocity_clamp: float = 50.0,
 ) -> torch.Tensor:
-    """Handle linear and angular velocity in world frame. Returns ``[lin(3), ang(3)]``."""
+    """Handle linear and angular velocity in world frame. Returns ``[lin(3), ang(3)]``.
+
+    Clamped to +-``velocity_clamp`` per component to prevent obs blowups when the
+    solver produces extreme values during early-training cable whips.
+    """
     cable: Articulation = env.scene[cable_cfg.name]
-    lin_vel = wp.to_torch(cable.data.root_lin_vel_w)
-    ang_vel = wp.to_torch(cable.data.root_ang_vel_w)
-    return torch.cat([lin_vel, ang_vel], dim=-1)
+    lin_vel = _safe_pos(wp.to_torch(cable.data.root_lin_vel_w))
+    ang_vel = _safe_pos(wp.to_torch(cable.data.root_ang_vel_w))
+    return torch.cat([lin_vel, ang_vel], dim=-1).clamp(-velocity_clamp, velocity_clamp)
 
 
 def ee_to_handle_position(
@@ -102,9 +136,9 @@ def ee_to_handle_position(
 ) -> torch.Tensor:
     """Vector from the end-effector to the handle in world frame. Shape ``(N, 3)``."""
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
+    ee_w = _safe_pos(wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :])
     handle_pos_w = _handle_pos_w(env, cable_cfg)
-    return handle_pos_w - ee_w
+    return _safe_pos(handle_pos_w - ee_w)
 
 
 def handle_to_target_position(
@@ -116,7 +150,7 @@ def handle_to_target_position(
     """Vector from the handle to the commanded target in world frame. Shape ``(N, 3)``."""
     des_pos_w, _ = _target_pose_w(env, command_name, robot_cfg)
     handle_pos_w = _handle_pos_w(env, cable_cfg)
-    return des_pos_w - handle_pos_w
+    return _safe_pos(des_pos_w - handle_pos_w)
 
 
 ##
@@ -264,3 +298,63 @@ def success_bonus(
     rot_err = quat_error_magnitude(handle_quat_w, des_quat_w)
     within = ((pos_err < pos_threshold) & (rot_err < rot_threshold)).float()
     return lifted * within
+
+
+##
+# Terminations
+##
+
+
+def invalid_cable_state(
+    env: ManagerBasedRLEnv,
+    cable_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    max_position: float = 50.0,
+    max_linear_velocity: float = 100.0,
+    max_angular_velocity: float = 500.0,
+) -> torch.Tensor:
+    """Per-env failure termination when the physics state is invalid.
+
+    Fires when any of the following is true for an env:
+
+    * Cable root pose/velocity contains NaN or Inf.
+    * Cable handle is further than ``max_position`` m from the origin (solver blew
+      up and launched the cable across the universe).
+    * Cable linear velocity magnitude exceeds ``max_linear_velocity`` m/s.
+    * Cable angular velocity magnitude exceeds ``max_angular_velocity`` rad/s.
+    * Robot root pose/velocity contains NaN or Inf.
+
+    Register with ``time_out=False`` so the episode is counted as a failure rather
+    than a clean truncation. The reset event will re-initialize the offending env;
+    the rest of the envs keep training.
+
+    Thresholds are intentionally generous — they catch genuine solver blowups but
+    leave normal dynamic behavior untouched.
+    """
+    cable: Articulation = env.scene[cable_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+
+    cable_pos = wp.to_torch(cable.data.root_pos_w)
+    cable_lin = wp.to_torch(cable.data.root_lin_vel_w)
+    cable_ang = wp.to_torch(cable.data.root_ang_vel_w)
+    cable_quat = wp.to_torch(cable.data.root_quat_w)
+    robot_pos = wp.to_torch(robot.data.root_pos_w)
+    robot_quat = wp.to_torch(robot.data.root_quat_w)
+
+    def _bad(x: torch.Tensor) -> torch.Tensor:
+        # Collapse all non-batch dims to a single ``(num_envs,)`` bool.
+        invalid = ~torch.isfinite(x)
+        return invalid.view(invalid.shape[0], -1).any(dim=-1)
+
+    invalid = (
+        _bad(cable_pos)
+        | _bad(cable_lin)
+        | _bad(cable_ang)
+        | _bad(cable_quat)
+        | _bad(robot_pos)
+        | _bad(robot_quat)
+        | (torch.linalg.norm(cable_pos, dim=-1) > max_position)
+        | (torch.linalg.norm(cable_lin, dim=-1) > max_linear_velocity)
+        | (torch.linalg.norm(cable_ang, dim=-1) > max_angular_velocity)
+    )
+    return invalid
