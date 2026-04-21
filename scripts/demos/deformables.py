@@ -163,20 +163,18 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         # spawn the object, separate groups for surface and volume deformables
         if obj_name in ["cloth"]:
             prim_path = f"/World/Origin/Surface{idx:02d}"
-            obj_cfg.func(prim_path, obj_cfg, translation=origin)
             cfg = DeformableObjectCfg(
                 prim_path=prim_path,
-                spawn=None,
-                init_state=DeformableObjectCfg.InitialStateCfg(),
+                spawn=obj_cfg,
+                init_state=DeformableObjectCfg.InitialStateCfg(pos=origin),
             )
             scene_entities[f"Surface{idx:02d}"] = DeformableObject(cfg=cfg)
         else:
             prim_path = f"/World/Origin/Volume{idx:02d}"
-            obj_cfg.func(prim_path, obj_cfg, translation=origin)
             cfg = DeformableObjectCfg(
                 prim_path=prim_path,
-                spawn=None,
-                init_state=DeformableObjectCfg.InitialStateCfg(),
+                spawn=obj_cfg,
+                init_state=DeformableObjectCfg.InitialStateCfg(pos=origin),
             )
             scene_entities[f"Volume{idx:02d}"] = DeformableObject(cfg=cfg)
 
