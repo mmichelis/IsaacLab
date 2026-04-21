@@ -90,8 +90,8 @@ class OmniPhysicsDeformableMaterialCfg:
     See the OmniPhysics documentation for more information on the available properties.
     """
 
-    density: float | None = None
-    """The material density in [kg/m^3]. Defaults to None, in which case the simulation decides the default density."""
+    density: float = 1000.0
+    """The material density in [kg/m^3]. Defaults to 1000.0 kg/m^3, which is the density of water."""
 
     static_friction: float = 0.25
     """The static friction. Defaults to 0.25."""
@@ -168,12 +168,34 @@ class NewtonDeformableMaterialCfg:
     See the Newton documentation for more information on the available properties.
     """
 
-    elasticity_damping: float = 0.005
-    """The elasticity damping for the deformable material. Defaults to 0.005."""
+    particle_radius: float = 0.008
+    """Particle radius [m] (controls rigid body-particle contact distance). Used by Newton backend only."""
+
+    # -- Cloth (triangle surface mesh) parameters
+
+    tri_ke: float = 1e4
+    """Triangle area-preserving stiffness [Pa]. Used by Newton backend for cloth meshes."""
+
+    tri_ka: float = 1e4
+    """Triangle area stiffness [Pa]. Used by Newton backend for cloth meshes."""
+
+    tri_kd: float = 1.5e-6
+    """Triangle area damping. Used by Newton backend for cloth meshes."""
+
+    edge_ke: float = 5.0
+    """Bending stiffness. Used by Newton backend for cloth meshes."""
+
+    edge_kd: float = 1e-2
+    """Bending damping. Used by Newton backend for cloth meshes."""
+
+    # -- Volumetric (tetrahedral FEM) parameters
+
+    k_damp: float = 0.0
+    """Damping stiffness for tetrahedral elements. Defaults to 0.0."""
 
 
 @configclass
-class DeformableBodyMaterialCfg(PhysicsMaterialCfg, OmniPhysicsDeformableMaterialCfg, PhysXDeformableMaterialCfg):
+class DeformableBodyMaterialCfg(PhysicsMaterialCfg, OmniPhysicsDeformableMaterialCfg, PhysXDeformableMaterialCfg, NewtonDeformableMaterialCfg):
     """Physics material parameters for deformable bodies.
 
     See :meth:`spawn_deformable_body_material` for more information.
@@ -184,6 +206,7 @@ class DeformableBodyMaterialCfg(PhysicsMaterialCfg, OmniPhysicsDeformableMateria
     _property_prefix: dict[str, list[str]] = {
         "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsDeformableMaterialCfg)],
         "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableMaterialCfg)],
+        "newton": [field.name for field in dataclasses.fields(NewtonDeformableMaterialCfg)],
     }
     """Mapping between the property prefixes and the properties that fall under each prefix."""
 
@@ -201,5 +224,6 @@ class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg, OmniPhysicsSur
     _property_prefix: dict[str, list[str]] = {
         "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsSurfaceDeformableMaterialCfg)],
         "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableMaterialCfg)],
+        "newton": [field.name for field in dataclasses.fields(NewtonDeformableMaterialCfg)],
     }
     """Extend DeformableBodyMaterialCfg properties under each prefix."""

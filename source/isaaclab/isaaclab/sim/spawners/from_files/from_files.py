@@ -11,13 +11,10 @@ import os
 import tempfile
 from typing import TYPE_CHECKING
 
-# deformables only supported on PhysX backend
-from isaaclab_physx.sim.spawners.materials import SurfaceDeformableBodyMaterialCfg
-
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from isaaclab.sim import converters, schemas
-from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg
+from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 from isaaclab.sim.utils import (
     add_labels,
     bind_physics_material,

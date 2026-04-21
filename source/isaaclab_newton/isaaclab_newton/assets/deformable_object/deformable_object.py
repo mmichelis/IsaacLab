@@ -14,7 +14,7 @@ import numpy as np
 import torch
 import warp as wp
 
-from pxr import Gf, Usd, UsdGeom
+from pxr import Gf, Usd, UsdGeom, UsdShade
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
@@ -450,6 +450,38 @@ class DeformableObject(BaseDeformableObject):
         init_pos = self.cfg.init_state.pos if hasattr(self.cfg.init_state, "pos") else (0.0, 0.0, 0.0)
         init_rot = self.cfg.init_state.rot if hasattr(self.cfg.init_state, "rot") else (1.0, 0.0, 0.0, 0.0)
 
+        # Look up the bound deformable physics material
+        if not template_prim.HasAPI(UsdShade.MaterialBindingAPI):
+            raise ValueError(
+                f"Template prim '{template_prim_path}' must have a UsdShade.MaterialBindingAPI applied with a physics material target that has 'OmniPhysicsDeformableMaterialAPI' applied."
+            )
+        material_targets = UsdShade.MaterialBindingAPI(template_prim).GetDirectBindingRel("physics").GetTargets()
+        stage = template_prim.GetStage()
+        material_prim = None
+        for mat_path in material_targets:
+            mat_prim = stage.GetPrimAtPath(mat_path)
+            if "OmniPhysicsDeformableMaterialAPI" in mat_prim.GetAppliedSchemas():
+                material_prim = mat_prim
+                break
+        if material_prim is None:
+            raise ValueError(
+                f"Could not find a physics material with 'OmniPhysicsDeformableMaterialAPI' applied among the physics material targets of '{template_prim_path}'."
+            )
+        density = material_prim.GetAttribute("omniphysics:density").Get()
+        youngs_modulus = material_prim.GetAttribute("omniphysics:youngsModulus").Get()
+        poissons_ratio = material_prim.GetAttribute("omniphysics:poissonsRatio").Get()
+        # Convert Young's modulus and Poisson's ratio to Lame parameters for Newton
+        k_mu = youngs_modulus / (2 * (1 + poissons_ratio))
+        k_lambda = (youngs_modulus * poissons_ratio) / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+
+        tri_ke = material_prim.GetAttribute("newton:triKe").Get()
+        tri_ka = material_prim.GetAttribute("newton:triKa").Get()
+        tri_kd = material_prim.GetAttribute("newton:triKd").Get()
+        edge_ke = material_prim.GetAttribute("newton:edgeKe").Get()
+        edge_kd = material_prim.GetAttribute("newton:edgeKd").Get()
+        particle_radius = material_prim.GetAttribute("newton:particleRadius").Get()
+        k_damp = material_prim.GetAttribute("newton:kDamp").Get()
+
         entry = DeformableRegistryEntry(
             prim_path=self.cfg.prim_path,
             sim_mesh_prim_path=sim_mesh_prim_path,
@@ -459,16 +491,16 @@ class DeformableObject(BaseDeformableObject):
             deformable_type=deformable_type,
             init_pos=init_pos,
             init_rot=init_rot,
-            density=self.cfg.density,
-            tri_ke=self.cfg.tri_ke,
-            tri_ka=self.cfg.tri_ka,
-            tri_kd=self.cfg.tri_kd,
-            edge_ke=self.cfg.edge_ke,
-            edge_kd=self.cfg.edge_kd,
-            particle_radius=self.cfg.particle_radius,
-            k_mu=self.cfg.k_mu,
-            k_lambda=self.cfg.k_lambda,
-            k_damp=self.cfg.k_damp,
+            density=density,
+            tri_ke=tri_ke,
+            tri_ka=tri_ka,
+            tri_kd=tri_kd,
+            edge_ke=edge_ke,
+            edge_kd=edge_kd,
+            particle_radius=particle_radius,
+            k_mu=k_mu,
+            k_lambda=k_lambda,
+            k_damp=k_damp,
         )
         SimulationManager._deformable_registry.append(entry)
         self._deformable_type = deformable_type
