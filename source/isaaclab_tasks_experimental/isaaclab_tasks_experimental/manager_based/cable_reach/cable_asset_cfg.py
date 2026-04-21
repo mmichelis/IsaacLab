@@ -23,10 +23,14 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+from typing import TYPE_CHECKING
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
+
+if TYPE_CHECKING:
+    from isaaclab.sim.spawners.from_files.from_files_cfg import UrdfFileCfg
 
 
 def _cuboid_inertia(mass: float, size: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -103,14 +107,21 @@ def _cable_urdf(
         # Alternate bending axis between y (pitch) and z (yaw).
         axis_xyz = "0 1 0" if i % 2 == 0 else "0 0 1"
 
+        # ``continuous`` joints have no position limits — they can rotate freely. We
+        # use them instead of ``revolute`` with ±60° limits because the PhysX
+        # articulation solver's penalty-based limit enforcement became unstable on
+        # this 20-DOF chain (limits oscillated and the simulation diverged within a
+        # few steps of any airborne state). Cable bending is naturally self-limited
+        # by the damping + gravity equilibrium, so explicit limits aren't necessary.
         out.extend([
-            f"  <joint name=\"joint_{i}\" type=\"revolute\">",
+            f"  <joint name=\"joint_{i}\" type=\"continuous\">",
             f"    <parent link=\"{parent}\"/>",
             f"    <child link=\"link_{i}\"/>",
             f"    <origin xyz=\"{origin_x} 0 0\"/>",
             f"    <axis xyz=\"{axis_xyz}\"/>",
-            f"    <limit lower=\"{-joint_limit_rad}\" upper=\"{joint_limit_rad}\""
-            f" effort=\"{joint_effort}\" velocity=\"{joint_velocity_limit}\"/>",
+            # 'continuous' joints ignore lower/upper, but URDF requires effort and
+            # velocity attributes. These are the importer's fallbacks for the drive.
+            f"    <limit effort=\"{joint_effort}\" velocity=\"{joint_velocity_limit}\"/>",
             f"    <dynamics damping=\"{joint_damping}\" friction=\"0\"/>",
             "  </joint>",
             f"  <link name=\"link_{i}\">",
@@ -143,22 +154,110 @@ def _urdf_cache_path(urdf_text: str) -> str:
     return os.path.join(cache_dir, f"cable_{digest}.urdf")
 
 
+def _do_spawn_cable_from_urdf(
+    prim_path: str,
+    cfg: "UrdfFileCfg",
+    translation: tuple[float, float, float] | None = None,
+    orientation: tuple[float, float, float, float] | None = None,
+    **kwargs,
+):
+    """URDF→USD + strip the auto-generated ``root_joint`` fixed joint.
+
+    The ``urdf_usd_converter`` pipeline ALWAYS emits a ``PhysicsFixedJoint`` named
+    ``root_joint`` on the URDF's root link, regardless of ``fix_base``. For a fixed-
+    base robot this is correct; for a floating-base articulation (our cable) this
+    pins the handle rigidly to the world, which disables gravity on the chain, makes
+    teleports detonate the solver, and — crucially for us — prevents the gripper
+    from ever lifting the handle off the table.
+
+    The fixed-joint prim is defined in ``payloads/Physics/physics.usda`` and
+    ``over``-ridden in the root layer plus the physx/mujoco payloads, so we sweep
+    every layer and remove it wherever it appears before the USD is composed onto
+    the simulation stage.
+    """
+    from pxr import Usd
+
+    from isaaclab.sim import converters
+    from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
+
+    urdf_loader = converters.UrdfConverter(cfg)
+    usd_path = urdf_loader.usd_path
+
+    if not cfg.fix_base:
+        usd_dir = os.path.dirname(usd_path)
+        layer_paths = [usd_path]
+        payload_dir = os.path.join(usd_dir, "payloads", "Physics")
+        if os.path.isdir(payload_dir):
+            for fname in os.listdir(payload_dir):
+                if fname.endswith((".usda", ".usd", ".usdc")):
+                    layer_paths.append(os.path.join(payload_dir, fname))
+
+        for layer_path in layer_paths:
+            stage = Usd.Stage.Open(layer_path)
+            if stage is None:
+                continue
+            modified = False
+            for prim in list(stage.TraverseAll()):
+                if prim.GetName() == "root_joint":
+                    stage.RemovePrim(prim.GetPath())
+                    modified = True
+            if modified:
+                stage.GetRootLayer().Save()
+
+    return _spawn_from_usd_file(prim_path, usd_path, cfg, translation, orientation, **kwargs)
+
+
+# Placeholder for the ``@clone``-decorated version of :func:`_do_spawn_cable_from_urdf`.
+# We build it lazily on first invocation to avoid importing ``isaaclab.sim.utils.clone``
+# (which transitively imports ``pxr``) at module-load time — that eager pxr import
+# during Hydra config resolution (before Isaac Sim Kit has started) clashes with
+# Kit's own extension loader and crashes the app on startup.
+_cached_clone_wrapped_spawner = None
+
+
+def _spawn_cable_from_urdf_floating_base(
+    prim_path: str,
+    cfg: "UrdfFileCfg",
+    translation: tuple[float, float, float] | None = None,
+    orientation: tuple[float, float, float, float] | None = None,
+    **kwargs,
+):
+    """Entry point used by :class:`UrdfFileCfg.func`.
+
+    On first call (once Kit is up), wraps :func:`_do_spawn_cable_from_urdf` with the
+    ``@clone`` decorator so ``{ENV_REGEX_NS}/...`` prim-path patterns are resolved
+    and the prim is copied across all parallel envs — the stock ``spawn_from_urdf``
+    uses the same decorator. On subsequent calls the cached wrapped version is used.
+    """
+    global _cached_clone_wrapped_spawner
+    if _cached_clone_wrapped_spawner is None:
+        from isaaclab.sim.utils import clone
+
+        _cached_clone_wrapped_spawner = clone(_do_spawn_cable_from_urdf)
+    return _cached_clone_wrapped_spawner(prim_path, cfg, translation, orientation, **kwargs)
+
+
 def build_cable_articulation_cfg(
     prim_path: str = "{ENV_REGEX_NS}/Cable",
     init_pos: tuple[float, float, float] = (0.5, 0.0, 0.05),
     # IsaacLab quaternion convention is (x, y, z, w). (0, 0, 0, 1) is identity.
     init_rot: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
-    num_links: int = 20,
-    link_length: float = 0.02,
-    link_radius: float = 0.005,
+    # DOF + mass tuning: the articulation solver diverges catastrophically when a
+    # 20-DOF chain has ~2.5 g links (8:1 mass ratio with the 20 g handle) and ~10⁻⁸
+    # kg·m² inertias — FP precision + cumulative constraint error explode. We
+    # dramatically simplify: fewer, heavier links with matched mass to the handle.
+    num_links: int = 2,
+    link_length: float = 0.04,
+    link_radius: float = 0.008,
     handle_size: tuple[float, float, float] = (0.03, 0.02, 0.02),
     handle_mass: float = 0.02,
-    # Heavier cable links (~5 g each) are more stable under random-policy whipping.
-    # Real cables are ~1 g/link but the extra inertia keeps the solver well-behaved.
-    total_cable_mass: float = 0.1,
-    # Strong joint damping keeps the chain from whipping when the gripper collides
-    # with it under random-action exploration early in training.
-    joint_damping: float = 0.5,
+    total_cable_mass: float = 0.04,
+    # Light joint damping — previous value (0.5 N·m·s/rad) was ~500× critical for a
+    # 2-gram link and effectively turned the cable into a rigid rod that resisted
+    # being lifted, overwhelming the gripper clamp. 0.02 leaves enough stability
+    # (combined with the ``invalid_cable_state`` failure termination that catches
+    # real solver blowups) without defeating physical realism.
+    joint_damping: float = 0.02,
     joint_limit_deg: float = 60.0,
     joint_effort: float = 100.0,
     # Cap joint velocity so solver blowups don't produce NaN values downstream.
@@ -212,10 +311,23 @@ def build_cable_articulation_cfg(
     spawn = sim_utils.UrdfFileCfg(
         asset_path=path,
         fix_base=False,
+        # Override the default spawner with one that strips the auto-generated
+        # root_joint fixed joint — without this the handle is pinned to the world.
+        func=_spawn_cable_from_urdf_floating_base,
         # Re-convert only when parameters change — the cache key is the URDF hash.
         # Leaving force conversion off avoids retriggering importer code paths (notably
         # the MDL material path) on every launch once a valid USD exists.
         self_collision=self_collision,
+        # Explicitly enable gravity on every body in this articulation — the URDF
+        # importer's default leaves ``disable_gravity`` unset, which for a floating-
+        # base articulation can end up with gravity silently disabled. Without this,
+        # the cable just floats.
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            max_depenetration_velocity=5.0,
+            max_linear_velocity=100.0,
+            max_angular_velocity=500.0,
+        ),
         joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
             target_type="position",
             gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
@@ -225,8 +337,10 @@ def build_cable_articulation_cfg(
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=self_collision,
-            solver_position_iteration_count=16,
-            solver_velocity_iteration_count=1,
+            # Heavy iteration counts for a 20-DOF chain — the default 16/1 diverges
+            # within a few steps on any airborne state. 64/16 keeps it stable.
+            solver_position_iteration_count=64,
+            solver_velocity_iteration_count=16,
         ),
     )
 
