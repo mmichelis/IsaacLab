@@ -30,6 +30,7 @@ from newton import Axis, CollisionPipeline, Contacts, Control, Model, ModelBuild
 from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from newton.sensors import SensorContact as NewtonContactSensor
 from newton.sensors import SensorFrameTransform
+from newton.sensors import SensorIMU as NewtonSensorIMU
 from newton.solvers import SolverBase, SolverFeatherstone, SolverMuJoCo, SolverNotifyFlags, SolverVBD, SolverXPBD
 
 from isaaclab.physics import PhysicsEvent, PhysicsManager
@@ -70,15 +71,45 @@ def _set_fabric_transforms(
 @wp.kernel(enable_backward=False)
 def _sync_particle_points(
     fabric_points: wp.fabricarrayarray(dtype=wp.vec3f),
+    fabric_world_matrices: wp.fabricarray(dtype=wp.mat44d),
     offsets: wp.fabricarray(dtype=wp.uint32),
     particle_q: wp.array(dtype=wp.vec3f),
     num_points: int,
 ):
-    """Write Newton particle positions into Fabric mesh point arrays."""
+    """Write Newton particle positions into Fabric mesh point arrays as local-frame points.
+
+    Newton stores particle positions in world space in ``state.particle_q``. The Fabric
+    ``points`` attribute on a ``UsdGeom.Mesh`` is local-space — Kit multiplies by the
+    mesh prim's resolved ``omni:fabric:worldMatrix`` at render time.
+
+    This kernel inverts the mesh prim's world matrix to convert each world-space particle
+    position into local-space before writing. Kit's hierarchy multiplication then recovers
+    the correct world position.
+    """
     i = wp.tid()
     offset = int(offsets[i])
+
+    # Un-transpose Fabric's stored matrix to get the standard homogeneous form
+    world_matrix = wp.transpose(wp.mat44f(fabric_world_matrices[i]))
+    inv_world_matrix = wp.inverse(world_matrix)
+
     for j in range(num_points):
-        fabric_points[i][j] = particle_q[offset + j]
+        wp_in = particle_q[offset + j]
+        # Apply inverse transform to homogeneous point (w=1).
+        fabric_points[i][j] = wp.vec3f(
+            inv_world_matrix[0, 0] * wp_in[0]
+            + inv_world_matrix[0, 1] * wp_in[1]
+            + inv_world_matrix[0, 2] * wp_in[2]
+            + inv_world_matrix[0, 3],
+            inv_world_matrix[1, 0] * wp_in[0]
+            + inv_world_matrix[1, 1] * wp_in[1]
+            + inv_world_matrix[1, 2] * wp_in[2]
+            + inv_world_matrix[1, 3],
+            inv_world_matrix[2, 0] * wp_in[0]
+            + inv_world_matrix[2, 1] * wp_in[1]
+            + inv_world_matrix[2, 2] * wp_in[2]
+            + inv_world_matrix[2, 3],
+        )
 
 
 class NewtonManager(PhysicsManager):
@@ -117,6 +148,9 @@ class NewtonManager(PhysicsManager):
     _soft_contact_margin: float = 0.01
     _newton_contact_sensors: dict = {}  # Maps sensor_key to NewtonContactSensor
     _newton_frame_transform_sensors: list = []  # List of SensorFrameTransform
+    _newton_imu_sensors: list = []  # List of NewtonSensorIMU
+    _pending_extended_state_attributes: set[str] = set()
+    _pending_extended_contact_attributes: set[str] = set()
     _report_contacts: bool = False
     _fk_dirty: bool = False
 
@@ -128,7 +162,7 @@ class NewtonManager(PhysicsManager):
     _newton_stage_path = None
     _usdrt_stage = None
     _newton_index_attr = "newton:index"
-    _particle_offset_attr = "newton:particleOffset"
+    _newton_particle_offset_attr = "newton:particleOffset"
     _clone_physics_only = False
     _transforms_dirty: bool = False
     _particles_dirty: bool = False
@@ -209,6 +243,7 @@ class NewtonManager(PhysicsManager):
     def pre_render(cls) -> None:
         """Flush deferred Fabric writes before cameras/visualizers read the scene."""
         cls.sync_transforms_to_usd()
+        cls.sync_particles_to_usd()
 
     @classmethod
     def sync_transforms_to_usd(cls) -> None:
@@ -364,19 +399,21 @@ class NewtonManager(PhysicsManager):
             selection = cls._usdrt_stage.SelectPrims(
                 require_attrs=[
                     (usdrt.Sdf.ValueTypeNames.Point3fArray, "points", usdrt.Usd.Access.ReadWrite),
-                    (usdrt.Sdf.ValueTypeNames.UInt, cls._particle_offset_attr, usdrt.Usd.Access.Read),
+                    (usdrt.Sdf.ValueTypeNames.UInt, cls._newton_particle_offset_attr, usdrt.Usd.Access.Read),
+                    (usdrt.Sdf.ValueTypeNames.Matrix4d, "omni:fabric:worldMatrix", usdrt.Usd.Access.Read),
                 ],
                 device=str(PhysicsManager._device),
             )
             if selection.GetCount() == 0:
                 return
             fabric_points = wp.fabricarrayarray(data=selection, attrib="points", dtype=wp.vec3f)
-            fabric_offsets = wp.fabricarray(data=selection, attrib=cls._particle_offset_attr)
+            fabric_offsets = wp.fabricarray(data=selection, attrib=cls._newton_particle_offset_attr)
+            fabric_world_matrices = wp.fabricarray(data=selection, attrib="omni:fabric:worldMatrix")
             num_points = cls._deformable_registry[0].particles_per_body
             wp.launch(
                 _sync_particle_points,
                 dim=selection.GetCount(),
-                inputs=[fabric_points, fabric_offsets, pq, num_points],
+                inputs=[fabric_points, fabric_world_matrices, fabric_offsets, pq, num_points],
                 device=PhysicsManager._device,
             )
             cls._particles_dirty = False
@@ -479,6 +516,7 @@ class NewtonManager(PhysicsManager):
         cls._soft_contact_margin = 0.01
         cls._newton_contact_sensors = {}
         cls._newton_frame_transform_sensors = []
+        cls._newton_imu_sensors = []
         cls._report_contacts = False
         cls._fk_dirty = False
         cls._graph = None
@@ -490,6 +528,8 @@ class NewtonManager(PhysicsManager):
         cls._model_changes = set()
         cls._cl_pending_sites = {}
         cls._cl_site_index_map = {}
+        cls._pending_extended_state_attributes = set()
+        cls._pending_extended_contact_attributes = set()
         cls._views = []
         cls._deformable_registry = []
 
@@ -546,6 +586,32 @@ class NewtonManager(PhysicsManager):
         label = f"ft_{len(cls._cl_pending_sites)}"
         cls._cl_pending_sites[key] = (label, xform)
         return label
+
+    @classmethod
+    def request_extended_state_attribute(cls, attr: str) -> None:
+        """Request an extended state attribute (e.g. ``"body_qdd"``).
+
+        Sensors call this during ``__init__``, before model finalization.
+        Attributes are forwarded to the builder in :meth:`start_simulation`
+        so that subsequent ``model.state()`` calls allocate them.
+
+        Args:
+            attr: State attribute name (must be in ``State.EXTENDED_ATTRIBUTES``).
+        """
+        cls._pending_extended_state_attributes.add(attr)
+
+    @classmethod
+    def request_extended_contact_attribute(cls, attr: str) -> None:
+        """Request an extended contact attribute (e.g. ``"force"``).
+
+        Sensors call this during ``__init__``, before model finalization.
+        Attributes are forwarded to the model in :meth:`start_simulation`
+        so that subsequent ``Contacts`` creation includes them.
+
+        Args:
+            attr: Contact attribute name.
+        """
+        cls._pending_extended_contact_attributes.add(attr)
 
     @classmethod
     def _cl_inject_sites(
@@ -687,10 +753,18 @@ class NewtonManager(PhysicsManager):
         device = PhysicsManager._device
         logger.info(f"Finalizing model on device: {device}")
         cls._builder.up_axis = Axis.from_string(cls._up_axis)
+        # Forward pending extended attribute requests to builder and clear them
+        if cls._pending_extended_state_attributes:
+            cls._builder.request_state_attributes(*cls._pending_extended_state_attributes)
+            cls._pending_extended_state_attributes = set()
         with Timer(name="newton_finalize_builder", msg="Finalize builder took:"):
             cls._model = cls._builder.finalize(device=device)
             cls._model.set_gravity(cls._gravity_vector)
             cls._model.num_envs = cls._num_envs
+
+        if cls._pending_extended_contact_attributes:
+            cls._model.request_contact_attributes(*cls._pending_extended_contact_attributes)
+            cls._pending_extended_contact_attributes = set()
 
             # Apply global model parameters from NewtonModelCfg
             cfg = PhysicsManager._cfg
@@ -746,52 +820,79 @@ class NewtonManager(PhysicsManager):
             # Setup Fabric particle sync for deformable bodies.
             if cls._deformable_registry:
                 import re
-
-                from pxr import Usd, UsdGeom
+                from pxr import UsdGeom
 
                 if cls._usdrt_stage is None:
                     cls._usdrt_stage = get_current_stage(fabric=True)
 
-                if cls._usdrt_stage is not None:
-                    stage = get_current_stage()
-                    for entry in cls._deformable_registry:
-                        prim_path_pattern = entry.prim_path
-                        particle_offsets = entry.particle_offsets
-                        for inst_idx, offset in enumerate(particle_offsets):
-                            # Resolve regex pattern to concrete instance path
-                            resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), prim_path_pattern)
-                            resolved = re.sub(r"\.\*", str(inst_idx), resolved)
-                            base_prim = stage.GetPrimAtPath(resolved)
-                            if not base_prim or not base_prim.IsValid():
-                                logger.debug("[NewtonManager] particle setup: prim not found at %s", resolved)
-                                continue
-                            # Find the renderable mesh prim under the base prim.
-                            # For TetMesh, _bind_cloth_vis_prims creates a companion Mesh at
-                            # {tet_path}_vis — that's what Kit actually renders, so tag it.
-                            has_tet_type = hasattr(UsdGeom, "TetMesh")
-                            mesh_prim = None
-                            for p in Usd.PrimRange(base_prim):
-                                if has_tet_type and p.IsA(UsdGeom.TetMesh):
-                                    vis_path = p.GetPath().pathString + "_vis"
-                                    vis_prim = stage.GetPrimAtPath(vis_path)
-                                    if vis_prim and vis_prim.IsValid() and vis_prim.IsA(UsdGeom.Mesh):
-                                        mesh_prim = vis_prim
-                                    else:
-                                        mesh_prim = p
-                                    break
-                                if p.IsA(UsdGeom.Mesh):
-                                    mesh_prim = p
-                                    break
-                            if mesh_prim is None:
-                                logger.debug("[NewtonManager] particle setup: no mesh prim found under %s", resolved)
-                                continue
-                            mesh_path = mesh_prim.GetPath().pathString
-                            fab_prim = cls._usdrt_stage.GetPrimAtPath(mesh_path)
-                            fab_prim.CreateAttribute(cls._particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
-                            fab_prim.GetAttribute(cls._particle_offset_attr).Set(offset)
+                stage = get_current_stage()
+                for entry in cls._deformable_registry:
+                    for inst_idx, offset in enumerate(entry.particle_offsets):
+                        # Resolve regex pattern to concrete instance path 
+                        # TODO: Generalize this specific path and env indexing
+                        # simulation mesh
+                        resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), entry.sim_mesh_prim_path)
+                        resolved = re.sub(r"\.\*", str(inst_idx), resolved)
+                        mesh_prim = stage.GetPrimAtPath(resolved)
+                        # visual mesh
+                        resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), entry.vis_mesh_prim_path)
+                        resolved = re.sub(r"\.\*", str(inst_idx), resolved)
+                        vis_prim = stage.GetPrimAtPath(resolved)
+                        vis_mesh = UsdGeom.Mesh(vis_prim)
+                        if not mesh_prim or not mesh_prim.IsValid():
+                            logger.warning("[NewtonManager] particle setup: prim not found at %s", resolved)
+                            continue
+                        # TODO: Temporary solution: Overwrite visual mesh with tet mesh surface points or copy
+                        # surface sim mesh to vis mesh. In the future we can have separate visual from simulation mesh.
+                        if mesh_prim.GetTypeName() == "TetMesh":
+                            # volume
+                            tet_mesh = UsdGeom.TetMesh(mesh_prim)
+                            surface_indices = tet_mesh.GetSurfaceFaceVertexIndicesAttr().Get()
+                            if surface_indices is None or len(surface_indices) == 0:
+                                raise ValueError(f"Deformable body '{entry}' has no surface indices on its TetMesh prim; cannot sync to visual mesh.")
+                            # The visual mesh was authored with the cube's 8 corner points; its
+                            # ``points`` buffer must be resized to match the TetMesh vertex count
+                            # (and therefore ``particles_per_body``) so that the surface face
+                            # indices resolve and so that Fabric's per-frame particle sync has a
+                            # correctly-sized points buffer to write into.
+                            vis_mesh.GetPointsAttr().Set(tet_mesh.GetPointsAttr().Get())
+                            vis_mesh.GetFaceVertexIndicesAttr().Set(np.asarray(surface_indices).flatten())
+                            vis_mesh.GetFaceVertexCountsAttr().Set([3] * len(surface_indices))
+                        else:
+                            # surface
+                            sim_mesh = UsdGeom.Mesh(mesh_prim)
+                            vis_mesh.GetFaceVertexIndicesAttr().Set(sim_mesh.GetFaceVertexIndicesAttr().Get())
+                            vis_mesh.GetFaceVertexCountsAttr().Set(sim_mesh.GetFaceVertexCountsAttr().Get())
+                        
+                        # Create per-instance particle offset attribute on the visual mesh prim so the Fabric sync kernel can find the right slice of particle_q.
+                        fab_prim = cls._usdrt_stage.GetPrimAtPath(vis_prim.GetPath().pathString)
+                        fab_prim.CreateAttribute(cls._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                        fab_prim.GetAttribute(cls._newton_particle_offset_attr).Set(offset)
 
-                    cls._mark_particles_dirty()
-                    cls.sync_particles_to_usd()
+                cls._mark_particles_dirty()
+                cls.sync_particles_to_usd()
+
+    @classmethod
+    def _get_deformable_ignore_paths(cls) -> list[str]:
+        """Return USD prim paths to skip when calling ``builder.add_usd``.
+        TODO: This solution will become unnecessary once Newton ``builder.add_usd`` supports deformables.
+
+        For each registered deformable body, both the simulation mesh (which carries
+        ``UsdPhysics.CollisionAPI`` from PhysX's ``deformableUtils`` setup) and the
+        visual mesh are returned. The sim mesh must be skipped so Newton does not
+        create a redundant static mesh collider alongside the particles produced by
+        :func:`add_soft_mesh`. The visual mesh is skipped so Newton does not treat it
+        as a collider or duplicate it as a Newton visual shape — Kit reads it directly
+        from USD for rendering.
+
+        Paths may contain regex patterns (e.g. ``/World/env_.*/Cube/...``); Newton's
+        ``add_usd`` matches them via :func:`re.match`.
+        """
+        paths: list[str] = []
+        for entry in cls._deformable_registry:
+            paths.append(entry.sim_mesh_prim_path)
+            paths.append(entry.vis_mesh_prim_path)
+        return paths
 
     @classmethod
     def instantiate_builder_from_stage(cls):
@@ -825,16 +926,20 @@ class NewtonManager(PhysicsManager):
 
         from isaaclab_newton.cloner.newton_replicate import add_deformable_entry_to_builder
 
+        # Deformable sim/visual mesh paths must be skipped by ``add_usd`` so they don't get duplicated as static colliders
+        deformable_ignore_paths = cls._get_deformable_ignore_paths()
+
         if not env_paths:
             # No env Xforms — flat loading
-            builder.add_usd(stage, schema_resolvers=schema_resolvers)
+            builder.add_usd(stage, ignore_paths=deformable_ignore_paths, schema_resolvers=schema_resolvers)
 
             # Add deformable bodies from the registry (single world at origin).
             for entry in cls._deformable_registry:
                 add_deformable_entry_to_builder(builder, entry, 0, [0.0, 0.0, 0.0])
         else:
             # Load everything except the env subtrees (ground plane, lights, etc.)
-            ignore_paths = [path for _, path in env_paths]
+            # and the deformable sim/visual meshes.
+            ignore_paths = [path for _, path in env_paths] + deformable_ignore_paths
             builder.add_usd(stage, ignore_paths=ignore_paths, schema_resolvers=schema_resolvers)
 
             # Build a prototype from the first env (all envs assumed identical)
@@ -843,6 +948,7 @@ class NewtonManager(PhysicsManager):
             proto.add_usd(
                 stage,
                 root_path=proto_path,
+                ignore_paths=deformable_ignore_paths,
                 schema_resolvers=schema_resolvers,
             )
 
@@ -1223,6 +1329,11 @@ class NewtonManager(PhysicsManager):
             for sensor in cls._newton_frame_transform_sensors:
                 sensor.update(cls._state_0)
 
+        # Update IMU sensors
+        if cls._newton_imu_sensors:
+            for sensor in cls._newton_imu_sensors:
+                sensor.update(cls._state_0)
+
         # Populate contacts for contact sensors
         if cls._report_contacts:
             eval_contacts = contacts if contacts is not None else cls._contacts
@@ -1395,4 +1506,29 @@ class NewtonManager(PhysicsManager):
         idx = len(cls._newton_frame_transform_sensors)
         cls._newton_frame_transform_sensors.append(sensor)
         logger.info(f"Added frame transform sensor (index={idx}, shapes={len(shapes)})")
+        return idx
+
+    @classmethod
+    def add_imu_sensor(cls, sites: list[int]) -> int:
+        """Add an IMU sensor for measuring acceleration and angular velocity at sites.
+
+        Creates a ``newton.sensors.SensorIMU`` from pre-resolved site indices,
+        appends it to the internal list, and returns its index.
+
+        Args:
+            sites: Ordered list of site indices (one per environment).
+
+        Returns:
+            Index of the newly created sensor in the internal IMU sensor list.
+        """
+        if cls._model is None:
+            raise RuntimeError("add_imu_sensor called before model finalization (start_simulation).")
+        sensor = NewtonSensorIMU(
+            cls._model,
+            sites=sites,
+            request_state_attributes=False,  # Already requested via NewtonManager
+        )
+        idx = len(cls._newton_imu_sensors)
+        cls._newton_imu_sensors.append(sensor)
+        logger.info(f"Added IMU sensor (index={idx}, sites={len(sites)})")
         return idx

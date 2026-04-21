@@ -14,10 +14,11 @@ import numpy as np
 import torch
 import warp as wp
 
-from pxr import Usd, UsdGeom
+from pxr import Gf, Usd, UsdGeom, UsdShade
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
+from isaaclab.markers import VisualizationMarkers
 from isaaclab.physics import PhysicsEvent  # still needed for PHYSICS_READY callback
 
 from isaaclab_newton.physics import NewtonManager as SimulationManager
@@ -34,11 +35,13 @@ class DeformableRegistryEntry:
     """
 
     prim_path: str
+    sim_mesh_prim_path: str  # simulation mesh prim path (TetMesh for volume deformables, Mesh for surface deformables)
+    vis_mesh_prim_path: str  # visualization mesh prim path
     vertices: list  # list of wp.vec3
     indices: list  # flat list of ints
-    is_tet: bool
     init_pos: tuple[float, float, float]
     init_rot: tuple[float, float, float, float]  # (w, x, y, z)
+    deformable_type: str | None = None  # "volume" or "surface"
     # Cloth params
     density: float = 0.02
     tri_ke: float = 1e4
@@ -99,6 +102,9 @@ class DeformableObject(BaseDeformableObject):
         # super().__init__ triggers the spawner, creating the USD prim.
         # We need the prim to exist so we can read mesh data for the registry.
         super().__init__(cfg)
+
+        # initialize deformable type to None, should be set to either surface or volume on initialization
+        self._deformable_type: str | None = None
 
         # Read mesh from the spawned USD prim and register in the deformable registry.
         # newton_physics_replicate will consume this inside begin_world/end_world for
@@ -347,74 +353,157 @@ class DeformableObject(BaseDeformableObject):
         Returns:
             The registry entry (also stored on NewtonManager._deformable_registry).
         """
-        # Find the spawned mesh prim
+        # Find the first spawned mesh prim in regex path
         template_prim = sim_utils.find_first_matching_prim(self.cfg.prim_path)
         if template_prim is None:
             raise RuntimeError(f"Failed to find prim for expression: '{self.cfg.prim_path}'.")
+        template_prim_path = template_prim.GetPrimPath()
 
-        # Find the mesh descendant — either UsdGeom.TetMesh or UsdGeom.Mesh
-        has_tet_type = hasattr(UsdGeom, "TetMesh")
-        mesh_prim = None
-        if has_tet_type and template_prim.IsA(UsdGeom.TetMesh) or template_prim.IsA(UsdGeom.Mesh):
-            mesh_prim = template_prim
-        else:
-            for desc in Usd.PrimRange(template_prim):
-                if desc == template_prim:
-                    continue
-                if has_tet_type and desc.IsA(UsdGeom.TetMesh):
-                    mesh_prim = desc
-                    break
-                if desc.IsA(UsdGeom.Mesh):
-                    mesh_prim = desc
-                    break
+        # Discover sim / visual mesh prims under the template.
+        # The spawner authors a visual UsdGeom.Mesh and a separate simulation mesh
+        # (UsdGeom.TetMesh for volume, UsdGeom.Mesh for surface) with a
+        # ``*DeformableSimAPI`` applied, so we split candidates by that schema.
+        def _is_sim_mesh(prim) -> bool:
+            return any("DeformableSimAPI" in api for api in prim.GetAppliedSchemas())
 
-        if mesh_prim is None:
-            raise RuntimeError(
-                f"No UsdGeom.Mesh or UsdGeom.TetMesh found at or under '{self.cfg.prim_path}'. "
-                "Please ensure the spawn config creates a mesh prim (e.g. MeshFromFileCfg or TetMeshCuboidCfg)."
+        tet_prims = sim_utils.get_all_matching_child_prims(
+            template_prim_path, lambda p: p.GetTypeName() == "TetMesh"
+        )
+        mesh_prims = sim_utils.get_all_matching_child_prims(
+            template_prim_path, lambda p: p.GetTypeName() == "Mesh"
+        )
+
+        if len(tet_prims) > 1:
+            raise ValueError(
+                f"Found multiple TetMesh prims under '{template_prim_path}': "
+                f"{[p.GetPrimPath() for p in tet_prims]}."
+                " Deformable body schema supports only one simulation mesh per asset."
             )
 
-        # Read mesh data
-        is_tet = mesh_prim.IsA(UsdGeom.TetMesh) if has_tet_type else False
+        # Pick simulation and visual mesh prims.
+        if len(tet_prims) == 1:
+            deformable_type = "volume"
+            mesh_prim = tet_prims[0]
+            vis_candidates = [p for p in mesh_prims if not _is_sim_mesh(p)]
+        elif len(mesh_prims) > 0:
+            deformable_type = "surface"
+            sim_candidates = [p for p in mesh_prims if _is_sim_mesh(p)]
+            vis_candidates = [p for p in mesh_prims if not _is_sim_mesh(p)]
+            if len(sim_candidates) > 1:
+                raise ValueError(
+                    f"Found multiple simulation Mesh prims under '{template_prim_path}': "
+                    f"{[p.GetPrimPath() for p in sim_candidates]}."
+                    " Deformable body schema supports only one simulation mesh per asset."
+                )
+            # Fall back to the single authored Mesh when no explicit sim mesh was tagged
+            # (legacy / self-simulated surfaces where the visual mesh *is* the sim mesh).
+            mesh_prim = sim_candidates[0] if sim_candidates else vis_candidates[0]
+            if not sim_candidates:
+                vis_candidates = []  # visual == sim, no separate embedding target
+        else:
+            raise ValueError(
+                f"Could not find any surface or volume mesh in '{template_prim_path}'. Please check asset."
+            )
+        
+        # Revert visual and simulation mesh prim paths back to template-relative form for registry storage, 
+        # since the actual prim paths will differ per world instance after replication.
+        vis_mesh_prim = vis_candidates[0]
+        vis_mesh_prim_path = str(vis_mesh_prim.GetPrimPath())
+        vis_mesh_prim_path = self.cfg.prim_path + vis_mesh_prim_path[len(template_prim_path.pathString):]
+        sim_mesh_prim_path = str(mesh_prim.GetPrimPath())
+        sim_mesh_prim_path = self.cfg.prim_path + sim_mesh_prim_path[len(template_prim_path.pathString):]
+        logger.info(f"Registered visual UsdGeom.Mesh at {vis_mesh_prim_path}.")
 
-        if is_tet:
+        # Bake the template prim's xform (and any intermediate xforms down to the sim mesh)
+        # directly into the vertex positions, so translate/orient/scale supplied to
+        # ``cfg.func`` are all honored. Vertices end up in the template prim's parent frame,
+        # which matches the env-local frame ``add_deformable_entry_to_builder`` expects.
+        # TODO: import USD from Newton side should ideally incorporate this in the future.
+        xform_cache = UsdGeom.XformCache()
+        mesh_to_parent_frame = xform_cache.GetLocalToWorldTransform(
+            mesh_prim
+        ) * xform_cache.GetLocalToWorldTransform(template_prim.GetParent()).GetInverse()
+
+        def _bake_points(raw_pts) -> list[wp.vec3]:
+            out = []
+            for p in raw_pts:
+                q = mesh_to_parent_frame.Transform(Gf.Vec3d(float(p[0]), float(p[1]), float(p[2])))
+                out.append(wp.vec3(float(q[0]), float(q[1]), float(q[2])))
+            return out
+
+        if deformable_type == "volume":
             tet_mesh = UsdGeom.TetMesh(mesh_prim)
-            pts = np.array(tet_mesh.GetPointsAttr().Get(), dtype=np.float32)
-            vertices = [wp.vec3(float(p[0]), float(p[1]), float(p[2])) for p in pts]
+            pts = tet_mesh.GetPointsAttr().Get()
+            vertices = _bake_points(pts)
             raw_tet_indices = tet_mesh.GetTetVertexIndicesAttr().Get()
             indices = []
             for vec4i in raw_tet_indices:
                 indices.extend([int(vec4i[0]), int(vec4i[1]), int(vec4i[2]), int(vec4i[3])])
             logger.info(f"Registered UsdGeom.TetMesh: {len(pts)} vertices, {len(indices) // 4} tetrahedra.")
-        else:
+        else:  # surface
             usd_mesh = UsdGeom.Mesh(mesh_prim)
-            pts = np.array(usd_mesh.GetPointsAttr().Get(), dtype=np.float32)
-            vertices = [wp.vec3(float(p[0]), float(p[1]), float(p[2])) for p in pts]
+            pts = usd_mesh.GetPointsAttr().Get()
+            vertices = _bake_points(pts)
             indices = list(usd_mesh.GetFaceVertexIndicesAttr().Get())
             logger.info(f"Registered UsdGeom.Mesh: {len(pts)} vertices.")
 
         init_pos = self.cfg.init_state.pos if hasattr(self.cfg.init_state, "pos") else (0.0, 0.0, 0.0)
         init_rot = self.cfg.init_state.rot if hasattr(self.cfg.init_state, "rot") else (1.0, 0.0, 0.0, 0.0)
 
+        # Look up the bound deformable physics material
+        if not template_prim.HasAPI(UsdShade.MaterialBindingAPI):
+            raise ValueError(
+                f"Template prim '{template_prim_path}' must have a UsdShade.MaterialBindingAPI applied with a physics material target that has 'OmniPhysicsDeformableMaterialAPI' applied."
+            )
+        material_targets = UsdShade.MaterialBindingAPI(template_prim).GetDirectBindingRel("physics").GetTargets()
+        stage = template_prim.GetStage()
+        material_prim = None
+        for mat_path in material_targets:
+            mat_prim = stage.GetPrimAtPath(mat_path)
+            if "OmniPhysicsDeformableMaterialAPI" in mat_prim.GetAppliedSchemas():
+                material_prim = mat_prim
+                break
+        if material_prim is None:
+            raise ValueError(
+                f"Could not find a physics material with 'OmniPhysicsDeformableMaterialAPI' applied among the physics material targets of '{template_prim_path}'."
+            )
+        density = material_prim.GetAttribute("omniphysics:density").Get()
+        youngs_modulus = material_prim.GetAttribute("omniphysics:youngsModulus").Get()
+        poissons_ratio = material_prim.GetAttribute("omniphysics:poissonsRatio").Get()
+        # Convert Young's modulus and Poisson's ratio to Lame parameters for Newton
+        k_mu = youngs_modulus / (2 * (1 + poissons_ratio))
+        k_lambda = (youngs_modulus * poissons_ratio) / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+
+        tri_ke = material_prim.GetAttribute("newton:triKe").Get()
+        tri_ka = material_prim.GetAttribute("newton:triKa").Get()
+        tri_kd = material_prim.GetAttribute("newton:triKd").Get()
+        edge_ke = material_prim.GetAttribute("newton:edgeKe").Get()
+        edge_kd = material_prim.GetAttribute("newton:edgeKd").Get()
+        particle_radius = material_prim.GetAttribute("newton:particleRadius").Get()
+        k_damp = material_prim.GetAttribute("newton:kDamp").Get()
+
         entry = DeformableRegistryEntry(
             prim_path=self.cfg.prim_path,
+            sim_mesh_prim_path=sim_mesh_prim_path,
+            vis_mesh_prim_path=vis_mesh_prim_path,
             vertices=vertices,
             indices=indices,
-            is_tet=is_tet,
+            deformable_type=deformable_type,
             init_pos=init_pos,
             init_rot=init_rot,
-            density=self.cfg.density,
-            tri_ke=self.cfg.tri_ke,
-            tri_ka=self.cfg.tri_ka,
-            tri_kd=self.cfg.tri_kd,
-            edge_ke=self.cfg.edge_ke,
-            edge_kd=self.cfg.edge_kd,
-            particle_radius=self.cfg.particle_radius,
-            k_mu=self.cfg.k_mu,
-            k_lambda=self.cfg.k_lambda,
-            k_damp=self.cfg.k_damp,
+            density=density,
+            tri_ke=tri_ke,
+            tri_ka=tri_ka,
+            tri_kd=tri_kd,
+            edge_ke=edge_ke,
+            edge_kd=edge_kd,
+            particle_radius=particle_radius,
+            k_mu=k_mu,
+            k_lambda=k_lambda,
+            k_damp=k_damp,
         )
         SimulationManager._deformable_registry.append(entry)
+        self._deformable_type = deformable_type
         return entry
 
     def _initialize_impl(self):
@@ -534,117 +623,37 @@ class DeformableObject(BaseDeformableObject):
             if hasattr(model, "edge_rest_angle"):
                 model.edge_rest_angle.zero_()
 
-        # Bind spawned mesh prims for Kit viewport updates (Kit only)
-        if not SimulationManager._clone_physics_only:
-            self._bind_cloth_vis_prims()
-
-    """
-    USD mesh visualization (Kit only).
-    """
-
-    def _bind_cloth_vis_prims(self) -> None:
-        """Bind spawned mesh prims for dynamic point updates in Kit viewport.
-
-        Finds the spawned ``UsdGeom.Mesh`` or ``UsdGeom.TetMesh`` prim for each instance
-        (typically at ``{prim_path}/geometry/mesh``), clears parent Xform transforms
-        (Newton writes world-space positions), writes initial points, where the surface mesh prim stores
-        particle offsets that are read while updating the visualization.
-        """
-        from pxr import Gf, Vt
-
-        from isaaclab.sim.utils.stage import get_current_stage
-
-        state = SimulationManager._state_0
-        if state is None or state.particle_q is None:
-            return
-
-        stage = get_current_stage()
-        has_tet_type = hasattr(UsdGeom, "TetMesh")
-        self._vis_prims = []
-
-        for inst_idx in range(self._num_instances):
-            base_path = self.cfg.prim_path.replace("env_.*", f"env_{inst_idx}").replace("*", str(inst_idx))
-            offset = self._recorded_particle_offsets[inst_idx]
-
-            base_prim = stage.GetPrimAtPath(base_path)
-            if not base_prim.IsValid():
-                continue
-
-            # Find the spawned geometry prim — either TetMesh or Mesh
-            # Both have GetPointsAttr() for dynamic point updates
-            geom_prim = None
-            for candidate in [base_prim] + list(Usd.PrimRange(base_prim)):
-                if candidate == base_prim and not (
-                    candidate.IsA(UsdGeom.Mesh) or (has_tet_type and candidate.IsA(UsdGeom.TetMesh))
-                ):
-                    continue
-                if has_tet_type and candidate.IsA(UsdGeom.TetMesh):
-                    geom_prim = UsdGeom.TetMesh(candidate)
-                    break
-                if candidate.IsA(UsdGeom.Mesh):
-                    geom_prim = UsdGeom.Mesh(candidate)
-                    break
-
-            if geom_prim is None:
-                logger.warning(
-                    f"No UsdGeom.Mesh or TetMesh found under '{base_path}'"
-                    f" — skipping Kit visualization for env {inst_idx}."
-                )
-                continue
-
-            # Clear Xform transforms on all ancestors under base_prim — Newton's
-            # particle positions are already in world-space meters.
-            for desc in Usd.PrimRange(base_prim):
-                if desc.IsA(UsdGeom.Xformable):
-                    UsdGeom.Xformable(desc).ClearXformOpOrder()
-
-            # For TetMesh prims, Kit doesn't render them natively in this version.
-            # Create a companion UsdGeom.Mesh with the surface faces for rendering.
-            if has_tet_type and geom_prim.GetPrim().IsA(UsdGeom.TetMesh):
-                from pxr import Sdf
-
-                tet_mesh = UsdGeom.TetMesh(geom_prim.GetPrim())
-                surface_indices = tet_mesh.GetSurfaceFaceVertexIndicesAttr().Get()
-                if surface_indices is not None and len(surface_indices) > 0:
-                    vis_mesh_path = geom_prim.GetPath().pathString + "_vis"
-                    vis_mesh = UsdGeom.Mesh.Define(stage, Sdf.Path(vis_mesh_path))
-                    # Convert Vec3iArray to flat face vertex indices
-                    face_vertex_indices = []
-                    for vec3i in surface_indices:
-                        face_vertex_indices.extend([int(vec3i[0]), int(vec3i[1]), int(vec3i[2])])
-                    vis_mesh.GetFaceVertexIndicesAttr().Set(face_vertex_indices)
-                    vis_mesh.GetFaceVertexCountsAttr().Set([3] * len(surface_indices))
-                    vis_mesh.GetSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
-
-                    # Copy material binding from the TetMesh's parent geometry prim
-                    from pxr import UsdShade
-
-                    geom_path = geom_prim.GetPath().GetParentPath()
-                    mat_path = (
-                        str(geom_path) + "/" + self.cfg.spawn.visual_material_path
-                        if hasattr(self.cfg.spawn, "visual_material_path")
-                        else None
-                    )
-                    if mat_path is not None:
-                        mat_prim = stage.GetPrimAtPath(mat_path)
-                        if mat_prim.IsValid():
-                            UsdShade.MaterialBindingAPI.Apply(vis_mesh.GetPrim())
-                            UsdShade.MaterialBindingAPI(vis_mesh.GetPrim()).Bind(
-                                UsdShade.Material(mat_prim), UsdShade.Tokens.weakerThanDescendants
-                            )
-
-                    geom_prim = vis_mesh
-
-            # Write initial vertex positions from Newton particle state
-            pts_np = state.particle_q.numpy()[offset : offset + self._particles_per_body]
-            points = Vt.Vec3fArray([Gf.Vec3f(float(p[0]), float(p[1]), float(p[2])) for p in pts_np])
-            geom_prim.GetPointsAttr().Set(points)
-
-            self._vis_prims.append((geom_prim, offset))
-
     """
     Internal simulation callbacks.
     """
+
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        # set visibility of markers
+        # note: parent only deals with callbacks. not their visibility
+        if debug_vis:
+            if not hasattr(self, "target_visualizer"):
+                self.target_visualizer = VisualizationMarkers(self.cfg.visualizer_cfg)
+            # set their visibility to true
+            self.target_visualizer.set_visibility(True)
+        else:
+            if hasattr(self, "target_visualizer"):
+                self.target_visualizer.set_visibility(False)
+
+    def _debug_vis_callback(self, event):
+        # check where to visualize, kinematic targets only supported for volume deformables
+        num_enabled = 0
+        if self._deformable_type == "volume":
+            kinematic_target_torch = wp.to_torch(self.data.nodal_kinematic_target)
+            targets_enabled = kinematic_target_torch[:, :, 3] == 0.0
+            num_enabled = int(torch.sum(targets_enabled).item())
+        # get positions if any targets are enabled
+        if num_enabled == 0:
+            # create a marker below the ground
+            positions = torch.tensor([[0.0, 0.0, -10.0]], device=self.device)
+        else:
+            positions = kinematic_target_torch[targets_enabled][..., :3]
+        # show target visualizer
+        self.target_visualizer.visualize(positions)
 
     def _clear_callbacks(self) -> None:
         """Clears all registered callbacks."""

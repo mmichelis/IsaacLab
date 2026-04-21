@@ -45,7 +45,7 @@ def add_deformable_entry_to_builder(
     )
     body_rot = wp.quat(entry.init_rot[0], entry.init_rot[1], entry.init_rot[2], entry.init_rot[3])
 
-    if entry.is_tet:
+    if entry.deformable_type == "volume":
         builder.add_soft_mesh(
             pos=body_pos,
             rot=body_rot,
@@ -59,7 +59,7 @@ def add_deformable_entry_to_builder(
             k_damp=entry.k_damp,
             particle_radius=entry.particle_radius,
         )
-    else:
+    elif entry.deformable_type == "surface":
         builder.add_cloth_mesh(
             pos=body_pos,
             rot=body_rot,
@@ -74,6 +74,10 @@ def add_deformable_entry_to_builder(
             edge_ke=entry.edge_ke,
             edge_kd=entry.edge_kd,
             particle_radius=entry.particle_radius,
+        )
+    else:
+        raise ValueError(
+            f"Invalid deformable type '{entry.deformable_type}' for registry entry with prim path '{entry.prim_path}'"
         )
 
     after_count = getattr(builder, "particle_count", 0)
@@ -129,10 +133,14 @@ def _build_newton_builder_from_mapping(
 
     schema_resolvers = [SchemaResolverNewton(), SchemaResolverPhysx()]
 
+    # Deformables are handled via ``add_soft_mesh`` in :func:`add_deformable_entry_to_builder`;
+    # skip their sim/visual mesh prims here so ``add_usd`` doesn't also load them as colliders.
+    deformable_ignore_paths = NewtonManager._get_deformable_ignore_paths()
+
     builder = NewtonManager.create_builder(up_axis=up_axis)
     stage_info = builder.add_usd(
         stage,
-        ignore_paths=["/World/envs"] + sources,
+        ignore_paths=["/World/envs"] + sources + deformable_ignore_paths,
         schema_resolvers=schema_resolvers,
     )
 
@@ -148,6 +156,7 @@ def _build_newton_builder_from_mapping(
             root_path=src_path,
             load_visual_shapes=True,
             skip_mesh_approximation=True,
+            ignore_paths=deformable_ignore_paths,
             schema_resolvers=schema_resolvers,
         )
         if simplify_meshes:

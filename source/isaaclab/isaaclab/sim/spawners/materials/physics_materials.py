@@ -13,8 +13,7 @@ from isaaclab.sim.utils import clone, safe_set_attribute_on_usd_prim, safe_set_a
 from isaaclab.sim.utils.stage import get_current_stage
 from isaaclab.utils.string import to_camel_case
 
-if TYPE_CHECKING:
-    from . import physics_materials_cfg
+from . import physics_materials_cfg
 
 
 @clone
@@ -116,16 +115,27 @@ def spawn_deformable_body_material(prim_path: str, cfg: physics_materials_cfg.De
         raise ValueError(f"A prim already exists at path: '{prim_path}' but is not a material.")
     # ensure PhysX deformable body material API is applied
     applied = prim.GetAppliedSchemas()
-    if "PhysxDeformableBodyMaterialAPI" not in applied:
-        prim.AddAppliedSchema("PhysxDeformableBodyMaterialAPI")
+    if "OmniPhysicsDeformableMaterialAPI" not in applied:
+        prim.AddAppliedSchema("OmniPhysicsDeformableMaterialAPI")
+    if "PhysxDeformableMaterialAPI" not in applied:
+        prim.AddAppliedSchema("PhysxDeformableMaterialAPI")
+    # surface deformable material API
+    is_surface_deformable = isinstance(cfg, physics_materials_cfg.SurfaceDeformableBodyMaterialCfg)
+    if is_surface_deformable:
+        if "OmniPhysicsSurfaceDeformableMaterialAPI" not in applied:
+            prim.AddAppliedSchema("OmniPhysicsSurfaceDeformableMaterialAPI")
+        if "PhysxSurfaceDeformableMaterialAPI" not in applied:
+            prim.AddAppliedSchema("PhysxSurfaceDeformableMaterialAPI")
 
     # convert to dict
     cfg = cfg.to_dict()
     del cfg["func"]
-    # set into PhysX API (prim attributes: physxDeformableBodyMaterial:*)
-    for attr_name, value in cfg.items():
-        safe_set_attribute_on_usd_prim(
-            prim, f"physxDeformableBodyMaterial:{to_camel_case(attr_name, 'cC')}", value, camel_case=False
-        )
+    # set into PhysX API, gather prefixes for each attribute
+    property_prefixes = cfg["_property_prefix"]
+    for prefix, attr_list in property_prefixes.items():
+        for attr_name in attr_list:
+            safe_set_attribute_on_usd_prim(
+                prim, f"{prefix}:{to_camel_case(attr_name, 'cC')}", cfg[attr_name], camel_case=False
+            )
     # return the prim
     return prim
