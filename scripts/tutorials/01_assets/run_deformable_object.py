@@ -69,18 +69,11 @@ def design_scene():
             size=(0.2, 0.2, 0.2),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5, density=500.0),
             # physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         debug_vis=True,
-        # density=500.0,
-        # tri_ke=1e5,
-        # tri_ka=1e5,
-        # tri_kd=1e-4,
-        # edge_ke=100.0,
-        # edge_kd=1e-2,
-        # particle_radius=0.005,
     )
 
     cube_object = DeformableObject(cfg=cfg)
