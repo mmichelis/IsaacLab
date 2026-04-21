@@ -419,7 +419,6 @@ class DeformableObject(BaseDeformableObject):
         mesh_to_parent_frame = xform_cache.GetLocalToWorldTransform(
             mesh_prim
         ) * xform_cache.GetLocalToWorldTransform(template_prim.GetParent()).GetInverse()
-        breakpoint()
 
         def _bake_points(raw_pts) -> list[wp.vec3]:
             out = []

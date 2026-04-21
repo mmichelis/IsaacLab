@@ -143,9 +143,10 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # Create separate groups of deformable objects
     origins = define_origins(num_origins=12, radius=1.5, center_height=2.0)
     print("[INFO]: Spawning objects...")
-    num_volumes = 0
-    num_surfaces = 0
-    # Iterate over all the origins and randomly spawn objects
+    # Iterate over all the origins, spawn objects, and create a view for all the deformables
+    # note: since we manually spawned random deformable meshes above, we don't need to
+    #   specify the spawn configuration for the deformable object
+    scene_entities = {}
     for idx, origin in tqdm.tqdm(enumerate(origins), total=len(origins)):
         # randomly select an object to spawn
         obj_name = random.choice(list(objects_cfg.keys()))
@@ -161,32 +162,23 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
         # spawn the object, separate groups for surface and volume deformables
         if obj_name in ["cloth"]:
-            obj_cfg.func(f"/World/Origin/Surface{idx:02d}", obj_cfg, translation=origin)
-            num_surfaces += 1
+            prim_path = f"/World/Origin/Surface{idx:02d}"
+            obj_cfg.func(prim_path, obj_cfg, translation=origin)
+            cfg = DeformableObjectCfg(
+                prim_path=prim_path,
+                spawn=None,
+                init_state=DeformableObjectCfg.InitialStateCfg(),
+            )
+            scene_entities[f"Surface{idx:02d}"] = DeformableObject(cfg=cfg)
         else:
-            obj_cfg.func(f"/World/Origin/Volume{idx:02d}", obj_cfg, translation=origin)
-            num_volumes += 1
-
-    # create a view for all the deformables, separate views for volume and surface deformables
-    # note: since we manually spawned random deformable meshes above, we don't need to
-    #   specify the spawn configuration for the deformable object
-    scene_entities = {}
-    if num_volumes > 0:
-        cfg = DeformableObjectCfg(
-            prim_path="/World/Origin/Volume.*",
-            spawn=None,
-            init_state=DeformableObjectCfg.InitialStateCfg(),
-        )
-        volume_deformable_object = DeformableObject(cfg=cfg)
-        scene_entities["volume_deformable_object"] = volume_deformable_object
-    if num_surfaces > 0:
-        cfg = DeformableObjectCfg(
-            prim_path="/World/Origin/Surface.*",
-            spawn=None,
-            init_state=DeformableObjectCfg.InitialStateCfg(),
-        )
-        surface_deformable_object = DeformableObject(cfg=cfg)
-        scene_entities["surface_deformable_object"] = surface_deformable_object
+            prim_path = f"/World/Origin/Volume{idx:02d}"
+            obj_cfg.func(prim_path, obj_cfg, translation=origin)
+            cfg = DeformableObjectCfg(
+                prim_path=prim_path,
+                spawn=None,
+                init_state=DeformableObjectCfg.InitialStateCfg(),
+            )
+            scene_entities[f"Volume{idx:02d}"] = DeformableObject(cfg=cfg)
 
     # return the scene information
     return scene_entities, origins

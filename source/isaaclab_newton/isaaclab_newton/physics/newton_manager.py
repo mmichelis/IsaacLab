@@ -820,15 +820,14 @@ class NewtonManager(PhysicsManager):
             # Setup Fabric particle sync for deformable bodies.
             if cls._deformable_registry:
                 import re
-                from pxr import UsdGeom, Vt, Gf
+                from pxr import UsdGeom
 
                 if cls._usdrt_stage is None:
                     cls._usdrt_stage = get_current_stage(fabric=True)
 
                 stage = get_current_stage()
                 for entry in cls._deformable_registry:
-                    particle_offsets = entry.particle_offsets
-                    for inst_idx, offset in enumerate(particle_offsets):
+                    for inst_idx, offset in enumerate(entry.particle_offsets):
                         # Resolve regex pattern to concrete instance path 
                         # TODO: Generalize this specific path and env indexing
                         # simulation mesh
@@ -841,7 +840,7 @@ class NewtonManager(PhysicsManager):
                         vis_prim = stage.GetPrimAtPath(resolved)
                         vis_mesh = UsdGeom.Mesh(vis_prim)
                         if not mesh_prim or not mesh_prim.IsValid():
-                            logger.debug("[NewtonManager] particle setup: prim not found at %s", resolved)
+                            logger.warning("[NewtonManager] particle setup: prim not found at %s", resolved)
                             continue
                         # TODO: Temporary solution: Overwrite visual mesh with tet mesh surface points or copy
                         # surface sim mesh to vis mesh. In the future we can have separate visual from simulation mesh.
@@ -870,8 +869,8 @@ class NewtonManager(PhysicsManager):
                         fab_prim.CreateAttribute(cls._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
                         fab_prim.GetAttribute(cls._newton_particle_offset_attr).Set(offset)
 
-                    cls._mark_particles_dirty()
-                    cls.sync_particles_to_usd()
+                cls._mark_particles_dirty()
+                cls.sync_particles_to_usd()
 
     @classmethod
     def _get_deformable_ignore_paths(cls) -> list[str]:
