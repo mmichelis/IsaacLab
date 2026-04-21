@@ -29,6 +29,7 @@ INSTALL_REQUIRES = [
     "gymnasium==1.2.1",
     # procedural-generation
     "trimesh",
+    "pytetwild",
     "pyglet>=2.1.6",
     "mujoco==3.5.0",
     "mujoco-warp==3.5.0.2",
