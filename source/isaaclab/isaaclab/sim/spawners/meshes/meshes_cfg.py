@@ -9,11 +9,8 @@ from collections.abc import Callable
 from dataclasses import MISSING
 from typing import Literal
 
-# deformables only supported on PhysX backend
-from isaaclab_physx.sim.spawners.spawner_cfg import DeformableObjectSpawnerCfg
-
 from isaaclab.sim.spawners import materials
-from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg
+from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg, DeformableObjectSpawnerCfg
 from isaaclab.utils import configclass
 
 

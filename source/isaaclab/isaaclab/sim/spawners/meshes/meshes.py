@@ -12,15 +12,13 @@ import numpy as np
 import trimesh
 import trimesh.transformations
 
-# deformables only supported on PhysX backend
-from isaaclab_physx.sim.spawners.materials import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 from pxr import Gf, Usd, UsdGeom, UsdPhysics, Vt
 
 from isaaclab.sim import schemas
 from isaaclab.sim.utils import bind_physics_material, bind_visual_material, clone, create_prim, get_current_stage
 
-from ..materials import RigidBodyMaterialCfg
+from ..materials import RigidBodyMaterialCfg, DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 
 if TYPE_CHECKING:
     from . import meshes_cfg

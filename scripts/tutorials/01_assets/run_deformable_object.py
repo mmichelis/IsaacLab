@@ -39,9 +39,6 @@ simulation_app = app_launcher.app
 import torch
 import warp as wp
 
-# deformables supported in PhysX
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
-
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
@@ -72,8 +69,8 @@ def design_scene():
             size=(0.2, 0.2, 0.2),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-            physics_material=DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
-            # physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5),
+            # physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         debug_vis=True,

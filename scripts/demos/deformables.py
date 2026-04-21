@@ -41,9 +41,6 @@ import torch
 import tqdm
 import warp as wp
 
-# deformables supported in PhysX
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
-
 import isaaclab.sim as sim_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
@@ -86,47 +83,47 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         radius=0.4,
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cuboid = sim_utils.MeshCuboidCfg(
         size=(0.6, 0.6, 0.6),
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cylinder = sim_utils.MeshCylinderCfg(
         radius=0.25,
         height=0.5,
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
         radius=0.35,
         height=0.5,
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cone = sim_utils.MeshConeCfg(
         radius=0.35,
         height=0.75,
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cloth = sim_utils.MeshSquareCfg(
         size=1.5,
         resolution=(21, 21),
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=SurfaceDeformableBodyMaterialCfg(),
+        physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(),
     )
     cfg_usd = sim_utils.UsdFileCfg(
         usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
         scale=[0.05, 0.05, 0.05],
     )
     # create a dictionary of all the objects to be spawned
@@ -217,7 +214,7 @@ def main():
     """Main function."""
     # Initialize the simulation context
     if args_cli.backend == "newton":
-        from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg
+        from isaaclab_newton.physics import NewtonCfg, VBDSolverCfg, XPBDSolverCfg
         physics_cfg = NewtonCfg(solver_cfg=VBDSolverCfg(iterations=10), num_substeps=4)
     else:
         from isaaclab_physx.physics import PhysxCfg
