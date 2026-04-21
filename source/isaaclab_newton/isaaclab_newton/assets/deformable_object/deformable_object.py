@@ -39,9 +39,9 @@ class DeformableRegistryEntry:
     vis_mesh_prim_path: str  # visualization mesh prim path
     vertices: list  # list of wp.vec3
     indices: list  # flat list of ints
-    is_tet: bool
     init_pos: tuple[float, float, float]
     init_rot: tuple[float, float, float, float]  # (w, x, y, z)
+    deformable_type: str | None = None  # "volume" or "surface"
     # Cloth params
     density: float = 0.02
     tri_ke: float = 1e4
@@ -456,7 +456,7 @@ class DeformableObject(BaseDeformableObject):
             vis_mesh_prim_path=vis_mesh_prim_path,
             vertices=vertices,
             indices=indices,
-            is_tet=deformable_type == "volume",
+            deformable_type=deformable_type,
             init_pos=init_pos,
             init_rot=init_rot,
             density=self.cfg.density,

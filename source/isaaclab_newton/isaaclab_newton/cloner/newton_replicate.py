@@ -45,7 +45,7 @@ def add_deformable_entry_to_builder(
     )
     body_rot = wp.quat(entry.init_rot[0], entry.init_rot[1], entry.init_rot[2], entry.init_rot[3])
 
-    if entry.is_tet:
+    if entry.deformable_type == "volume":
         builder.add_soft_mesh(
             pos=body_pos,
             rot=body_rot,
@@ -59,7 +59,7 @@ def add_deformable_entry_to_builder(
             k_damp=entry.k_damp,
             particle_radius=entry.particle_radius,
         )
-    else:
+    elif entry.deformable_type == "surface":
         builder.add_cloth_mesh(
             pos=body_pos,
             rot=body_rot,
@@ -74,6 +74,10 @@ def add_deformable_entry_to_builder(
             edge_ke=entry.edge_ke,
             edge_kd=entry.edge_kd,
             particle_radius=entry.particle_radius,
+        )
+    else:
+        raise ValueError(
+            f"Invalid deformable type '{entry.deformable_type}' for registry entry with prim path '{entry.prim_path}'"
         )
 
     after_count = getattr(builder, "particle_count", 0)
