@@ -76,6 +76,7 @@ def design_scene():
             # physics_material=SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
+        debug_vis=True,
         # density=500.0,
         # tri_ke=1e5,
         # tri_ka=1e5,
@@ -105,7 +106,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
     count = 0
 
     # Nodal kinematic targets of the deformable bodies
-    # nodal_kinematic_target = wp.to_torch(cube_object.data.nodal_kinematic_target).clone()
+    nodal_kinematic_target = wp.to_torch(cube_object.data.nodal_kinematic_target).clone()
 
     # Simulate physics
     # for _ in range(200):
@@ -129,9 +130,9 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
             cube_object.write_nodal_state_to_sim_index(nodal_state)
 
             # Write the nodal state to the kinematic target and free all vertices
-            # nodal_kinematic_target[..., :3] = nodal_state[..., :3]
-            # nodal_kinematic_target[..., 3] = 1.0
-            # cube_object.write_nodal_kinematic_target_to_sim_index(nodal_kinematic_target)
+            nodal_kinematic_target[..., :3] = nodal_state[..., :3]
+            nodal_kinematic_target[..., 3] = 1.0
+            cube_object.write_nodal_kinematic_target_to_sim_index(nodal_kinematic_target)
 
             print("----------------------------------------")
             print("[INFO]: Resetting object state...")
@@ -139,12 +140,12 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict, origins: tor
         # update the kinematic target for cubes at index 0 and 3
         kinematic_cubes = [0, 3]
         # we slightly move the cube in the z-direction by picking the vertex at index 0
-        # nodal_kinematic_target[kinematic_cubes, 0, 2] += 0.2 * sim_dt
-        # # set vertex at index 0 to be kinematically constrained
-        # # 0: constrained, 1: free
-        # nodal_kinematic_target[kinematic_cubes, 0, 3] = 0.0
-        # # write kinematic target to simulation
-        # cube_object.write_nodal_kinematic_target_to_sim_index(nodal_kinematic_target)
+        nodal_kinematic_target[kinematic_cubes, 0, 2] += 0.2 * sim_dt
+        # set vertex at index 0 to be kinematically constrained
+        # 0: constrained, 1: free
+        nodal_kinematic_target[kinematic_cubes, 0, 3] = 0.0
+        # write kinematic target to simulation
+        cube_object.write_nodal_kinematic_target_to_sim_index(nodal_kinematic_target)
 
         # write internal data to simulation
         cube_object.write_data_to_sim()

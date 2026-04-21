@@ -18,6 +18,7 @@ from pxr import Gf, Usd, UsdGeom
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
+from isaaclab.markers import VisualizationMarkers
 from isaaclab.physics import PhysicsEvent  # still needed for PHYSICS_READY callback
 
 from isaaclab_newton.physics import NewtonManager as SimulationManager
@@ -101,6 +102,9 @@ class DeformableObject(BaseDeformableObject):
         # super().__init__ triggers the spawner, creating the USD prim.
         # We need the prim to exist so we can read mesh data for the registry.
         super().__init__(cfg)
+
+        # initialize deformable type to None, should be set to either surface or volume on initialization
+        self._deformable_type: str | None = None
 
         # Read mesh from the spawned USD prim and register in the deformable registry.
         # newton_physics_replicate will consume this inside begin_world/end_world for
@@ -467,6 +471,7 @@ class DeformableObject(BaseDeformableObject):
             k_damp=self.cfg.k_damp,
         )
         SimulationManager._deformable_registry.append(entry)
+        self._deformable_type = deformable_type
         return entry
 
     def _initialize_impl(self):
@@ -589,6 +594,34 @@ class DeformableObject(BaseDeformableObject):
     """
     Internal simulation callbacks.
     """
+
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        # set visibility of markers
+        # note: parent only deals with callbacks. not their visibility
+        if debug_vis:
+            if not hasattr(self, "target_visualizer"):
+                self.target_visualizer = VisualizationMarkers(self.cfg.visualizer_cfg)
+            # set their visibility to true
+            self.target_visualizer.set_visibility(True)
+        else:
+            if hasattr(self, "target_visualizer"):
+                self.target_visualizer.set_visibility(False)
+
+    def _debug_vis_callback(self, event):
+        # check where to visualize, kinematic targets only supported for volume deformables
+        num_enabled = 0
+        if self._deformable_type == "volume":
+            kinematic_target_torch = wp.to_torch(self.data.nodal_kinematic_target)
+            targets_enabled = kinematic_target_torch[:, :, 3] == 0.0
+            num_enabled = int(torch.sum(targets_enabled).item())
+        # get positions if any targets are enabled
+        if num_enabled == 0:
+            # create a marker below the ground
+            positions = torch.tensor([[0.0, 0.0, -10.0]], device=self.device)
+        else:
+            positions = kinematic_target_torch[targets_enabled][..., :3]
+        # show target visualizer
+        self.target_visualizer.visualize(positions)
 
     def _clear_callbacks(self) -> None:
         """Clears all registered callbacks."""
