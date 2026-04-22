@@ -294,6 +294,36 @@ class PickClothEnv(DirectRLEnv):
         if self._has_robot:
             self.scene.articulations["robot"] = self.robot
 
+        if self._has_robot and self.cfg.disable_robot_ground_collision:
+            self._register_ground_collision_disable()
+
+    def _register_ground_collision_disable(self):
+        """Register a PHYSICS_READY callback to disable ground-robot collision.
+
+        Sets the ground plane's ``shape_collision_group`` to 0 in Newton, which
+        disables rigid-body collisions while keeping soft (particle) contacts active.
+        """
+        from isaaclab_newton.physics import NewtonManager
+
+        from isaaclab.physics import PhysicsEvent
+
+        def _disable(payload=None):
+            model = NewtonManager._model
+            if model is None:
+                return
+            labels = list(model.shape_label)
+            groups = model.shape_collision_group.numpy()
+            for i, label in enumerate(labels):
+                if "ground" in label.lower() or "defaultgroundplane" in label.lower():
+                    groups[i] = 0
+            model.shape_collision_group.assign(wp.array(groups, dtype=int, device=model.shape_collision_group.device))
+            logger.info(
+                "Disabled ground-robot collision for shapes: %s",
+                [labels[i] for i, g in enumerate(groups) if g == 0],
+            )
+
+        NewtonManager.register_callback(_disable, PhysicsEvent.PHYSICS_READY)
+
     # ─── RL interface ────────────────────────────────────────────────────────
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:

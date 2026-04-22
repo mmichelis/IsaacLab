@@ -20,7 +20,6 @@ from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
-from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 from isaaclab.utils import configclass
 
 from isaaclab_tasks.utils import PresetCfg, preset
@@ -135,21 +134,27 @@ class PickVBDCubeEnvCfg(DirectRLEnvCfg):
     # deformable cube (VBD)
     cube: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/cube",
-        spawn=TetMeshCuboidCfg(
+        spawn=sim_utils.MeshCuboidCfg(
             size=(0.05, 0.05, 0.05),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(
+                density=500.0,
+                youngs_modulus=2.5e5,
+                poissons_ratio=0.25,
+                particle_radius=0.005,
+            ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
             pos=(0.25, 0.0, 0.05),
         ),
-        density=500.0,
-        tri_ke=1e5,
-        tri_ka=1e5,
-        tri_kd=1e-4,
-        edge_ke=100.0,
-        edge_kd=1e-2,
-        particle_radius=0.005,
     )
+
+    # disable rigid-body collision between robot and ground plane
+    disable_robot_ground_collision: bool = True
+    """When True, set the ground plane's collision group to 0 in Newton so the
+    robot arm does not collide with the ground. Soft (particle) contacts are
+    unaffected. Defaults to True."""
 
     # interactive IK: when True, spawn a draggable sphere and solve IK each step
     interactive_ik: bool = False

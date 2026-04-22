@@ -23,7 +23,6 @@ from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
-from isaaclab.sim.spawners.meshes import MeshFromFileCfg
 from isaaclab.utils import configclass
 
 from isaaclab_tasks.utils import PresetCfg, preset
@@ -81,7 +80,7 @@ class PickClothPhysicsCfg(PresetCfg):
                 integrate_with_external_rigid_solver=True,
             ),
             soft_contact_margin=0.01,
-            # coupling_mode="two_way",
+            coupling_mode="one_way",
         ),
         model_cfg=MODEL_CFG,
         num_substeps=10,
@@ -163,25 +162,32 @@ class PickClothEnvCfg(DirectRLEnvCfg):
     # cloth asset — shirt mesh loaded from Newton assets
     cloth: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/cloth",
-        spawn=MeshFromFileCfg(
+        spawn=sim_utils.UsdFileCfg(
             usd_path=_SHIRT_USD,
-            usd_prim_path="/root/shirt",
-            scale=0.01,  # shirt USD vertices are in cm -> convert to meters
+            scale=(0.01, 0.01, 0.01),  # shirt USD vertices are in cm -> convert to meters
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.8)),
+            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(
+                density=0.02,
+                tri_ke=1e4,
+                tri_ka=1e4,
+                tri_kd=1.5e-6,
+                edge_ke=5.0,
+                edge_kd=1e-2,
+                particle_radius=0.01,
+            ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
             pos=(0.9, 1.25, 0.20),  # in front of robot, reachable height
-            # pos=(0.9, 1.25, 1.0),  # in front of robot, reachable height
             rot=(1.0, 0.0, 0.0, 0.0),
         ),
-        density=0.02,
-        tri_ke=1e4,
-        tri_ka=1e4,
-        tri_kd=1.5e-6,
-        edge_ke=5.0,
-        edge_kd=1e-2,
-        particle_radius=0.01,
     )
+
+    # disable rigid-body collision between robot and ground plane
+    disable_robot_ground_collision: bool = True
+    """When True, set the ground plane's collision group to 0 in Newton so the
+    robot arm does not collide with the ground. Soft (particle) contacts are
+    unaffected. Defaults to True."""
 
     # interactive IK: when True, spawn a draggable sphere and solve IK each step
     interactive_ik: bool = False
