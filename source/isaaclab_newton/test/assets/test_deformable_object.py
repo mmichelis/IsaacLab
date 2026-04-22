@@ -27,7 +27,6 @@ import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.sim import SimulationCfg, build_simulation_context
-from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 
 NEWTON_VBD_CFG = SimulationCfg(
     physics=NewtonCfg(
@@ -65,17 +64,20 @@ def generate_cubes_scene(
 
     cube_object_cfg = DeformableObjectCfg(
         prim_path="/World/env_.*/Cube",
-        spawn=TetMeshCuboidCfg(
+        spawn=sim_utils.MeshCuboidCfg(
             size=(0.1, 0.1, 0.1),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(
+                density=500.0,
+                youngs_modulus=2.5e4,
+                poissons_ratio=0.25,
+            ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
             pos=(0.0, 0.0, height),
             rot=(1.0, 0.0, 0.0, 0.0),
         ),
-        density=500.0,
-        k_mu=1e4,
-        k_lambda=1e4,
     )
     cube_object = DeformableObject(cfg=cube_object_cfg)
     return cube_object

@@ -24,7 +24,6 @@ from isaaclab_newton.physics import CoupledSolverCfg, MJWarpSolverCfg, NewtonCfg
 import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.sim import SimulationCfg, build_simulation_context
-from isaaclab.sim.spawners.meshes import TetMeshCuboidCfg
 
 from isaaclab_assets import FRANKA_PANDA_CFG  # isort:skip
 
@@ -143,30 +142,36 @@ def generate_robot_and_two_cubes(
     colliding_cube = DeformableObject(
         cfg=DeformableObjectCfg(
             prim_path="/World/env_.*/cube_collide",
-            spawn=TetMeshCuboidCfg(
+            spawn=sim_utils.MeshCuboidCfg(
                 size=(0.05, 0.05, 0.05),
+                deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
+                physics_material=sim_utils.DeformableBodyMaterialCfg(
+                    density=500.0,
+                    youngs_modulus=2.5e5,
+                    poissons_ratio=0.25,
+                    particle_radius=0.005,
+                ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=colliding_cube_pos),
-            density=500.0,
-            k_mu=1e5,
-            k_lambda=1e5,
-            particle_radius=0.005,
         )
     )
 
     free_cube = DeformableObject(
         cfg=DeformableObjectCfg(
             prim_path="/World/env_.*/cube_free",
-            spawn=TetMeshCuboidCfg(
+            spawn=sim_utils.MeshCuboidCfg(
                 size=(0.05, 0.05, 0.05),
+                deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
+                physics_material=sim_utils.DeformableBodyMaterialCfg(
+                    density=500.0,
+                    youngs_modulus=2.5e4,
+                    poissons_ratio=0.25,
+                    particle_radius=0.005,
+                ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=free_cube_pos),
-            density=500.0,
-            k_mu=1e4,
-            k_lambda=1e4,
-            particle_radius=0.005,
         )
     )
 

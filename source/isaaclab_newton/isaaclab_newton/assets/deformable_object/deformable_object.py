@@ -405,9 +405,11 @@ class DeformableObject(BaseDeformableObject):
                 f"Could not find any surface or volume mesh in '{template_prim_path}'. Please check asset."
             )
         
-        # Revert visual and simulation mesh prim paths back to template-relative form for registry storage, 
+        # Revert visual and simulation mesh prim paths back to template-relative form for registry storage,
         # since the actual prim paths will differ per world instance after replication.
-        vis_mesh_prim = vis_candidates[0]
+        # When vis_candidates is empty the visual mesh IS the simulation mesh
+        # (e.g. a plain surface cloth with no separate visual embedding).
+        vis_mesh_prim = vis_candidates[0] if vis_candidates else mesh_prim
         vis_mesh_prim_path = str(vis_mesh_prim.GetPrimPath())
         vis_mesh_prim_path = self.cfg.prim_path + vis_mesh_prim_path[len(template_prim_path.pathString):]
         sim_mesh_prim_path = str(mesh_prim.GetPrimPath())
@@ -447,8 +449,14 @@ class DeformableObject(BaseDeformableObject):
             indices = list(usd_mesh.GetFaceVertexIndicesAttr().Get())
             logger.info(f"Registered UsdGeom.Mesh: {len(pts)} vertices.")
 
-        init_pos = self.cfg.init_state.pos if hasattr(self.cfg.init_state, "pos") else (0.0, 0.0, 0.0)
-        init_rot = self.cfg.init_state.rot if hasattr(self.cfg.init_state, "rot") else (1.0, 0.0, 0.0, 0.0)
+        # init_pos/init_rot are already baked into the vertices by the Xform
+        # transform above (mesh_to_parent_frame includes the template prim's
+        # translate/orient/scale from init_state). Setting them to identity here
+        # prevents add_cloth_mesh/add_soft_mesh from applying them a second time.
+        # Note: add_deformable_entry_to_builder passes init_rot directly to
+        # wp.quat(x, y, z, w), so identity must be (0, 0, 0, 1) not (1, 0, 0, 0).
+        init_pos = (0.0, 0.0, 0.0)
+        init_rot = (0.0, 0.0, 0.0, 1.0)
 
         # Look up the bound deformable physics material
         if not template_prim.HasAPI(UsdShade.MaterialBindingAPI):

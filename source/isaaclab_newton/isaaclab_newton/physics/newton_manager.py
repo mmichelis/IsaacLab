@@ -766,19 +766,19 @@ class NewtonManager(PhysicsManager):
             cls._model.request_contact_attributes(*cls._pending_extended_contact_attributes)
             cls._pending_extended_contact_attributes = set()
 
-            # Apply global model parameters from NewtonModelCfg
-            cfg = PhysicsManager._cfg
-            if cfg is not None and hasattr(cfg, "model_cfg") and cfg.model_cfg is not None:
-                model_cfg = cfg.model_cfg
-                cls._model.soft_contact_ke = float(model_cfg.soft_contact_ke)
-                cls._model.soft_contact_kd = float(model_cfg.soft_contact_kd)
-                cls._model.soft_contact_mu = float(model_cfg.soft_contact_mu)
-                if model_cfg.shape_material_ke is not None:
-                    cls._model.shape_material_ke.fill_(float(model_cfg.shape_material_ke))
-                if model_cfg.shape_material_kd is not None:
-                    cls._model.shape_material_kd.fill_(float(model_cfg.shape_material_kd))
-                if model_cfg.shape_material_mu is not None:
-                    cls._model.shape_material_mu.fill_(float(model_cfg.shape_material_mu))
+        # Apply global model parameters from NewtonModelCfg
+        cfg = PhysicsManager._cfg
+        if cfg is not None and hasattr(cfg, "model_cfg") and cfg.model_cfg is not None:
+            model_cfg = cfg.model_cfg
+            cls._model.soft_contact_ke = float(model_cfg.soft_contact_ke)
+            cls._model.soft_contact_kd = float(model_cfg.soft_contact_kd)
+            cls._model.soft_contact_mu = float(model_cfg.soft_contact_mu)
+            if model_cfg.shape_material_ke is not None:
+                cls._model.shape_material_ke.fill_(float(model_cfg.shape_material_ke))
+            if model_cfg.shape_material_kd is not None:
+                cls._model.shape_material_kd.fill_(float(model_cfg.shape_material_kd))
+            if model_cfg.shape_material_mu is not None:
+                cls._model.shape_material_mu.fill_(float(model_cfg.shape_material_mu))
 
         cls._state_0 = cls._model.state()
         cls._state_1 = cls._model.state()
