@@ -73,8 +73,8 @@ def _sync_particle_points(
     fabric_points: wp.fabricarrayarray(dtype=wp.vec3f),
     fabric_world_matrices: wp.fabricarray(dtype=wp.mat44d),
     offsets: wp.fabricarray(dtype=wp.uint32),
+    counts: wp.fabricarray(dtype=wp.uint32),
     particle_q: wp.array(dtype=wp.vec3f),
-    num_points: int,
 ):
     """Write Newton particle positions into Fabric mesh point arrays as local-frame points.
 
@@ -88,6 +88,7 @@ def _sync_particle_points(
     """
     i = wp.tid()
     offset = int(offsets[i])
+    num_points = int(counts[i])
 
     # Un-transpose Fabric's stored matrix to get the standard homogeneous form
     world_matrix = wp.transpose(wp.mat44f(fabric_world_matrices[i]))
@@ -163,6 +164,7 @@ class NewtonManager(PhysicsManager):
     _usdrt_stage = None
     _newton_index_attr = "newton:index"
     _newton_particle_offset_attr = "newton:particleOffset"
+    _newton_particle_count_attr = "newton:particleCount"
     _clone_physics_only = False
     _transforms_dirty: bool = False
     _particles_dirty: bool = False
@@ -400,6 +402,7 @@ class NewtonManager(PhysicsManager):
                 require_attrs=[
                     (usdrt.Sdf.ValueTypeNames.Point3fArray, "points", usdrt.Usd.Access.ReadWrite),
                     (usdrt.Sdf.ValueTypeNames.UInt, cls._newton_particle_offset_attr, usdrt.Usd.Access.Read),
+                    (usdrt.Sdf.ValueTypeNames.UInt, cls._newton_particle_count_attr, usdrt.Usd.Access.Read),
                     (usdrt.Sdf.ValueTypeNames.Matrix4d, "omni:fabric:worldMatrix", usdrt.Usd.Access.Read),
                 ],
                 device=str(PhysicsManager._device),
@@ -408,12 +411,12 @@ class NewtonManager(PhysicsManager):
                 return
             fabric_points = wp.fabricarrayarray(data=selection, attrib="points", dtype=wp.vec3f)
             fabric_offsets = wp.fabricarray(data=selection, attrib=cls._newton_particle_offset_attr)
+            fabric_counts = wp.fabricarray(data=selection, attrib=cls._newton_particle_count_attr)
             fabric_world_matrices = wp.fabricarray(data=selection, attrib="omni:fabric:worldMatrix")
-            num_points = cls._deformable_registry[0].particles_per_body
             wp.launch(
                 _sync_particle_points,
                 dim=selection.GetCount(),
-                inputs=[fabric_points, fabric_world_matrices, fabric_offsets, pq, num_points],
+                inputs=[fabric_points, fabric_world_matrices, fabric_offsets, fabric_counts, pq],
                 device=PhysicsManager._device,
             )
             cls._particles_dirty = False
@@ -864,10 +867,14 @@ class NewtonManager(PhysicsManager):
                             vis_mesh.GetFaceVertexIndicesAttr().Set(sim_mesh.GetFaceVertexIndicesAttr().Get())
                             vis_mesh.GetFaceVertexCountsAttr().Set(sim_mesh.GetFaceVertexCountsAttr().Get())
                         
-                        # Create per-instance particle offset attribute on the visual mesh prim so the Fabric sync kernel can find the right slice of particle_q.
+                        # Create per-instance particle offset and count attributes on the visual mesh
+                        # prim so the Fabric sync kernel can find the right slice of particle_q
+                        # and iterate only over this body's particles (counts vary across bodies).
                         fab_prim = cls._usdrt_stage.GetPrimAtPath(vis_prim.GetPath().pathString)
                         fab_prim.CreateAttribute(cls._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
                         fab_prim.GetAttribute(cls._newton_particle_offset_attr).Set(offset)
+                        fab_prim.CreateAttribute(cls._newton_particle_count_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                        fab_prim.GetAttribute(cls._newton_particle_count_attr).Set(entry.particles_per_body)
 
                 cls._mark_particles_dirty()
                 cls.sync_particles_to_usd()
