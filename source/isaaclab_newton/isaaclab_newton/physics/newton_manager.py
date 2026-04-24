@@ -831,41 +831,14 @@ class NewtonManager(PhysicsManager):
                 stage = get_current_stage()
                 for entry in cls._deformable_registry:
                     for inst_idx, offset in enumerate(entry.particle_offsets):
-                        # Resolve regex pattern to concrete instance path 
-                        # TODO: Generalize this specific path and env indexing
-                        # simulation mesh
-                        resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), entry.sim_mesh_prim_path)
-                        resolved = re.sub(r"\.\*", str(inst_idx), resolved)
-                        mesh_prim = stage.GetPrimAtPath(resolved)
-                        # visual mesh
+                        # Resolve regex pattern to concrete instance path of visual mesh
+                        # TODO: Generalize this specific path and env indexing mesh
                         resolved = re.sub(r"(?<=[Ee]nv_)\.\*", str(inst_idx), entry.vis_mesh_prim_path)
                         resolved = re.sub(r"\.\*", str(inst_idx), resolved)
                         vis_prim = stage.GetPrimAtPath(resolved)
-                        vis_mesh = UsdGeom.Mesh(vis_prim)
-                        if not mesh_prim or not mesh_prim.IsValid():
-                            logger.warning("[NewtonManager] particle setup: prim not found at %s", resolved)
+                        if not vis_prim or not vis_prim.IsValid():
+                            logger.warning("[NewtonManager] particle setup: vis prim not found at %s", resolved)
                             continue
-                        # TODO: Temporary solution: Overwrite visual mesh with tet mesh surface points or copy
-                        # surface sim mesh to vis mesh. In the future we can have separate visual from simulation mesh.
-                        if mesh_prim.GetTypeName() == "TetMesh":
-                            # volume
-                            tet_mesh = UsdGeom.TetMesh(mesh_prim)
-                            surface_indices = tet_mesh.GetSurfaceFaceVertexIndicesAttr().Get()
-                            if surface_indices is None or len(surface_indices) == 0:
-                                raise ValueError(f"Deformable body '{entry}' has no surface indices on its TetMesh prim; cannot sync to visual mesh.")
-                            # The visual mesh was authored with the cube's 8 corner points; its
-                            # ``points`` buffer must be resized to match the TetMesh vertex count
-                            # (and therefore ``particles_per_body``) so that the surface face
-                            # indices resolve and so that Fabric's per-frame particle sync has a
-                            # correctly-sized points buffer to write into.
-                            vis_mesh.GetPointsAttr().Set(tet_mesh.GetPointsAttr().Get())
-                            vis_mesh.GetFaceVertexIndicesAttr().Set(np.asarray(surface_indices).flatten())
-                            vis_mesh.GetFaceVertexCountsAttr().Set([3] * len(surface_indices))
-                        else:
-                            # surface
-                            sim_mesh = UsdGeom.Mesh(mesh_prim)
-                            vis_mesh.GetFaceVertexIndicesAttr().Set(sim_mesh.GetFaceVertexIndicesAttr().Get())
-                            vis_mesh.GetFaceVertexCountsAttr().Set(sim_mesh.GetFaceVertexCountsAttr().Get())
                         
                         # Create per-instance particle offset and count attributes on the visual mesh
                         # prim so the Fabric sync kernel can find the right slice of particle_q
