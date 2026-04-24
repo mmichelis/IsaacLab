@@ -141,21 +141,29 @@ class CableReachSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class CommandsCfg:
-    """6D target pose for the cable handle, expressed in the robot root frame."""
+    """6D target pose for the cable handle, expressed in the robot root frame.
 
-    handle_pose = base_mdp.UniformPoseCommandCfg(
+    Uses :class:`cable_mdp.GripperAlignedPoseCommand` instead of the vanilla
+    :class:`UniformPoseCommand` so an identity sample visualizes as the Panda-hand-
+    natural orientation (red axis up, blue axis forward) rather than base-frame
+    z-up. The euler sampling still draws small deltas around zero; the subclass
+    post-composes each draw with the fixed gripper-aligned reference.
+    """
+
+    handle_pose = cable_mdp.GripperAlignedPoseCommandCfg(
         asset_name="robot",
         body_name="panda_hand",
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
-        ranges=base_mdp.UniformPoseCommandCfg.Ranges(
+        ranges=cable_mdp.GripperAlignedPoseCommandCfg.Ranges(
             pos_x=(0.35, 0.55),
             pos_y=(-0.15, 0.15),
             pos_z=(0.15, 0.40),
-            # Narrowed from ±π/3 to ±π/6 — ±π/3 on all three axes is largely
-            # unreachable when pinch-grasping a horizontal cable handle, and the
-            # orientation reward was silently pulling the policy toward infeasible
-            # targets. Widen again once position tracking is reliable.
+            # Small body-frame deltas around the gripper-aligned reference — the
+            # ±π/6 range gives moderate rotations the arm can reach without
+            # contorting. See :class:`cable_mdp.GripperAlignedPoseCommand` for
+            # the reference orientation (180° rotation about (1,0,1)/√2 axis,
+            # mapping base x↔z and flipping y) that these deltas perturb.
             roll=(-math.pi / 6, math.pi / 6),
             pitch=(-math.pi / 6, math.pi / 6),
             yaw=(-math.pi / 6, math.pi / 6),
@@ -210,11 +218,12 @@ class ObservationsCfg:
         # EE→target delta short-circuits the "sum two vectors" burden the network
         # would otherwise take on (ee_to_handle + handle_to_target).
         ee_to_target = ObsTerm(func=cable_mdp.ee_to_target_position)
-        # Axis-angle rotation from handle to target — analogous to the position
-        # delta, gives the network a direct orientation-error signal.
-        orientation_error = ObsTerm(
-            func=cable_mdp.target_orientation_error, params={"cable_cfg": _CABLE}
-        )
+        # Axis-angle rotation from EE to target — analogous to the position
+        # delta, gives the network a direct orientation-error signal. The target
+        # is gripper-aligned (see ``CommandsCfg`` /
+        # :class:`cable_mdp.GripperAlignedPoseCommand`), so this compares against
+        # the end-effector orientation rather than the handle's.
+        orientation_error = ObsTerm(func=cable_mdp.target_orientation_error)
         target_pose = ObsTerm(func=base_mdp.generated_commands, params={"command_name": "handle_pose"})
         # Exposes the (binary) grasp gate so the critic can attribute the discrete
         # reward-stack transitions that share this gate.

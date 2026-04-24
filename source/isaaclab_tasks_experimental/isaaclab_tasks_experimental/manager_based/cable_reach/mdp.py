@@ -19,7 +19,15 @@ from typing import TYPE_CHECKING
 import torch
 import warp as wp
 
+# NOTE: do NOT import runtime command classes (``UniformPoseCommand`` and friends)
+# at module top-level — they transitively pull in ``isaaclab.markers.VisualizationMarkers``
+# and the pxr/omni USD stack, which must not load before ``AppLauncher`` starts Kit
+# or Kit's own extension startup fails with pxr ABI errors
+# (``'pxr.PhysxSchema' has no attribute 'Tokens'``, etc.). Cfg classes are fine —
+# they only pull in ``VisualizationMarkersCfg`` which is a plain dataclass.
+from isaaclab.envs.mdp.commands import UniformPoseCommandCfg
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils import configclass
 from isaaclab.utils.math import (
     axis_angle_from_quat,
     combine_frame_transforms,
@@ -90,9 +98,19 @@ def _robot_root_pose_w(
     )
 
 
+def _ee_quat_w(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg) -> torch.Tensor:
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    return _safe_quat(wp.to_torch(ee_frame.data.target_quat_w)[..., 0, :])
+
+
 def _target_pose_w(
     env: ManagerBasedRLEnv, command_name: str, robot_cfg: SceneEntityCfg
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Target pose in world frame. The base-frame orientation is read from the
+    command (a :class:`GripperAlignedPoseCommand`, which bakes a fixed "red up,
+    blue forward" reference into the sampled quat), so the debug visualizer and
+    the reward math see the same target quaternion.
+    """
     command = env.command_manager.get_command(command_name)
     des_pos_b = command[:, :3]
     des_quat_b = _safe_quat(command[:, 3:7])
@@ -101,6 +119,25 @@ def _target_pose_w(
         root_pos_w, root_quat_w, des_pos_b, des_quat_b
     )
     return des_pos_w, des_quat_w
+
+
+##
+# Command term cfg
+##
+
+
+@configclass
+class GripperAlignedPoseCommandCfg(UniformPoseCommandCfg):
+    """Cfg bound to :class:`.commands.GripperAlignedPoseCommand`.
+
+    The runtime class lives in a sibling ``commands`` module and is referenced via
+    a string ``class_type`` so the command manager's lazy-import machinery defers
+    loading until after Kit has started (see note at top of :mod:`mdp`).
+    """
+
+    class_type: str = (
+        "isaaclab_tasks_experimental.manager_based.cable_reach.commands:GripperAlignedPoseCommand"
+    )
 
 
 ##
@@ -178,19 +215,22 @@ def target_orientation_error(
     env: ManagerBasedRLEnv,
     command_name: str = "handle_pose",
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    cable_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
-    """Axis-angle rotation from current handle orientation to the target. Shape ``(N, 3)``.
+    """Axis-angle rotation from current EE orientation to the target. Shape ``(N, 3)``.
 
-    Gives the network a *direct* rotation-error signal (analogous to how
-    :func:`handle_to_target_position` supplies the position error), rather than
-    requiring it to infer the error from two raw quaternions.
+    The 6D target is gripper-aligned (see :class:`GripperAlignedPoseCommand`,
+    which bakes a "red up, blue forward" reference into the sampled quat), so the
+    orientation error is measured against the end-effector's orientation rather
+    than the handle's. Gives the network a direct rotation-error signal
+    (analogous to how :func:`handle_to_target_position` supplies the position
+    error).
     """
-    handle_quat_w = _handle_quat_w(env, cable_cfg)
+    ee_quat_w = _ee_quat_w(env, ee_frame_cfg)
     _, des_quat_w = _target_pose_w(env, command_name, robot_cfg)
-    # q_err = q_target * q_current^-1 — applied to the world-frame handle orientation,
+    # q_err = q_target * q_current^-1 — applied to the world-frame EE orientation,
     # gives the rotation that takes current into target.
-    q_err = _safe_quat(quat_mul(des_quat_w, quat_conjugate(handle_quat_w)))
+    q_err = _safe_quat(quat_mul(des_quat_w, quat_conjugate(ee_quat_w)))
     return _safe_pos(axis_angle_from_quat(q_err))
 
 
@@ -609,20 +649,28 @@ def handle_target_position_tanh(
     env: ManagerBasedRLEnv,
     std: float,
     command_name: str = "handle_pose",
-    handle_capture_radius: float = 0.08,
-    finger_close_threshold: float = 0.020,
+    handle_capture_radius: float = 0.07,
+    finger_close_threshold: float = 0.035,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["panda_finger_joint.*"]),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     cable_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
 ) -> torch.Tensor:
-    """Stage 4 (position): tanh reward for tracking the 3D target, gated by is_grasped.
+    """Stage 4 (position): tanh reward for tracking the 3D target, gated by grasp.
+
+    Uses the LOOSE geometric gate (:func:`is_grasped_geometric`) rather than the
+    velocity-correlation variant — the strict gate was silently zeroing this term
+    for the 8×6×6 cm box, because its narrow ``finger_close_threshold`` (0.020) is
+    below the ~0.030 joint position each finger rests at when clamped on the 6 cm
+    side. Position/orientation tracking rewards only need "fingers are on the
+    box" to be meaningful; velocity correlation is already enforced separately
+    by :func:`handle_tracks_gripper`.
 
     Gated on grasp (not on a lift height) so that once the policy is holding the
-    handle, it has an immediate smooth signal pulling the handle toward the target.
-    Targets always sit ≥15 cm above the table, so the gradient naturally requires
-    lifting without a hardcoded height threshold.
+    handle, it has an immediate smooth signal pulling the handle toward the
+    target. Targets always sit ≥15 cm above the table, so the gradient naturally
+    requires lifting without a hardcoded height threshold.
     """
-    grasped = is_grasped(
+    grasped = is_grasped_geometric(
         env=env, handle_capture_radius=handle_capture_radius, finger_close_threshold=finger_close_threshold, robot_cfg=robot_cfg, ee_frame_cfg=ee_frame_cfg, cable_cfg=cable_cfg
     )
     handle_pos_w = _handle_pos_w(env, cable_cfg)
@@ -635,19 +683,32 @@ def handle_target_orientation_tanh(
     env: ManagerBasedRLEnv,
     std: float,
     command_name: str = "handle_pose",
-    handle_capture_radius: float = 0.08,
-    finger_close_threshold: float = 0.020,
+    handle_capture_radius: float = 0.07,
+    finger_close_threshold: float = 0.035,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=["panda_finger_joint.*"]),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     cable_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
 ) -> torch.Tensor:
-    """Stage 4 (orientation): tanh reward for matching target orientation, gated by is_grasped."""
-    grasped = is_grasped(
+    """Stage 4 (orientation): tanh reward for matching target orientation, gated by grasp.
+
+    Uses the LOOSE geometric gate (:func:`is_grasped_geometric`) with thresholds
+    sized for the 8×6×6 cm box — see the note in
+    :func:`handle_target_position_tanh` for why the strict velocity-correlation
+    gate was silently zeroing this term.
+
+    Compares the end-effector orientation to the target rather than the handle's,
+    because the 6D target is gripper-aligned — see
+    :class:`GripperAlignedPoseCommand`, which bakes a "red up, blue forward"
+    reference into the sampled quat. When the grip is rigid, EE orientation ==
+    (handle orientation offset by the fixed grip transform), so matching the EE is
+    equivalent to matching the held-box up to that constant.
+    """
+    grasped = is_grasped_geometric(
         env=env, handle_capture_radius=handle_capture_radius, finger_close_threshold=finger_close_threshold, robot_cfg=robot_cfg, ee_frame_cfg=ee_frame_cfg, cable_cfg=cable_cfg
     )
-    handle_quat_w = _handle_quat_w(env, cable_cfg)
+    ee_quat_w = _ee_quat_w(env, ee_frame_cfg)
     _, des_quat_w = _target_pose_w(env, command_name, robot_cfg)
-    angle = quat_error_magnitude(handle_quat_w, des_quat_w)
+    angle = quat_error_magnitude(ee_quat_w, des_quat_w)
     return grasped * (1.0 - torch.tanh(angle / std))
 
 
@@ -663,7 +724,12 @@ def success_bonus(
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
     cable_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
 ) -> torch.Tensor:
-    """Sparse +1 when lifted AND within pos/rot thresholds of the target."""
+    """Sparse +1 when lifted AND within pos/rot thresholds of the target.
+
+    Position is checked against the handle (where the box should be); orientation
+    is checked against the end-effector — the target is gripper-aligned (see
+    :class:`GripperAlignedPoseCommand`).
+    """
     lifted = is_lifted(
         env,
         minimal_height,
@@ -674,10 +740,10 @@ def success_bonus(
         cable_cfg,
     )
     handle_pos_w = _handle_pos_w(env, cable_cfg)
-    handle_quat_w = _handle_quat_w(env, cable_cfg)
+    ee_quat_w = _ee_quat_w(env, ee_frame_cfg)
     des_pos_w, des_quat_w = _target_pose_w(env, command_name, robot_cfg)
     pos_err = torch.linalg.norm(des_pos_w - handle_pos_w, dim=1)
-    rot_err = quat_error_magnitude(handle_quat_w, des_quat_w)
+    rot_err = quat_error_magnitude(ee_quat_w, des_quat_w)
     within = ((pos_err < pos_threshold) & (rot_err < rot_threshold)).float()
     return lifted * within
 
