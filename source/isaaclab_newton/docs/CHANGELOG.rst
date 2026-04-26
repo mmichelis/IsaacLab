@@ -1,25 +1,23 @@
 Changelog
 ---------
 
-0.5.22 (2026-04-28)
+0.5.22 (2026-04-24)
 ~~~~~~~~~~~~~~~~~~~
 
-Changed
-^^^^^^^
+Added
+^^^^^
 
-* Refactored :class:`~isaaclab_newton.physics.NewtonManager` into a
-  solver-agnostic abstract base with one concrete subclass per solver:
-  :class:`~isaaclab_newton.physics.MJWarpManager`,
-  :class:`~isaaclab_newton.physics.XPBDManager`, and
-  :class:`~isaaclab_newton.physics.FeatherstoneManager`.  Each
-  ``*SolverCfg`` now declares a ``class_type`` field pointing at its
-  matching manager subclass; :meth:`~isaaclab_newton.physics.NewtonCfg.__post_init__`
-  propagates ``solver_cfg.class_type`` onto :attr:`NewtonCfg.class_type`
-  so that ``SimulationContext`` resolves the right manager via the
-  existing dispatch path. The previous ``solver_type`` if/elif ladder in
-  ``initialize_solver`` is replaced by polymorphic dispatch on
-  :meth:`_build_solver`. User-facing config API is unchanged — existing
-  ``NewtonCfg(solver_cfg=MJWarpSolverCfg(...))`` code keeps working.
+* Added :class:`~isaaclab_newton.physics.NewtonShapeCfg` exposing
+  per-shape collision defaults (``margin``, ``gap``) via
+  :attr:`~isaaclab_newton.physics.NewtonCfg.default_shape_cfg`.
+  :meth:`~isaaclab_newton.physics.NewtonManager.create_builder` now
+  forwards the wrapper onto Newton's upstream
+  ``ModelBuilder.default_shape_cfg`` via
+  :func:`~isaaclab.utils.checked_apply`. The previous code only set
+  ``gap`` and left ``margin`` at Newton's upstream default of ``0.0``,
+  causing all non-Anymal-D robots to fail to learn rough-terrain
+  locomotion on triangle-mesh terrain. ``RoughPhysicsCfg`` opts in to
+  ``margin=0.01``.
 
 
 0.5.21 (2026-04-23)
