@@ -11,14 +11,10 @@ import os
 import tempfile
 from typing import TYPE_CHECKING
 
-# deformables only supported on PhysX backend
-from isaaclab_physx.sim import schemas as schemas_physx
-from isaaclab.sim.spawners.materials import SurfaceDeformableBodyMaterialCfg
-
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from isaaclab.sim import converters, schemas
-from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg
+from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
 from isaaclab.sim.utils import (
     add_labels,
     bind_physics_material,
@@ -372,9 +368,9 @@ def _spawn_from_usd_file(
         prim = stage.GetPrimAtPath(prim_path)
         deformable_type = "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume"
         if "OmniPhysicsDeformableBodyAPI" in prim.GetAppliedSchemas():
-            schemas_physx.modify_deformable_body_properties(prim_path, cfg.deformable_props, stage)
+            schemas.modify_deformable_body_properties(prim_path, cfg.deformable_props, stage)
         else:
-            schemas_physx.define_deformable_body_properties(prim_path, cfg.deformable_props, stage, deformable_type)
+            schemas.define_deformable_body_properties(prim_path, cfg.deformable_props, stage, deformable_type)
         if cfg.mass_props is not None:
             raise ValueError(
                 """MassPropertiesCfg are not supported for deformable bodies
