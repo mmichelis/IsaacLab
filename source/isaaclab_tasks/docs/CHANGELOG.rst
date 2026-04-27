@@ -1,7 +1,7 @@
 Changelog
 ---------
 
-1.5.28 (2026-04-24)
+1.5.29 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Added
@@ -31,7 +31,7 @@ Changed
   ``(-1.0, 3.0)`` additive overrides on A1/Go1/Go2.
 
 
-1.5.27 (2026-04-25)
+1.5.28 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Changed
@@ -41,7 +41,7 @@ Changed
   ``isaacsim.core.experimental.utils.app.enable_extension`` (non-deprecated Isaac Sim path).
 
 
-1.5.26 (2026-04-25)
+1.5.27 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Changed
@@ -56,13 +56,24 @@ Changed
   sequence instead of ``torch.tensor``, dropping the ``torch`` import from those modules.
 
 
-1.5.25 (2026-04-24)
+1.5.26 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Changed
 ^^^^^^^
 
 * Migrated golden images ``source/isaaclab_tasks/test/golden_images/**/*.png`` to Git LFS.
+
+
+1.5.25 (2026-04-23)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Migrated all data property accesses from ``wp.to_torch(data.property)`` to
+  ``data.property.torch`` to match the new :class:`~isaaclab.utils.warp.ProxyArray`
+  return type introduced in ``isaaclab`` 4.6.13.
 
 
 1.5.24 (2026-04-22)

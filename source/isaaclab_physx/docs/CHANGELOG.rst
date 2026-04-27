@@ -1,7 +1,27 @@
 Changelog
 ---------
 
-0.5.25 (2026-04-24)
+0.5.27 (2026-04-27)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed ``Simulation view object is invalidated and cannot be used again to call
+  getDofVelocities`` raised on the first ``scene.update()`` after ``sim.reset()``
+  with recent Isaac Sim ``develop`` builds. Isaac Sim's
+  ``isaacsim.core.simulation_manager.SimulationManager`` recently became reactive
+  to timeline ``STOP`` events (after its ``_on_stop`` was decorated with
+  ``@staticmethod`` upstream), and its ``invalidate_physics()`` was clobbering
+  the shared ``omni.physics.tensors`` simulation view that
+  :class:`~isaaclab_physx.physics.PhysxManager` and PhysX articulation views
+  rely on. The ``isaaclab_physx`` package init now disables the original Isaac
+  Sim ``SimulationManager``'s default timeline/stage callbacks via
+  ``enable_all_default_callbacks(False)`` before swapping the module attribute,
+  so :class:`PhysxManager` is the single owner of the simulation lifecycle.
+
+
+0.5.26 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Fixed
@@ -24,7 +44,7 @@ Changed
   pattern used by the Kit perspective video helper.
 
 
-0.5.24 (2026-04-22)
+0.5.25 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Changed
@@ -41,7 +61,39 @@ Changed
   Isaac Sim module paths (``isaacsim.core.experimental.utils.app`` and ``isaacsim.core.rendering_manager``).
 
 
-0.5.23 (2026-04-23)
+0.5.24 (2026-04-24)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Updated :class:`~isaaclab_physx.sim.views.FabricFrameView` to match the new
+  :class:`~isaaclab.sim.views.BaseFrameView` ProxyArray return contract. See
+  the ``isaaclab`` 4.6.15 changelog for migration guidance.
+
+
+0.5.23 (2026-04-24)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Properties on the following data classes now return
+  :class:`~isaaclab.utils.warp.ProxyArray` instead of raw ``wp.array``:
+  :class:`~isaaclab_physx.assets.articulation.ArticulationData`,
+  :class:`~isaaclab_physx.assets.rigid_object.RigidObjectData`,
+  :class:`~isaaclab_physx.assets.rigid_object_collection.RigidObjectCollectionData`,
+  :class:`~isaaclab_physx.assets.deformable_object.DeformableObjectData`,
+  :class:`~isaaclab_physx.sensors.contact_sensor.ContactSensorData`,
+  :class:`~isaaclab_physx.sensors.frame_transformer.FrameTransformerData`,
+  :class:`~isaaclab_physx.sensors.imu.ImuData`, and
+  :class:`~isaaclab_physx.sensors.pva.PvaData`.
+  Use ``.torch`` for a cached zero-copy ``torch.Tensor`` view, or ``.warp`` for
+  the underlying ``wp.array``. Implicit torch operations (arithmetic,
+  ``torch.*`` functions) work during the deprecation period but emit a warning.
+
+
+0.5.22 (2026-04-23)
 ~~~~~~~~~~~~~~~~~~~
 
 Fixed
@@ -55,7 +107,7 @@ Fixed
   the freshly built artifact on the simulation context so subsequent providers reuse it.
 
 
-0.5.22 (2026-04-22)
+0.5.21 (2026-04-22)
 ~~~~~~~~~~~~~~~~~~~
 
 Added
@@ -69,26 +121,6 @@ Changed
 
 * Renamed :class:`~isaaclab_physx.sim.views.FabricXformPrimView` to
   :class:`~isaaclab_physx.sim.views.FabricFrameView`. Old name is kept as a deprecated alias.
-
-
-0.5.21 (2026-04-22)
-~~~~~~~~~~~~~~~~~~~
-
-Fixed
-^^^^^
-
-* Fixed ``Simulation view object is invalidated and cannot be used again to call
-  getDofVelocities`` raised on the first ``scene.update()`` after ``sim.reset()``
-  with recent Isaac Sim ``develop`` builds. Isaac Sim's
-  ``isaacsim.core.simulation_manager.SimulationManager`` recently became reactive
-  to timeline ``STOP`` events (after its ``_on_stop`` was decorated with
-  ``@staticmethod`` upstream), and its ``invalidate_physics()`` was clobbering
-  the shared ``omni.physics.tensors`` simulation view that
-  :class:`~isaaclab_physx.physics.PhysxManager` and PhysX articulation views
-  rely on. The ``isaaclab_physx`` package init now disables the original Isaac
-  Sim ``SimulationManager``'s default timeline/stage callbacks via
-  ``enable_all_default_callbacks(False)`` before swapping the module attribute,
-  so :class:`PhysxManager` is the single owner of the simulation lifecycle.
 
 
 0.5.20 (2026-04-21)

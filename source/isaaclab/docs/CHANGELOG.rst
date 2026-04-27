@@ -1,7 +1,18 @@
 Changelog
 ---------
 
-4.6.16 (2026-04-24)
+4.6.21 (2026-04-27)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed ProxyArray migration guidance and static regression checks to cover
+  deprecated ``wp.to_torch(proxy_array)`` usage and direct tensor/wp.array
+  method calls on data properties.
+
+
+4.6.20 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Added
@@ -12,9 +23,17 @@ Added
   (typically an upstream library config object). Raises
   :class:`AttributeError` if the target is missing a declared field, so
   upstream renames surface at startup instead of as silent no-ops.
+* Added an opt-in runtime detector on :class:`~isaaclab.utils.warp.ProxyArray`
+  that emits a :class:`UserWarning` with the call site (``stacklevel=2``) on
+  every ``.torch`` read of a ``wp.quatf``-typed array when the
+  ``WARN_ON_TORCH_QUATF_ACCESS`` environment variable is set to ``"1"``.
+  Helps users find code that still assumes Isaac Lab 2.x's ``(w, x, y, z)``
+  quaternion convention after the migration to Isaac Lab 3.x's
+  ``(x, y, z, w)`` convention. Documented in the Isaac Lab 3.0 migration
+  guide as a complement to the source-level quaternion finder tool.
 
 
-4.6.15 (2026-04-24)
+4.6.19 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Changed
@@ -25,7 +44,7 @@ Changed
   ``@optional_method``.
 
 
-4.6.14 (2026-04-24)
+4.6.18 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Changed
@@ -55,7 +74,7 @@ Fixed
   to Replicator so the resolver returns a valid path.
 
 
-4.6.13 (2026-04-22)
+4.6.17 (2026-04-27)
 ~~~~~~~~~~~~~~~~~~~
 
 Changed
@@ -87,6 +106,129 @@ Removed
 * Retired several ``source/isaaclab/test/deps/isaacsim`` standalone reproducers that depended on
   deprecated Isaac Sim core extensions; use :mod:`isaaclab.sim` and ``isaacsim.core.experimental.*``
   for similar debugging workflows.
+
+
+4.6.16 (2026-04-24)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Renamed the ``TorchArray`` wrapper to
+  :class:`~isaaclab.utils.warp.ProxyArray` and its module from
+  ``isaaclab.utils.warp.torch_array`` to
+  ``isaaclab.utils.warp.proxy_array``. The new name better describes
+  the class as a proxy around a :class:`wp.array` exposing both
+  ``.warp`` and ``.torch`` accessors, rather than a torch-first type.
+  No backward-compatibility alias — downstream code must update
+  imports and type hints.
+
+Removed
+^^^^^^^
+
+* Removed :meth:`~isaaclab.utils.warp.ProxyArray.rebind`. ``ProxyArray``
+  instances are now immutable after construction: assigning to any
+  attribute other than the internal ``_torch_cache`` raises
+  :class:`AttributeError`. Call sites that previously rebound a
+  sim-bound wrapper (Newton / PhysX asset data classes when the solver
+  re-creates its arrays) now assign a fresh
+  ``ProxyArray(new_buf)`` instead. The old pattern was unsafe —
+  callers holding a stale ``.torch`` reference read the old memory
+  silently after ``rebind``. Forcing a new wrapper per rebind makes
+  the stale-reference hazard local and explicit.
+
+  .. code-block:: python
+
+     # Before (4.6.15)
+     self._joint_pos_ta.rebind(self._sim_bind_joint_pos)
+     # After (4.6.16)
+     self._joint_pos_ta = ProxyArray(self._sim_bind_joint_pos)
+
+
+4.6.15 (2026-04-24)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* :meth:`~isaaclab.sim.views.BaseFrameView.get_world_poses` and
+  :meth:`~isaaclab.sim.views.BaseFrameView.get_local_poses` now return
+  a pair of :class:`~isaaclab.utils.warp.ProxyArray` wrappers instead
+  of raw ``wp.array``. :class:`~isaaclab.sim.views.UsdFrameView`,
+  :class:`~isaaclab_physx.sim.views.FabricFrameView`, and
+  :class:`~isaaclab_newton.sim.views.NewtonSiteFrameView` were updated
+  accordingly. Calls without ``indices`` reuse a cached ProxyArray
+  wrapping the backend's stable buffer (Fabric/Newton); calls with
+  ``indices`` and all calls on USD construct a fresh ProxyArray per
+  invocation.
+
+  **Breaking change** — call sites that wrapped the return in
+  ``wp.to_torch(...)`` or passed the result directly to a kernel must
+  migrate:
+
+  .. code-block:: python
+
+     # Before (4.6.14)
+     pos_wp, quat_wp = view.get_world_poses(indices)
+     tensor = wp.to_torch(pos_wp)
+     # After (4.6.15)
+     pos_w, quat_w = view.get_world_poses(indices)
+     tensor = pos_w.torch
+     # ... and when passing to a warp kernel:
+     wp.launch(..., inputs=[pos_w.warp, ...])
+
+
+4.6.14 (2026-04-24)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* :class:`~isaaclab.sensors.RayCasterData` and
+  :class:`~isaaclab.sensors.MultiMeshRayCasterData` properties
+  :attr:`~isaaclab.sensors.RayCasterData.pos_w`,
+  :attr:`~isaaclab.sensors.RayCasterData.quat_w`, and
+  :attr:`~isaaclab.sensors.RayCasterData.ray_hits_w` now return
+  :class:`~isaaclab.utils.warp.ProxyArray` instead of raw ``wp.array``.
+  Use ``.torch`` for a cached zero-copy ``torch.Tensor`` view or ``.warp``
+  for the underlying ``wp.array``.
+
+  **Breaking change** — call sites that previously wrapped these in
+  ``wp.to_torch(...)`` must migrate to the ``.torch`` accessor:
+
+  .. code-block:: python
+
+     # Before (4.6.13)
+     hits = wp.to_torch(sensor.data.ray_hits_w)
+     # After (4.6.14)
+     hits = sensor.data.ray_hits_w.torch
+
+
+4.6.13 (2026-04-23)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added :class:`~isaaclab.utils.warp.ProxyArray`, a warp-first dual-access array
+  that provides explicit ``.torch`` and ``.warp`` accessors for seamless
+  interoperability between warp and PyTorch workflows.
+
+Changed
+^^^^^^^
+
+* All properties on the following base data classes now return
+  :class:`~isaaclab.utils.warp.ProxyArray` instead of raw ``wp.array``:
+  :class:`~isaaclab.assets.articulation.BaseArticulationData`,
+  :class:`~isaaclab.assets.rigid_object.BaseRigidObjectData`,
+  :class:`~isaaclab.assets.rigid_object_collection.BaseRigidObjectCollectionData`,
+  :class:`~isaaclab.sensors.contact_sensor.BaseContactSensorData`,
+  :class:`~isaaclab.sensors.frame_transformer.BaseFrameTransformerData`,
+  :class:`~isaaclab.sensors.imu.BaseImuData`, and
+  :class:`~isaaclab.sensors.pva.BasePvaData`.
+  Use ``.torch`` for a cached zero-copy ``torch.Tensor`` view, or ``.warp`` for
+  the underlying ``wp.array``. Implicit torch operations (arithmetic,
+  ``torch.*`` functions) work during the deprecation period but emit a warning.
 
 
 4.6.12 (2026-04-23)
