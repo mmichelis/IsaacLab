@@ -422,20 +422,17 @@ class DeformableObject(BaseDeformableObject):
         template_prim_path = template_prim.GetPrimPath()
 
         # Discover sim / visual mesh prims under the template.
+        # The spawner authors a visual UsdGeom.Mesh and a separate simulation mesh
+        # (UsdGeom.TetMesh for volume, UsdGeom.Mesh for surface) with a
+        # ``*DeformableSimAPI`` applied, so we split candidates by that schema.
         def _is_sim_mesh(prim) -> bool:
             return any("DeformableSimAPI" in api for api in prim.GetAppliedSchemas())
 
-        tet_prims = sim_utils.get_all_matching_child_prims(template_prim_path, lambda p: p.GetTypeName() == "TetMesh")
-        mesh_prims = sim_utils.get_all_matching_child_prims(template_prim_path, lambda p: p.GetTypeName() == "Mesh")
-
-        # When the spawn config uses a surface deformable material, the PhysX
-        # spawner may still create a TetMesh proxy (sim_tetmesh) alongside the
-        # original Mesh.  Newton reads the original Mesh directly, so ignore
-        # the PhysX TetMesh proxy and treat this as a surface deformable.
-        _is_surface_material = (
-            self.cfg.spawn is not None
-            and getattr(self.cfg.spawn, "physics_material", None) is not None
-            and "Surface" in type(self.cfg.spawn.physics_material).__name__
+        tet_prims = sim_utils.get_all_matching_child_prims(
+            template_prim_path, lambda p: p.GetTypeName() == "TetMesh"
+        )
+        mesh_prims = sim_utils.get_all_matching_child_prims(
+            template_prim_path, lambda p: p.GetTypeName() == "Mesh"
         )
 
         if len(tet_prims) > 1:
@@ -446,7 +443,7 @@ class DeformableObject(BaseDeformableObject):
             )
 
         # Pick simulation and visual mesh prims.
-        if len(tet_prims) == 1 and not _is_surface_material:
+        if len(tet_prims) == 1:
             deformable_type = "volume"
             mesh_prim = tet_prims[0]
             vis_candidates = [p for p in mesh_prims if not _is_sim_mesh(p)]
@@ -460,23 +457,18 @@ class DeformableObject(BaseDeformableObject):
                     f"{[p.GetPrimPath() for p in sim_candidates]}."
                     " Deformable body schema supports only one simulation mesh per asset."
                 )
-            if _is_surface_material and vis_candidates:
-                # Newton reads the original authored Mesh directly.  The PhysX
-                # sim_mesh proxy has no points at scene-construction time, so
-                # prefer the original mesh when using a surface deformable material.
-                mesh_prim = vis_candidates[0]
-                vis_candidates = []  # visual == sim, no separate embedding target
-            elif sim_candidates:
-                mesh_prim = sim_candidates[0]
-            else:
-                mesh_prim = vis_candidates[0]
+            # Fall back to the single authored Mesh when no explicit sim mesh was tagged
+            # (legacy / self-simulated surfaces where the visual mesh *is* the sim mesh).
+            mesh_prim = sim_candidates[0] if sim_candidates else vis_candidates[0]
+            if not sim_candidates:
                 vis_candidates = []  # visual == sim, no separate embedding target
         else:
             raise ValueError(
                 f"Could not find any surface or volume mesh in '{template_prim_path}'. Please check asset."
             )
-
-        # BUG FIX: vis_mesh_prim fallback for empty vis_candidates.
+        
+        # Revert visual and simulation mesh prim paths back to template-relative form for registry storage,
+        # since the actual prim paths will differ per world instance after replication.
         # When vis_candidates is empty the visual mesh IS the simulation mesh
         # (e.g. a plain surface cloth with no separate visual embedding).
         vis_mesh_prim = vis_candidates[0] if vis_candidates else mesh_prim
