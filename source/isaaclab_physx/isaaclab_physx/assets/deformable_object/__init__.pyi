@@ -5,10 +5,8 @@
 
 __all__ = [
     "DeformableObject",
-    "DeformableObjectCfg",
     "DeformableObjectData",
 ]
 
 from .deformable_object import DeformableObject
-from .deformable_object_cfg import DeformableObjectCfg
 from .deformable_object_data import DeformableObjectData
