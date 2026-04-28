@@ -11,6 +11,7 @@ import inspect
 import logging
 
 import numpy as np
+
 from newton import Contacts, Model
 from newton.solvers import SolverMuJoCo
 
@@ -22,7 +23,7 @@ from .newton_manager_cfg import MJWarpSolverCfg
 logger = logging.getLogger(__name__)
 
 
-class NewtonMJWarpManager(NewtonManager):
+class MJWarpManager(NewtonManager):
     """:class:`NewtonManager` specialization for the MuJoCo Warp solver.
 
     Owns construction of :class:`SolverMuJoCo`, contact-buffer allocation in
@@ -32,7 +33,9 @@ class NewtonMJWarpManager(NewtonManager):
     """
 
     @classmethod
-    def _build_solver(cls, model: Model, solver_cfg: MJWarpSolverCfg) -> tuple[SolverMuJoCo, bool, bool]:
+    def _build_solver(
+        cls, model: Model, solver_cfg: MJWarpSolverCfg
+    ) -> tuple[SolverMuJoCo, bool, bool]:
         """Construct :class:`SolverMuJoCo` from *solver_cfg*.
 
         Filters cfg fields against the solver's ``__init__`` signature so
@@ -62,26 +65,26 @@ class NewtonMJWarpManager(NewtonManager):
         if cls._needs_collision_pipeline:
             super()._initialize_contacts()
             return
-        if cls._solver is not None:
-            NewtonManager._contacts = Contacts(
-                rigid_contact_max=cls._solver.get_max_contact_count(),
-                soft_contact_max=0,
-                device=PhysicsManager._device,
-                requested_attributes=cls._model.get_requested_contact_attributes(),
-            )
+        NewtonManager._contacts = Contacts(
+            rigid_contact_max=cls._solver.get_max_contact_count(),
+            soft_contact_max=0,
+            device=PhysicsManager._device,
+            requested_attributes=cls._model.get_requested_contact_attributes(),
+        )
 
     @classmethod
-    def _log_solver_debug(cls) -> None:
-        """Optionally log MuJoCo solver convergence at the end of step."""
+    def step(cls) -> None:
+        """Step the simulation, then optionally log MuJoCo solver convergence."""
+        super().step()
         cfg = PhysicsManager._cfg
         if cfg is not None and cfg.debug_mode:  # type: ignore[union-attr]
-            data = cls._get_solver_convergence_steps()
+            data = cls.get_solver_convergence_steps()
             logger.info(f"Solver convergence data: {data}")
             if data["max"] == cls._solver.mjw_model.opt.iterations:
                 logger.warning(f"Solver didn't converge! max_iter={data['max']}")
 
     @classmethod
-    def _get_solver_convergence_steps(cls) -> dict[str, float | int]:
+    def get_solver_convergence_steps(cls) -> dict[str, float | int]:
         """Return MuJoCo Warp solver convergence statistics.
 
         Reads ``mjw_data.solver_niter`` (only available on

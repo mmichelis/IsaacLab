@@ -16,14 +16,16 @@ from .newton_manager import NewtonManager
 from .newton_manager_cfg import XPBDSolverCfg
 
 
-class NewtonXPBDManager(NewtonManager):
+class XPBDManager(NewtonManager):
     """:class:`NewtonManager` specialization for the XPBD solver.
 
     Always uses Newton's :class:`CollisionPipeline` for contact handling.
     """
 
     @classmethod
-    def _build_solver(cls, model: Model, solver_cfg: XPBDSolverCfg) -> tuple[SolverXPBD, bool, bool]:
+    def _build_solver(
+        cls, model: Model, solver_cfg: XPBDSolverCfg
+    ) -> tuple[SolverXPBD, bool, bool]:
         """Construct :class:`SolverXPBD` from *solver_cfg*.
 
         Returns ``(solver, use_single_state=False, needs_collision_pipeline=True)``.
