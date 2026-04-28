@@ -415,10 +415,24 @@ class DeformableObject(BaseDeformableObject):
         """
         from pxr import Gf, UsdGeom, UsdShade
 
-        # Find the first spawned mesh prim in regex path
-        template_prim = sim_utils.find_first_matching_prim(self.cfg.prim_path)
+        # Resolve the path of the actually-spawned template prim. This must mirror
+        # :meth:`AssetBase.__init__`: ``spawn_path`` is set by ``InteractiveScene``
+        # when the asset is part of the template-based cloning flow (the spawn
+        # lives at ``/World/template/<Asset>/proto_asset_*`` and per-env clones at
+        # ``/World/envs/env_*/<Asset>`` are not yet authored). For Direct envs
+        # that spawn straight at the cloned regex, ``spawn_path`` is unset, so
+        # we fall back to ``prim_path`` — which already matches the spawned prim.
+        # The cloned-regex ``cfg.prim_path`` is still used below to build the
+        # registry entry's :attr:`sim_mesh_prim_path` / :attr:`vis_mesh_prim_path`
+        # so post-replicate consumers resolve all per-env clones.
+        lookup_path = (
+            self.cfg.spawn.spawn_path
+            if self.cfg.spawn is not None and self.cfg.spawn.spawn_path is not None
+            else self.cfg.prim_path
+        )
+        template_prim = sim_utils.find_first_matching_prim(lookup_path)
         if template_prim is None:
-            raise RuntimeError(f"Failed to find prim for expression: '{self.cfg.prim_path}'.")
+            raise RuntimeError(f"Failed to find prim for expression: '{lookup_path}'.")
         template_prim_path = template_prim.GetPrimPath()
 
         # Discover sim / visual mesh prims under the template.

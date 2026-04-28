@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from isaaclab_physx.assets import DeformableObject, SurfaceGripper
+    from isaaclab_physx.assets import SurfaceGripper
 
 import torch
 import warp as wp
@@ -23,6 +23,8 @@ from isaaclab.assets import (
     Articulation,
     ArticulationCfg,
     AssetBaseCfg,
+    DeformableObject,
+    DeformableObjectCfg,
     RigidObject,
     RigidObjectCfg,
     RigidObjectCollection,
@@ -756,7 +758,7 @@ class InteractiveScene:
 
     def _add_entities_from_cfg(self):  # noqa: C901
         """Add scene entities from the config."""
-        from isaaclab_physx.assets import DeformableObjectCfg, SurfaceGripperCfg  # noqa: PLC0415
+        from isaaclab_physx.assets import SurfaceGripperCfg  # noqa: PLC0415
 
         # store paths that are in global collision filter
         self._global_prim_paths = list()
