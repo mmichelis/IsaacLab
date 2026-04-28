@@ -24,13 +24,26 @@ class NewtonSolverCfg:
 
     These parameters are used to configure the Newton solver. For more information, see the `Newton documentation`_.
 
+    Subclasses set :attr:`class_type` to their matching :class:`NewtonManager`
+    subclass; :class:`NewtonCfg` propagates that to its own
+    :attr:`NewtonCfg.class_type` in :meth:`NewtonCfg.__post_init__` so that
+    ``SimulationContext`` resolves the correct manager via the existing
+    dispatch path.
+
     .. _Newton documentation: https://newton.readthedocs.io/en/latest/
     """
 
-    solver_type: str = "None"
-    """Solver type.
+    class_type: type[NewtonManager] | str = "{DIR}.newton_manager:NewtonManager"
+    """Manager class for this solver.
 
-    Used to select the right solver class.
+    Default points at the abstract :class:`NewtonManager`; concrete subclasses
+    override it.
+    """
+
+    solver_type: str = "None"
+    """Solver type metadata.
+
+    Kept for logging and debugging.  Dispatch is driven by :attr:`class_type`.
     """
 
 
@@ -43,6 +56,9 @@ class MJWarpSolverCfg(NewtonSolverCfg):
 
     .. _MuJoCo Warp documentation: https://github.com/google-deepmind/mujoco_warp
     """
+
+    class_type: type[NewtonManager] | str = "{DIR}.mjwarp_manager:MJWarpManager"
+    """Manager class for the MuJoCo Warp solver."""
 
     solver_type: str = "mujoco_warp"
     """Solver type. Can be "mujoco_warp"."""
@@ -144,6 +160,9 @@ class XPBDSolverCfg(NewtonSolverCfg):
 
     """
 
+    class_type: type[NewtonManager] | str = "{DIR}.xpbd_manager:XPBDManager"
+    """Manager class for the XPBD solver."""
+
     solver_type: str = "xpbd"
     """Solver type. Can be "xpbd"."""
 
@@ -196,6 +215,9 @@ class FeatherstoneSolverCfg(NewtonSolverCfg):
 
     See: https://en.wikipedia.org/wiki/Semi-implicit_Euler_method
     """
+
+    class_type: type[NewtonManager] | str = "{DIR}.featherstone_manager:FeatherstoneManager"
+    """Manager class for the Featherstone solver."""
 
     solver_type: str = "featherstone"
     """Solver type. Can be "featherstone"."""
@@ -436,10 +458,21 @@ class NewtonCfg(PhysicsCfg):
     """Configuration for Newton physics manager.
 
     This configuration includes Newton-specific simulation settings and solver configuration.
+
+    The active :class:`NewtonManager` subclass is determined by
+    :attr:`solver_cfg.class_type`, which :meth:`__post_init__` propagates to
+    :attr:`class_type` so that ``SimulationContext`` resolves the right
+    manager subclass automatically.  User code keeps the existing two-level
+    shape ``NewtonCfg(solver_cfg=...)`` and does not need to set
+    :attr:`class_type` explicitly.
     """
 
     class_type: type[NewtonManager] | str = "{DIR}.newton_manager:NewtonManager"
-    """The class type of the NewtonManager."""
+    """The class type of the :class:`NewtonManager`.
+
+    Auto-set in :meth:`__post_init__` from :attr:`solver_cfg.class_type`.
+    Users normally do not set this directly.
+    """
 
     num_substeps: int = 1
     """Number of substeps to use for the solver."""
@@ -480,3 +513,21 @@ class NewtonCfg(PhysicsCfg):
     construction via :func:`~isaaclab.utils.checked_apply`. See
     :class:`NewtonShapeCfg` for the declared fields.
     """
+
+    def __post_init__(self):
+        # Propagate the solver-cfg's class_type so SimulationContext resolves
+        # the matching NewtonManager subclass via the existing dispatch path.
+        if self.solver_cfg is not None and getattr(self.solver_cfg, "class_type", None):
+            self.class_type = self.solver_cfg.class_type
+
+        # Cross-config validation that needs both halves.
+        if (
+            isinstance(self.solver_cfg, MJWarpSolverCfg)
+            and self.solver_cfg.use_mujoco_contacts
+            and self.collision_cfg is not None
+        ):
+            raise ValueError(
+                "NewtonCfg: collision_cfg cannot be set when "
+                "solver_cfg.use_mujoco_contacts=True. Either set "
+                "use_mujoco_contacts=False or remove collision_cfg."
+            )
