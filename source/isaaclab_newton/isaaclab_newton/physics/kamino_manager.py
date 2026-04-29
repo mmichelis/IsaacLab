@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 class NewtonKaminoManager(NewtonManager):
     """:class:`NewtonManager` specialization for the Kamino solver.
 
-    Always uses Newton's :class:`CollisionPipeline` for contact handling.
+    Uses Newton's :class:`CollisionPipeline` unless
+    :attr:`KaminoSolverCfg.use_collision_detector` is ``True``, in which case
+    Kamino's internal collision detector handles contact generation.
     """
 
     @classmethod
@@ -91,7 +93,7 @@ class NewtonKaminoManager(NewtonManager):
         # broadphase/narrowphase) is stale until FK runs.
         # Only runs FK for dirtied articulations via the accumulated mask.
         if cls._needs_collision_pipeline:
-            eval_fk(cls._model, cls._state_0.joint_q, cls._state_0.joint_qd, NewtonManager._state_0, cls._fk_reset_mask)
+            eval_fk(cls._model, cls._state_0.joint_q, cls._state_0.joint_qd, cls._state_0, cls._fk_reset_mask)
 
         # Zero both masks after consumption
         NewtonManager._world_reset_mask.zero_()
@@ -112,14 +114,16 @@ class NewtonKaminoManager(NewtonManager):
         PhysicsManager._sim_time += cls._solver_dt * cls._num_substeps
 
     @classmethod
-    def _build_solver(cls, model: Model, solver_cfg: KaminoSolverCfg) -> tuple[SolverKamino, bool, bool]:
-        """Construct :class:`SolverKamino` from *solver_cfg*.
+    def _build_solver(cls, model: Model, solver_cfg: KaminoSolverCfg) -> None:
+        """Construct :class:`SolverKamino` and populate the base-class slots.
 
-        Returns ``(solver, use_single_state=False, needs_collision_pipeline)``
-        where the pipeline flag is ``True`` only when
-        ``use_collision_detector=False``.
+        Sets :attr:`NewtonManager._needs_collision_pipeline` to ``True`` only
+        when ``use_collision_detector=False`` (Kamino's internal detector
+        handles contacts otherwise).
         """
-        return SolverKamino(model, solver_cfg.to_solver_config()), False, not solver_cfg.use_collision_detector
+        NewtonManager._solver = SolverKamino(model, solver_cfg.to_solver_config())
+        NewtonManager._use_single_state = False
+        NewtonManager._needs_collision_pipeline = not solver_cfg.use_collision_detector
 
     @classmethod
     def _capture_or_defer_cuda_graph(cls) -> None:
@@ -139,7 +143,8 @@ class NewtonKaminoManager(NewtonManager):
                 NewtonManager._graph = capture.graph
                 logger.info("Newton CUDA graph captured (standard Warp mode)")
 
-                # TODO: Kamino: StateKamino.from_newton() lazily allocates body_f_total,
+                # TODO: streamline this with base NewtonManager
+                # Kamino: StateKamino.from_newton() lazily allocates body_f_total,
                 # joint_q_prev, and joint_lambdas via wp.clone/wp.zeros during the
                 # first step() inside graph capture. Replay once to pin those
                 # memory-pool addresses before any eager solver.reset() call.

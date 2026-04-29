@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import logging
+from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 import warp as wp
@@ -896,35 +897,32 @@ class NewtonManager(PhysicsManager):
     # ----- Solver construction (subclass contract) ------------------------
 
     @classmethod
-    def _build_solver(cls, model: Model, solver_cfg) -> tuple[SolverBase | None, bool, bool]:
-        """Construct the solver this manager owns and return it.
+    @abstractmethod
+    def _build_solver(cls, model: Model, solver_cfg) -> None:
+        """Construct the solver this manager owns and assign it onto the base class.
 
-        This is a **pure factory** — it should neither read nor write class
-        state.  The base orchestrator (``initialize_solver``) is the only
-        caller; it stores the returned solver and flags into the canonical
-        :class:`NewtonManager` slots so that external readers see a single,
-        stable view.
+        Subclasses must populate the canonical :class:`NewtonManager` slots:
+
+        * :attr:`NewtonManager._solver` — the constructed :class:`SolverBase`
+          instance.
+        * :attr:`NewtonManager._use_single_state` — ``True`` if the solver
+          steps in-place on a single :class:`State` (e.g. MuJoCo); ``False``
+          if it needs separate input/output states (e.g. XPBD, Featherstone,
+          Kamino).
+        * :attr:`NewtonManager._needs_collision_pipeline` — ``True`` if the
+          manager owns Newton's :class:`CollisionPipeline` for contact
+          generation; ``False`` if the solver runs internal collision
+          detection (MuJoCo internal contacts, Kamino with its own detector).
+
+        Writing through ``NewtonManager._foo`` (rather than ``cls._foo``)
+        keeps the canonical state visible to external readers regardless of
+        which subclass is active.
 
         Args:
             model: Finalized Newton model the solver should run on.
             solver_cfg: The manager-specific :class:`NewtonSolverCfg`
                 subclass (i.e. the inner ``cfg.solver_cfg``, not the outer
                 :class:`NewtonCfg`).
-
-        Returns:
-            ``(solver, use_single_state, needs_collision_pipeline)``.
-            ``solver`` may be ``None`` for managers that own multiple
-            sub-solvers and override every base path that touches
-            :attr:`_solver` (none ship today; see refactor doc for the
-            contract).
-
-        Note:
-            ``needs_collision_pipeline`` is used to determine if we need external collision detection:
-            - SolverMuJoCo with use_mujoco_contacts=True: uses internal MuJoCo collision detection
-            - SolverMuJoCo with use_mujoco_contacts=False: needs Newton's unified collision pipeline
-            - SolverKamino with use_collision_detector=True: uses internal Kamino collision detection
-            - SolverKamino with use_collision_detector=False: needs Newton's unified collision pipeline
-            - Other solvers (XPBD, Featherstone): always need Newton's unified collision pipeline
         """
         raise NotImplementedError("NewtonManager subclasses must implement _build_solver()")
 
@@ -984,13 +982,16 @@ class NewtonManager(PhysicsManager):
             NewtonManager._solver_dt = cls.get_physics_dt() / cls._num_substeps
             NewtonManager._collision_cfg = cfg.collision_cfg  # type: ignore[union-attr]
 
-            solver, use_single_state, needs_pipeline = cls._build_solver(
+            cls._build_solver(
                 cls._model,
                 cfg.solver_cfg,  # type: ignore[union-attr]
             )
-            NewtonManager._solver = solver
-            NewtonManager._use_single_state = use_single_state
-            NewtonManager._needs_collision_pipeline = needs_pipeline
+            if NewtonManager._solver is None:
+                raise RuntimeError(
+                    f"{cls.__name__}._build_solver did not assign NewtonManager._solver. "
+                    "Subclasses of NewtonManager must populate NewtonManager._solver, "
+                    "NewtonManager._use_single_state, and NewtonManager._needs_collision_pipeline."
+                )
 
             cls._initialize_contacts()
 
