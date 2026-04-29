@@ -74,18 +74,17 @@ class MJWarpManager(NewtonManager):
             )
 
     @classmethod
-    def step(cls) -> None:
-        """Step the simulation, then optionally log MuJoCo solver convergence."""
-        super().step()
+    def _log_solver_debug(cls) -> None:
+        """Optionally log MuJoCo solver convergence at the end of step."""
         cfg = PhysicsManager._cfg
         if cfg is not None and cfg.debug_mode:  # type: ignore[union-attr]
-            data = cls.get_solver_convergence_steps()
+            data = cls._get_solver_convergence_steps()
             logger.info(f"Solver convergence data: {data}")
             if data["max"] == cls._solver.mjw_model.opt.iterations:
                 logger.warning(f"Solver didn't converge! max_iter={data['max']}")
 
     @classmethod
-    def get_solver_convergence_steps(cls) -> dict[str, float | int]:
+    def _get_solver_convergence_steps(cls) -> dict[str, float | int]:
         """Return MuJoCo Warp solver convergence statistics.
 
         Reads ``mjw_data.solver_niter`` (only available on
