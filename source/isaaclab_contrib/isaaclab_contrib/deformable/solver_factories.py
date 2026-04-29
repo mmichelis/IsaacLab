@@ -20,32 +20,6 @@ from newton.solvers import SolverVBD
 logger = logging.getLogger(__name__)
 
 
-def create_vbd_solver(manager_cls, cfg_dict: dict, solver_cfg) -> None:
-    """Create and assign a VBD solver on the Newton manager.
-
-    Args:
-        manager_cls: The :class:`NewtonManager` class (not an instance).
-        cfg_dict: Solver configuration dictionary with ``solver_type`` already popped.
-        solver_cfg: The original solver configuration object.
-    """
-    manager_cls._use_single_state = False
-    solver_sig = inspect.signature(SolverVBD.__init__)
-    valid_solver_args = set(solver_sig.parameters.keys()) - {"self", "model"}
-    filtered_cfg = {k: v for k, v in cfg_dict.items() if k in valid_solver_args}
-    logger.info("VBD: Creating SolverVBD with args: %s", filtered_cfg)
-    logger.info("VBD: model particle_count=%s", getattr(manager_cls._model, "particle_count", "N/A"))
-    num_groups = len(getattr(manager_cls._model, "particle_color_groups", []))
-    logger.info("VBD: model particle_color_groups has %d groups", num_groups)
-    manager_cls._solver = SolverVBD(manager_cls._model, **filtered_cfg)
-    logger.info("VBD: SolverVBD created successfully")
-
-    # VBD may need its own collision pipeline for body-particle contacts.
-    # If the solver_cfg has collision attributes, set up the pipeline.
-    if hasattr(solver_cfg, "particle_enable_self_contact") and solver_cfg.particle_enable_self_contact:
-        manager_cls._needs_collision_pipeline = True
-        manager_cls._initialize_contacts()
-
-
 def create_coupled_solver(manager_cls, cfg_dict: dict, solver_cfg) -> None:
     """Create and assign a coupled rigid-body + VBD solver on the Newton manager.
 

@@ -7,9 +7,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from isaaclab_newton.physics.newton_manager_cfg import MJWarpSolverCfg, NewtonSolverCfg
 
 from isaaclab.utils import configclass
+
+if TYPE_CHECKING:
+    from isaaclab_newton.physics import NewtonManager
 
 
 @configclass
@@ -20,6 +25,9 @@ class VBDSolverCfg(NewtonSolverCfg):
     Requires ``ModelBuilder.color()`` to be called before ``finalize()`` to build
     the parallel vertex colouring needed by the solver.
     """
+
+    class_type: type[NewtonManager] | str = "{DIR}.vbd_manager:NewtonVBDManager"
+    """Manager class for the VBD solver."""
 
     solver_type: str = "vbd"
 
