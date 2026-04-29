@@ -877,7 +877,7 @@ class NewtonManager(PhysicsManager):
         This default implementation handles solvers that rely on Newton's
         unified collision pipeline (XPBD, Featherstone, and MuJoCo with
         ``use_mujoco_contacts=False``).  Solver subclasses with internal
-        contact handling (e.g. :class:`MJWarpManager` when
+        contact handling (e.g. :class:`NewtonMJWarpManager` when
         ``use_mujoco_contacts=True``) override this method to allocate a
         :class:`Contacts` object sized to the solver's internal contact buffer.
         """
