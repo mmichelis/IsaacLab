@@ -11,7 +11,6 @@ import inspect
 import logging
 
 import numpy as np
-
 from newton import Contacts, Model
 from newton.solvers import SolverMuJoCo
 
@@ -23,7 +22,7 @@ from .newton_manager_cfg import MJWarpSolverCfg
 logger = logging.getLogger(__name__)
 
 
-class MJWarpManager(NewtonManager):
+class NewtonMJWarpManager(NewtonManager):
     """:class:`NewtonManager` specialization for the MuJoCo Warp solver.
 
     Owns construction of :class:`SolverMuJoCo`, contact-buffer allocation in
@@ -33,9 +32,7 @@ class MJWarpManager(NewtonManager):
     """
 
     @classmethod
-    def _build_solver(
-        cls, model: Model, solver_cfg: MJWarpSolverCfg
-    ) -> tuple[SolverMuJoCo, bool, bool]:
+    def _build_solver(cls, model: Model, solver_cfg: MJWarpSolverCfg) -> tuple[SolverMuJoCo, bool, bool]:
         """Construct :class:`SolverMuJoCo` from *solver_cfg*.
 
         Filters cfg fields against the solver's ``__init__`` signature so

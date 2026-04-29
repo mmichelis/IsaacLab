@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""XPBD Newton manager."""
+"""Kamino Newton manager."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from isaaclab.utils.timer import Timer
 logger = logging.getLogger(__name__)
 
 
-class KaminoManager(NewtonManager):
+class NewtonKaminoManager(NewtonManager):
     """:class:`NewtonManager` specialization for the Kamino solver.
 
     Always uses Newton's :class:`CollisionPipeline` for contact handling.
