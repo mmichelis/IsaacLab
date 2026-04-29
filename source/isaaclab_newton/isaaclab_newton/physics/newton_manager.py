@@ -1277,10 +1277,6 @@ class NewtonManager(PhysicsManager):
         The caller (``step()``) is responsible for calling ``sync_transforms_to_usd()``
         eagerly after ``wp.capture_launch``.
         """
-        # Rebuild BVH once per step for solvers that require it (e.g. VBD cloth).
-        if hasattr(cls._solver, "rebuild_bvh"):
-            cls._solver.rebuild_bvh(cls._state_0)
-
         if cls._needs_collision_pipeline:
             cls._collision_pipeline.collide(cls._state_0, cls._contacts)
 
