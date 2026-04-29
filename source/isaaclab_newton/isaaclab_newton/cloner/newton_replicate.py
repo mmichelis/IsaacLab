@@ -67,16 +67,17 @@ def _build_newton_builder_from_mapping(
     import re
 
     _deformable_ignore_paths: list[str] = []
-    for entry in NewtonManager._deformable_registry:
-        pat = re.compile(entry.prim_path.replace(".*", "[^/]*") + "$")
-        for src_path in sources:
-            # Check if any prim under this source matches the deformable pattern
-            prim = stage.GetPrimAtPath(src_path)
-            if prim.IsValid():
-                for child in Usd.PrimRange(prim):
-                    child_path = str(child.GetPath())
-                    if pat.match(child_path):
-                        _deformable_ignore_paths.append(child_path)
+    if hasattr(NewtonManager, '_deformable_registry'):
+        for entry in NewtonManager._deformable_registry:
+            pat = re.compile(entry.prim_path.replace(".*", "[^/]*") + "$")
+            for src_path in sources:
+                # Check if any prim under this source matches the deformable pattern
+                prim = stage.GetPrimAtPath(src_path)
+                if prim.IsValid():
+                    for child in Usd.PrimRange(prim):
+                        child_path = str(child.GetPath())
+                        if pat.match(child_path):
+                            _deformable_ignore_paths.append(child_path)
 
     protos: dict[str, ModelBuilder] = {}
     for src_path in sources:
