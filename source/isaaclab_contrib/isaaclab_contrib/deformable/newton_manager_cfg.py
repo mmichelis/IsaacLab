@@ -88,10 +88,10 @@ class VBDSolverCfg(NewtonSolverCfg):
 
 
 @configclass
-class CoupledSolverCfg(NewtonSolverCfg):
-    """Configuration for the coupled rigid-body + VBD solver.
+class CoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
+    """Configuration for the coupled rigid-body MJWarp + VBD solver.
 
-    Alternates a rigid-body solver and a cloth solver (:class:`SolverVBD`) per
+    Alternates a rigid-body solver (:class:`MJWarpSolverCfg`) and a soft-body solver (:class:`SolverVBD`) per
     substep. The coupling direction is controlled by :attr:`coupling_mode`:
 
     - ``"one_way"`` (default): Rigid solver advances first, then VBD reads
@@ -101,20 +101,17 @@ class CoupledSolverCfg(NewtonSolverCfg):
       into ``body_f``, then the rigid solver reads ``body_f`` and feels
       resistance from the deformable object. The friction reaction lets
       actuators carry the object against gravity during a lift.
-
-    The rigid-body solver is selected by :attr:`rigid_solver_cfg`:
-
-    - :class:`MJWarpSolverCfg` -- MuJoCo Warp (default, recommended for stability)
-    - :class:`FeatherstoneSolverCfg` -- Newton Featherstone
     """
 
-    solver_type: str = "coupled"
+    class_type: type[NewtonManager] | str = "{DIR}.coupled_mjwarp_vbd_manager:NewtonCoupledMJWarpVBDManager"
+    """Manager class for the VBD solver."""
 
-    rigid_solver_cfg: NewtonSolverCfg = MJWarpSolverCfg()
-    """Rigid-body sub-solver configuration. Can be :class:`MJWarpSolverCfg` or
-    :class:`FeatherstoneSolverCfg`."""
+    solver_type: str = "coupledmjwarpvbd"
 
-    vbd_cfg: VBDSolverCfg = VBDSolverCfg(integrate_with_external_rigid_solver=True)
+    rigid_solver_cfg: MJWarpSolverCfg = MJWarpSolverCfg()
+    """Rigid-body sub-solver configuration for :class:`MJWarpSolverCfg`."""
+
+    soft_solver_cfg: VBDSolverCfg = VBDSolverCfg(integrate_with_external_rigid_solver=True)
     """VBD sub-solver configuration for cloth/particle dynamics."""
 
     soft_contact_margin: float = 0.01
@@ -123,7 +120,7 @@ class CoupledSolverCfg(NewtonSolverCfg):
     coupling_mode: str = "two_way"
     """Coupling direction between the rigid and VBD solvers.
 
-    - ``"one_way"``: Rigid -> cloth only (default, existing behavior).
+    - ``"one_way"``: Rigid -> soft only (default, existing behavior).
     - ``"two_way"``: Same-substep two-way coupling with normal + Coulomb friction.
     """
 
