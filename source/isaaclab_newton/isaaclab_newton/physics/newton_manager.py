@@ -72,10 +72,10 @@ class NewtonManager(PhysicsManager):
 
     Class-level (singleton-like) manager that owns simulation lifecycle, model
     state, contacts/collision pipeline, sensors, replication, and CUDA-graph
-    orchestration. Concrete subclasses (one per solver) implement
+    orchestration. 
+    Concrete subclasses (one per solver) implement
     :meth:`_build_solver` and may extend :meth:`_initialize_contacts`,
-    :meth:`_step_solver`, :meth:`_simulate_physics_only`, and
-    :meth:`_solver_specific_clear`.
+    :meth:`_step_solver`, and :meth:`_solver_specific_clear`.
 
     Subclasses are selected via :attr:`NewtonSolverCfg.class_type`, which
     :meth:`NewtonCfg.__post_init__` propagates onto :attr:`NewtonCfg.class_type`
@@ -322,11 +322,11 @@ class NewtonManager(PhysicsManager):
         if sim is None or not sim.is_playing():
             return
 
-        # Notify solver(s) of model changes via the polymorphic hook.
+        # Notify solver of model changes
         if cls._model_changes:
             with wp.ScopedDevice(PhysicsManager._device):
                 for change in cls._model_changes:
-                    cls._notify_solvers(change)
+                    cls._solver.notify_model_changed(change)
                 NewtonManager._model_changes = set()
 
         # Lazy CUDA graph capture: deferred from initialize_solver() when RTX was active.
@@ -386,7 +386,6 @@ class NewtonManager(PhysicsManager):
     @classmethod
     def clear(cls):
         """Clear all Newton-specific state (callbacks cleared by super().close())."""
-        cls._solver_specific_clear()
         if cls._cubric is not None and cls._cubric_adapter is not None:
             cls._cubric.release_adapter(cls._cubric_adapter)
         NewtonManager._cubric = None
@@ -420,6 +419,7 @@ class NewtonManager(PhysicsManager):
         NewtonManager._pending_extended_state_attributes = set()
         NewtonManager._pending_extended_contact_attributes = set()
         NewtonManager._views = []
+        cls._solver_specific_clear()
 
     @classmethod
     def set_builder(cls, builder: ModelBuilder) -> None:
@@ -687,20 +687,13 @@ class NewtonManager(PhysicsManager):
             cls.sync_transforms_to_usd()
 
     @classmethod
-    def instantiate_builder_from_stage(cls, ignore_paths: list[str] | None = None):
+    def instantiate_builder_from_stage(cls):
         """Create builder from USD stage.
 
         Detects env Xforms (e.g. ``/World/Env_0``, ``/World/Env_1``) and builds
         each as a separate Newton world via ``begin_world``/``end_world``.
         Falls back to a flat ``add_usd`` when no env Xforms are found.
 
-        Args:
-            ignore_paths: Optional list of USD prim paths (or regex patterns)
-                to skip when loading the stage. Subclasses inject their own
-                paths by overriding this method and calling
-                ``super().instantiate_builder_from_stage(ignore_paths=...)``.
-                Env subtree paths are appended automatically when the
-                ``/World/Env_*`` replication layout is detected.
         """
         import re
 
@@ -724,17 +717,13 @@ class NewtonManager(PhysicsManager):
 
         schema_resolvers = [SchemaResolverNewton(), SchemaResolverPhysx()]
 
-        merged_ignore: list[str] = list(ignore_paths) if ignore_paths else []
-
         if not env_paths:
-            if merged_ignore:
-                builder.add_usd(stage, ignore_paths=merged_ignore, schema_resolvers=schema_resolvers)
-            else:
-                builder.add_usd(stage, schema_resolvers=schema_resolvers)
+            # No env Xforms — flat loading
+            builder.add_usd(stage, schema_resolvers=schema_resolvers)
         else:
             # Load everything except the env subtrees (ground plane, lights, etc.)
-            merged_ignore.extend(path for _, path in env_paths)
-            builder.add_usd(stage, ignore_paths=merged_ignore, schema_resolvers=schema_resolvers)
+            ignore_paths = [path for _, path in env_paths]
+            builder.add_usd(stage, ignore_paths=ignore_paths, schema_resolvers=schema_resolvers)
 
             # Build a prototype from the first env (all envs assumed identical)
             _, proto_path = env_paths[0]
@@ -830,26 +819,28 @@ class NewtonManager(PhysicsManager):
             sub-solvers and override every base path that touches
             :attr:`_solver` (none ship today; see refactor doc for the
             contract).
+
+        Note:
+            ``needs_collision_pipeline`` is used to determine if we need external collision detection:
+            - SolverMuJoCo with use_mujoco_contacts=True: uses internal MuJoCo collision detection
+            - SolverMuJoCo with use_mujoco_contacts=False: needs Newton's unified collision pipeline
+            - SolverKamino with use_collision_detector=True: uses internal Kamino collision detection
+            - SolverKamino with use_collision_detector=False: needs Newton's unified collision pipeline
+            - Other solvers (XPBD, Featherstone): always need Newton's unified collision pipeline
         """
         raise NotImplementedError("NewtonManager subclasses must implement _build_solver()")
 
     @classmethod
-    def _notify_solvers(cls, change: SolverNotifyFlags) -> None:
-        """Forward a model change to every solver this manager owns.
-
-        Default routes the change to :attr:`_solver`.  Multi-solver managers
-        override this to fan out to each sub-solver.
-        """
-        cls._solver.notify_model_changed(change)
-
-    @classmethod
-    def _step_solver(cls, state_0: State, state_1: State) -> None:
+    def _step_solver(cls, state_0: State, state_1: State, control: Control, substep_dt: float) -> None:
         """Run one solver substep.
 
         Default invokes :attr:`_solver` once.  Subclasses can override to
         batch multiple solvers within a single substep.
         """
-        cls._solver.step(state_0, state_1, cls._control, cls._current_contacts(), cls._solver_dt)
+        # By default one collision per timestep, not recomputed during substeps. None if manager does not own the 
+        # collision pipeline (e.g. MuJoCo with ``use_mujoco_contacts=True``, which handles contacts internally).
+        contacts = cls._contacts if cls._needs_collision_pipeline else None
+        cls._solver.step(state_0, state_1, control, contacts, substep_dt)
 
     @classmethod
     def _solver_specific_clear(cls) -> None:
@@ -858,16 +849,7 @@ class NewtonManager(PhysicsManager):
         Default no-op.  Subclasses override to release sub-solver references
         or other solver-specific resources.
         """
-
-    @classmethod
-    def _current_contacts(cls) -> Contacts | None:
-        """Contacts object passed to ``solver.step`` for the current substep.
-
-        Returns :attr:`_contacts` when the manager owns a collision pipeline,
-        and ``None`` otherwise (e.g. MuJoCo with ``use_mujoco_contacts=True``,
-        which handles contacts internally).
-        """
-        return cls._contacts if cls._needs_collision_pipeline else None
+        pass
 
     # ----- Lifecycle orchestration ----------------------------------------
 
@@ -897,19 +879,25 @@ class NewtonManager(PhysicsManager):
             NewtonManager._solver_dt = cls.get_physics_dt() / cls._num_substeps
             NewtonManager._collision_cfg = cfg.collision_cfg  # type: ignore[union-attr]
 
-            with Timer(name="newton_build_solver", msg="Build solver took:"):
-                solver, use_single_state, needs_pipeline = cls._build_solver(
-                    cls._model,
-                    cfg.solver_cfg,  # type: ignore[union-attr]
-                )
+            solver, use_single_state, needs_pipeline = cls._build_solver(
+                cls._model,
+                cfg.solver_cfg,  # type: ignore[union-attr]
+            )
             NewtonManager._solver = solver
             NewtonManager._use_single_state = use_single_state
             NewtonManager._needs_collision_pipeline = needs_pipeline
 
             cls._initialize_contacts()
 
-        cls._setup_cubric_bindings()
-        cls._capture_or_defer_cuda_graph()
+        if cls._usdrt_stage is not None:
+            cls._setup_cubric_bindings()
+        
+        device = PhysicsManager._device
+        use_cuda_graph = cfg.use_cuda_graph and "cuda" in device  # type: ignore[union-attr]
+        if use_cuda_graph:
+            cls._capture_or_defer_cuda_graph()
+        else:
+            NewtonManager._graph = None
 
     @classmethod
     def _setup_cubric_bindings(cls) -> None:
@@ -919,8 +907,6 @@ class NewtonManager(PhysicsManager):
         :meth:`sync_transforms_to_usd` call to avoid startup-ordering issues
         with the cubric plugin.
         """
-        if cls._usdrt_stage is None:
-            return
         from isaaclab_newton.physics._cubric import CubricBindings
 
         bindings = CubricBindings()
@@ -934,14 +920,7 @@ class NewtonManager(PhysicsManager):
     @classmethod
     def _capture_or_defer_cuda_graph(cls) -> None:
         """Capture the physics CUDA graph, or defer if RTX is initializing."""
-        cfg = PhysicsManager._cfg
-        device = PhysicsManager._device
-        use_cuda_graph = cfg is not None and cfg.use_cuda_graph and "cuda" in device  # type: ignore[union-attr]
-
         with Timer(name="newton_cuda_graph", msg="CUDA graph took:"):
-            if not use_cuda_graph:
-                NewtonManager._graph = None
-                return
             if cls._usdrt_stage is None:
                 # No RTX active — use standard Warp capture (cudaStreamCaptureModeGlobal).
                 with wp.ScopedCapture() as capture:
@@ -1093,13 +1072,13 @@ class NewtonManager(PhysicsManager):
 
         if cls._use_single_state:
             for _ in range(cls._num_substeps):
-                cls._step_solver(cls._state_0, cls._state_0)
+                cls._step_solver(cls._state_0, cls._state_0, cls._control, cls._solver_dt)
                 cls._state_0.clear_forces()
         else:
             cfg = PhysicsManager._cfg
             need_copy_on_last_substep = (cfg is not None and cfg.use_cuda_graph) and cls._num_substeps % 2 == 1  # type: ignore[union-attr]
             for i in range(cls._num_substeps):
-                cls._step_solver(cls._state_0, cls._state_1)
+                cls._step_solver(cls._state_0, cls._state_1, cls._control, cls._solver_dt)
                 if need_copy_on_last_substep and i == cls._num_substeps - 1:
                     cls._state_0.assign(cls._state_1)
                 else:
@@ -1250,7 +1229,7 @@ class NewtonManager(PhysicsManager):
         cls._newton_contact_sensors[sensor_key] = sensor
         cls._report_contacts = True
 
-        if cls._contacts is not None and cls._contacts.force is None:
+        if cls._solver is not None and cls._contacts is not None and cls._contacts.force is None:
             cls._initialize_contacts()
 
         return sensor_key
