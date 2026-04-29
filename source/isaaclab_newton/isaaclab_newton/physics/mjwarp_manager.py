@@ -65,12 +65,13 @@ class MJWarpManager(NewtonManager):
         if cls._needs_collision_pipeline:
             super()._initialize_contacts()
             return
-        NewtonManager._contacts = Contacts(
-            rigid_contact_max=cls._solver.get_max_contact_count(),
-            soft_contact_max=0,
-            device=PhysicsManager._device,
-            requested_attributes=cls._model.get_requested_contact_attributes(),
-        )
+        if cls._solver is not None:
+            NewtonManager._contacts = Contacts(
+                rigid_contact_max=cls._solver.get_max_contact_count(),
+                soft_contact_max=0,
+                device=PhysicsManager._device,
+                requested_attributes=cls._model.get_requested_contact_attributes(),
+            )
 
     @classmethod
     def step(cls) -> None:
