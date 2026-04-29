@@ -248,24 +248,6 @@ class NewtonManager(PhysicsManager):
         cls.sync_transforms_to_usd()
 
     @classmethod
-    def _forward_kamino(cls, world_mask: wp.array | None = None) -> None:
-        """Kamino-specific forward kinematics via ``solver.reset()``.
-
-        Kamino's ``joint_q`` / ``joint_u`` include coordinates for **all** joints
-        (including free joints), so we pass Newton's full state arrays directly.
-
-        Args:
-            world_mask: Per-world mask indicating which worlds to reset.
-                Shape ``(num_worlds,)``, dtype ``wp.int32``. If None, resets all worlds.
-        """
-        cls._solver.reset(
-            state_out=cls._state_0,
-            joint_q=cls._state_0.joint_q,
-            joint_u=cls._state_0.joint_qd,
-            world_mask=world_mask,
-        )
-
-    @classmethod
     def sync_transforms_to_usd(cls) -> None:
         """Write Newton body_q to USD Fabric world matrices for Kit viewport / RTX rendering.
 
@@ -395,12 +377,6 @@ class NewtonManager(PhysicsManager):
             NewtonManager._graph_capture_pending = False
             NewtonManager._graph = cls._capture_relaxed_graph(device)
             if cls._graph is not None:
-                # Kamino: StateKamino.from_newton() lazily allocates body_f_total,
-                # joint_q_prev, and joint_lambdas via wp.clone/wp.zeros during the
-                # first step() inside graph capture. Replay once to pin those
-                # memory-pool addresses before any eager solver.reset() call.
-                if isinstance(cls._solver, SolverKamino):
-                    wp.capture_launch(cls._graph)
                 logger.info("Newton CUDA graph captured (deferred relaxed mode, RTX-compatible)")
             else:
                 logger.warning("Newton deferred CUDA graph capture failed; using eager execution")
