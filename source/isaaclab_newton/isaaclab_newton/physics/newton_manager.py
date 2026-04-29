@@ -104,9 +104,9 @@ class NewtonManager(PhysicsManager):
     Class-level (singleton-like) manager that owns simulation lifecycle, model
     state, contacts/collision pipeline, sensors, replication, and CUDA-graph
     orchestration. 
-    Concrete subclasses (one per solver) implement
-    :meth:`_build_solver` and may extend :meth:`_initialize_contacts`,
-    :meth:`_step_solver`, and :meth:`_solver_specific_clear`.
+    Concrete subclasses (one per solver) implement :meth:`_build_solver` and 
+    may extend :meth:`_initialize_contacts`, :meth:`_step_solver`, 
+    :meth:`_solver_specific_clear`, and :meth:`_log_solver_debug`.
 
     Subclasses are selected via :attr:`NewtonSolverCfg.class_type`, which
     :meth:`NewtonCfg.__post_init__` propagates onto :attr:`NewtonCfg.class_type`
@@ -424,6 +424,9 @@ class NewtonManager(PhysicsManager):
         else:
             with wp.ScopedDevice(device):
                 cls._simulate()
+
+        # Launch solver-specific debug logging after stepping.
+        cls._log_solver_debug()
 
         PhysicsManager._sim_time += cls._solver_dt * cls._num_substeps
 
@@ -968,7 +971,14 @@ class NewtonManager(PhysicsManager):
         Default no-op.  Subclasses override to release sub-solver references
         or other solver-specific resources.
         """
-        pass
+
+    @classmethod
+    def _log_solver_debug(cls) -> None:
+        """Solver-specific debug logging after stepping.
+
+        Default no-op.  Subclasses override to log solver-specific debug info
+        (e.g. constraint violations, contact forces, etc.) after stepping.
+        """
 
     # ----- Lifecycle orchestration ----------------------------------------
 
