@@ -24,7 +24,7 @@ from isaaclab.utils.timer import Timer
 logger = logging.getLogger(__name__)
 
 
-class KaminoManager(NewtonManager):
+class NewtonKaminoManager(NewtonManager):
     """:class:`NewtonManager` specialization for the Kamino solver.
 
     Always uses Newton's :class:`CollisionPipeline` for contact handling.
