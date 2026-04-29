@@ -57,7 +57,7 @@ class MJWarpSolverCfg(NewtonSolverCfg):
     .. _MuJoCo Warp documentation: https://github.com/google-deepmind/mujoco_warp
     """
 
-    class_type: type[NewtonManager] | str = "{DIR}.mjwarp_manager:MJWarpManager"
+    class_type: type[NewtonManager] | str = "{DIR}.mjwarp_manager:NewtonMJWarpManager"
     """Manager class for the MuJoCo Warp solver."""
 
     solver_type: str = "mujoco_warp"
@@ -160,7 +160,7 @@ class XPBDSolverCfg(NewtonSolverCfg):
 
     """
 
-    class_type: type[NewtonManager] | str = "{DIR}.xpbd_manager:XPBDManager"
+    class_type: type[NewtonManager] | str = "{DIR}.xpbd_manager:NewtonXPBDManager"
     """Manager class for the XPBD solver."""
 
     solver_type: str = "xpbd"
@@ -216,7 +216,7 @@ class FeatherstoneSolverCfg(NewtonSolverCfg):
     See: https://en.wikipedia.org/wiki/Semi-implicit_Euler_method
     """
 
-    class_type: type[NewtonManager] | str = "{DIR}.featherstone_manager:FeatherstoneManager"
+    class_type: type[NewtonManager] | str = "{DIR}.featherstone_manager:NewtonFeatherstoneManager"
     """Manager class for the Featherstone solver."""
 
     solver_type: str = "featherstone"

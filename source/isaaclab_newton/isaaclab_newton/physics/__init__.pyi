@@ -4,21 +4,21 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 __all__ = [
-    "FeatherstoneManager",
+    "NewtonFeatherstoneManager",
     "FeatherstoneSolverCfg",
     "HydroelasticSDFCfg",
-    "MJWarpManager",
+    "NewtonMJWarpManager",
     "MJWarpSolverCfg",
     "NewtonCfg",
     "NewtonCollisionPipelineCfg",
     "NewtonManager",
     "NewtonSolverCfg",
-    "XPBDManager",
+    "NewtonXPBDManager",
     "XPBDSolverCfg",
 ]
 
-from .featherstone_manager import FeatherstoneManager
-from .mjwarp_manager import MJWarpManager
+from .featherstone_manager import NewtonFeatherstoneManager
+from .mjwarp_manager import NewtonMJWarpManager
 from .newton_collision_cfg import HydroelasticSDFCfg, NewtonCollisionPipelineCfg
 from .newton_manager import NewtonManager
 from .newton_manager_cfg import (
@@ -28,4 +28,4 @@ from .newton_manager_cfg import (
     NewtonSolverCfg,
     XPBDSolverCfg,
 )
-from .xpbd_manager import XPBDManager
+from .xpbd_manager import NewtonXPBDManager

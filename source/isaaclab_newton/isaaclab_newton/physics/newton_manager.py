@@ -72,9 +72,9 @@ class NewtonManager(PhysicsManager):
 
     Class-level (singleton-like) manager that owns simulation lifecycle, model
     state, contacts/collision pipeline, sensors, replication, and CUDA-graph
-    orchestration. 
-    Concrete subclasses (one per solver) implement :meth:`_build_solver` and 
-    may extend :meth:`_initialize_contacts`, :meth:`_step_solver`, 
+    orchestration.
+    Concrete subclasses (one per solver) implement :meth:`_build_solver` and
+    may extend :meth:`_initialize_contacts`, :meth:`_step_solver`,
     :meth:`_solver_specific_clear`, and :meth:`_log_solver_debug`.
 
     Subclasses are selected via :attr:`NewtonSolverCfg.class_type`, which
@@ -840,7 +840,7 @@ class NewtonManager(PhysicsManager):
         Default invokes :attr:`_solver` once.  Subclasses can override to
         batch multiple solvers within a single substep.
         """
-        # By default one collision per timestep, not recomputed during substeps. None if manager does not own the 
+        # By default one collision per timestep, not recomputed during substeps. None if manager does not own the
         # collision pipeline (e.g. MuJoCo with ``use_mujoco_contacts=True``, which handles contacts internally).
         contacts = cls._contacts if cls._needs_collision_pipeline else None
         cls._solver.step(state_0, state_1, control, contacts, substep_dt)
@@ -901,7 +901,7 @@ class NewtonManager(PhysicsManager):
 
         if cls._usdrt_stage is not None:
             cls._setup_cubric_bindings()
-        
+
         device = PhysicsManager._device
         use_cuda_graph = cfg.use_cuda_graph and "cuda" in device  # type: ignore[union-attr]
         if use_cuda_graph:

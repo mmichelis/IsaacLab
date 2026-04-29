@@ -16,16 +16,14 @@ from .newton_manager import NewtonManager
 from .newton_manager_cfg import FeatherstoneSolverCfg
 
 
-class FeatherstoneManager(NewtonManager):
+class NewtonFeatherstoneManager(NewtonManager):
     """:class:`NewtonManager` specialization for the Featherstone solver.
 
     Always uses Newton's :class:`CollisionPipeline` for contact handling.
     """
 
     @classmethod
-    def _build_solver(
-        cls, model: Model, solver_cfg: FeatherstoneSolverCfg
-    ) -> tuple[SolverFeatherstone, bool, bool]:
+    def _build_solver(cls, model: Model, solver_cfg: FeatherstoneSolverCfg) -> tuple[SolverFeatherstone, bool, bool]:
         """Construct :class:`SolverFeatherstone` from *solver_cfg*.
 
         Returns ``(solver, use_single_state=False, needs_collision_pipeline=True)``.
