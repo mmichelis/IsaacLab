@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledSolverCfg, NewtonModelCfg, VBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
 from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonCfg
 
 import isaaclab.sim as sim_utils
@@ -322,19 +322,19 @@ class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
         # Newton physics: Featherstone rigid + VBD soft, two-way coupled
         # (matches newton/examples/softbody/example_softbody_franka.py)
         self.sim.physics = DeformableNewtonCfg(
-            solver_cfg=CoupledSolverCfg(
-                rigid_solver_cfg=FeatherstoneSolverCfg(update_mass_matrix_interval=10),
-                # rigid_solver_cfg=MJWarpSolverCfg(
-        #             njmax=40,
-        #             nconmax=20,
-        #             ls_iterations=20,
-        #             cone="pyramidal",
-        #             impratio=1,
-        #             ls_parallel=False,
-        #             integrator="implicitfast",
-        #             ccd_iterations=100,
-        #         ),
-                vbd_cfg=VBDSolverCfg(
+            solver_cfg=CoupledMJWarpVBDSolverCfg(
+                # rigid_solver_cfg=FeatherstoneSolverCfg(update_mass_matrix_interval=10),
+                rigid_solver_cfg=MJWarpSolverCfg(
+                    njmax=40,
+                    nconmax=20,
+                    ls_iterations=20,
+                    cone="pyramidal",
+                    impratio=1,
+                    ls_parallel=False,
+                    integrator="implicitfast",
+                    ccd_iterations=100,
+                ),
+                soft_solver_cfg=VBDSolverCfg(
                     iterations=5,
                     integrate_with_external_rigid_solver=True,
                     particle_enable_self_contact=False,
