@@ -527,9 +527,7 @@ class NewtonCfg(PhysicsCfg):
         # Refuse a user-set value: setting both is ambiguous and was
         # previously silently overwritten.
         if self.class_type is not None:
-            raise TypeError(
-                "Cannot manually set NewtonCfg.class_type; it is auto-derived from solver_cfg.class_type."
-            )
+            raise TypeError("Cannot manually set NewtonCfg.class_type; it is auto-derived from solver_cfg.class_type.")
         self.class_type = self.solver_cfg.class_type
 
         # Cross-config validation that needs both halves.
