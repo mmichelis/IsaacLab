@@ -15,6 +15,8 @@ from isaaclab.utils import configclass
 from .newton_collision_cfg import NewtonCollisionPipelineCfg
 
 if TYPE_CHECKING:
+    from newton.solvers import SolverKamino
+
     from isaaclab_newton.physics import NewtonManager
 
 
@@ -41,9 +43,12 @@ class NewtonSolverCfg:
     """
 
     solver_type: str = "None"
-    """Solver type metadata.
+    """Solver type metadata (deprecated).
 
-    Kept for logging and debugging.  Dispatch is driven by :attr:`class_type`.
+    .. deprecated::
+        Manager dispatch is now driven by :attr:`class_type`; this field is
+        retained as metadata for logging and debugging only.  Do not branch on
+        ``solver_type`` in new code.
     """
 
 
@@ -371,7 +376,7 @@ class KaminoSolverCfg(NewtonSolverCfg):
     problem. Disabling may be useful for debugging or profiling solver behavior.
     """
 
-    def to_solver_config(self):
+    def to_solver_config(self) -> SolverKamino.Config:
         """Build a :class:`SolverKamino.Config` from this configuration.
 
         Converts the flat field layout of :class:`KaminoSolverCfg` into the
@@ -470,7 +475,7 @@ class NewtonCfg(PhysicsCfg):
     :attr:`class_type` explicitly.
     """
 
-    class_type: type[NewtonManager] | str = "{DIR}.newton_manager:NewtonManager"
+    class_type: type[NewtonManager] | str | None = None
     """The class type of the :class:`NewtonManager`.
 
     Auto-set in :meth:`__post_init__` from :attr:`solver_cfg.class_type`.
@@ -518,10 +523,14 @@ class NewtonCfg(PhysicsCfg):
     """
 
     def __post_init__(self):
-        # Propagate the solver-cfg's class_type so SimulationContext resolves
-        # the matching NewtonManager subclass via the existing dispatch path.
-        if self.solver_cfg is not None and getattr(self.solver_cfg, "class_type", None):
-            self.class_type = self.solver_cfg.class_type
+        # NewtonCfg.class_type is auto-derived from solver_cfg.class_type.
+        # Refuse a user-set value: setting both is ambiguous and was
+        # previously silently overwritten.
+        if self.class_type is not None:
+            raise TypeError(
+                "Cannot manually set NewtonCfg.class_type; it is auto-derived from solver_cfg.class_type."
+            )
+        self.class_type = self.solver_cfg.class_type
 
         # Cross-config validation that needs both halves.
         if (

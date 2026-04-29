@@ -27,26 +27,24 @@ class NewtonMJWarpManager(NewtonManager):
 
     Owns construction of :class:`SolverMuJoCo`, contact-buffer allocation in
     both internal-MuJoCo and Newton-pipeline contact modes, and the debug
-    convergence logging emitted from :meth:`step` when
+    convergence logging emitted from :meth:`_log_solver_debug` when
     :attr:`NewtonCfg.debug_mode` is enabled.
     """
 
     @classmethod
-    def _build_solver(cls, model: Model, solver_cfg: MJWarpSolverCfg) -> tuple[SolverMuJoCo, bool, bool]:
-        """Construct :class:`SolverMuJoCo` from *solver_cfg*.
+    def _build_solver(cls, model: Model, solver_cfg: MJWarpSolverCfg) -> None:
+        """Construct :class:`SolverMuJoCo` and populate the base-class slots.
 
         Filters cfg fields against the solver's ``__init__`` signature so
         non-constructor metadata (``solver_type``, ``class_type``) is not
-        forwarded.
-
-        Returns ``(solver, use_single_state=True, needs_collision_pipeline)``
-        where the pipeline flag is ``True`` only when
-        ``use_mujoco_contacts=False``.
+        forwarded.  Sets :attr:`NewtonManager._needs_collision_pipeline` to
+        ``True`` only when ``use_mujoco_contacts=False``.
         """
         valid = set(inspect.signature(SolverMuJoCo.__init__).parameters) - {"self", "model"}
         kwargs = {k: v for k, v in solver_cfg.to_dict().items() if k in valid}
-        solver = SolverMuJoCo(model, **kwargs)
-        return solver, True, not solver_cfg.use_mujoco_contacts
+        NewtonManager._solver = SolverMuJoCo(model, **kwargs)
+        NewtonManager._use_single_state = True
+        NewtonManager._needs_collision_pipeline = not solver_cfg.use_mujoco_contacts
 
     @classmethod
     def _initialize_contacts(cls) -> None:
