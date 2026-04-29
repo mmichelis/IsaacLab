@@ -113,14 +113,14 @@ class PhysicsManager(ABC):
             >>> handle.deregister()
         """
         cid = cls._callback_id
-        cls._callback_id += 1
+        PhysicsManager._callback_id += 1
 
         if wrap_weak_ref:
             callback = cls._wrap_weak_ref(callback)
 
         subscription = cls._subscribe_to_event(cid, callback, event, order, name)
 
-        cls._callbacks[cid] = (event, callback, order, name, subscription)
+        PhysicsManager._callbacks[cid] = (event, callback, order, name, subscription)
         return CallbackHandle(cid, cls)
 
     @classmethod
@@ -160,7 +160,7 @@ class PhysicsManager(ABC):
         for cid in list(cls._callbacks.keys()):
             cls.deregister_callback(cid)
         cls._callbacks.clear()
-        cls._callback_id = 0
+        PhysicsManager._callback_id = 0
 
     @classmethod
     def _wrap_weak_ref(cls, callback: Callable) -> Callable:
