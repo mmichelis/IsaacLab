@@ -8,11 +8,8 @@ __all__ = [
     "FeatherstoneSolverCfg",
     "HydroelasticSDFCfg",
     "NewtonKaminoManager",
-<<<<<<< HEAD
     "KaminoSolverCfg",
-=======
     "NewtonMJWarpManager",
->>>>>>> 1f5240920ca (Feat: Newton manager abstraction per solver)
     "MJWarpSolverCfg",
     "NewtonCfg",
     "NewtonCollisionPipelineCfg",
@@ -24,7 +21,7 @@ __all__ = [
 ]
 
 from .featherstone_manager import NewtonFeatherstoneManager
-from .kamino_manager import KaminoManager
+from .kamino_manager import NewtonKaminoManager
 from .mjwarp_manager import NewtonMJWarpManager
 from .newton_collision_cfg import HydroelasticSDFCfg, NewtonCollisionPipelineCfg
 from .newton_manager import NewtonManager
