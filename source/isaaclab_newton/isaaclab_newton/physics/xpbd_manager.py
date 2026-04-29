@@ -23,11 +23,14 @@ class NewtonXPBDManager(NewtonManager):
     """
 
     @classmethod
-    def _build_solver(cls, model: Model, solver_cfg: XPBDSolverCfg) -> tuple[SolverXPBD, bool, bool]:
-        """Construct :class:`SolverXPBD` from *solver_cfg*.
+    def _build_solver(cls, model: Model, solver_cfg: XPBDSolverCfg) -> None:
+        """Construct :class:`SolverXPBD` and populate the base-class slots.
 
-        Returns ``(solver, use_single_state=False, needs_collision_pipeline=True)``.
+        XPBD always uses Newton's :class:`CollisionPipeline` and steps with
+        separate input/output states, so the flags are fixed.
         """
         valid = set(inspect.signature(SolverXPBD.__init__).parameters) - {"self", "model"}
         kwargs = {k: v for k, v in solver_cfg.to_dict().items() if k in valid}
-        return SolverXPBD(model, **kwargs), False, True
+        NewtonManager._solver = SolverXPBD(model, **kwargs)
+        NewtonManager._use_single_state = False
+        NewtonManager._needs_collision_pipeline = True
