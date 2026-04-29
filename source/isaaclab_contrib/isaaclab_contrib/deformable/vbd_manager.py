@@ -288,3 +288,10 @@ class NewtonVBDManager(NewtonManager):
         NewtonManager._solver = SolverVBD(model, **kwargs)
         NewtonManager._use_single_state = False
         NewtonManager._needs_collision_pipeline = solver_cfg.particle_enable_self_contact
+
+    @classmethod
+    def _simulate_physics_only(cls) -> None:
+        # Rebuild BVH once per step for solvers that require it (e.g. VBD cloth).
+        if hasattr(cls._solver, "rebuild_bvh"):
+            cls._solver.rebuild_bvh(cls._state_0)
+        super()._simulate_physics_only()
