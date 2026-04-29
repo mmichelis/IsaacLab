@@ -19,6 +19,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.physics import PhysicsEvent
+from isaaclab.utils.warp import ProxyArray
 
 from .deformable_object_data import DeformableObjectData
 from .kernels import (
@@ -247,7 +248,7 @@ class DeformableObject(BaseDeformableObject):
                 enforce_kinematic_targets,
                 dim=(self._num_instances, self._particles_per_body),
                 inputs=[
-                    self._data.nodal_kinematic_target,
+                    self._data.nodal_kinematic_target.warp,
                     self._particle_offsets,
                     self._default_particle_inv_mass,
                 ],
@@ -665,16 +666,15 @@ class DeformableObject(BaseDeformableObject):
             nodal_velocities = wp.zeros(
                 (self._num_instances, self._particles_per_body), dtype=wp.vec3f, device=self.device
             )
-            self._data.default_nodal_state_w = wp.zeros(
-                (self._num_instances, self._particles_per_body), dtype=vec6f, device=self.device
-            )
+            default_nodal_state_w = wp.zeros((self._num_instances, self._particles_per_body), dtype=vec6f, device=self.device)
             wp.launch(
                 compute_nodal_state_w,
                 dim=(self._num_instances, self._particles_per_body),
                 inputs=[self._default_nodal_pos_w, nodal_velocities],
-                outputs=[self._data.default_nodal_state_w],
+                outputs=[default_nodal_state_w],
                 device=self.device,
             )
+            self._data.default_nodal_state_w = ProxyArray(default_nodal_state_w)
         else:
             self._default_nodal_pos_w = None
 
@@ -686,15 +686,16 @@ class DeformableObject(BaseDeformableObject):
             self._default_particle_inv_mass = None
 
         # Kinematic targets -- allocate and initialize with free flags
-        self._data.nodal_kinematic_target = wp.zeros(
+        nodal_kinematic_target = wp.zeros(
             (self._num_instances, self._particles_per_body), dtype=wp.vec4f, device=self.device
         )
         wp.launch(
             set_kinematic_flags_to_one,
             dim=(self._num_instances * self._particles_per_body,),
-            inputs=[self._data.nodal_kinematic_target.reshape((self._num_instances * self._particles_per_body,))],
+            inputs=[nodal_kinematic_target.reshape((self._num_instances * self._particles_per_body,))],
             device=self.device,
         )
+        self._data.nodal_kinematic_target = ProxyArray(nodal_kinematic_target)
 
         # Set up the model parameters
         model = SimulationManager._model
