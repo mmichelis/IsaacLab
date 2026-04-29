@@ -20,6 +20,4 @@ class FrankaDuckEnv(ManagerBasedRLEnv):
     """:class:`ManagerBasedRLEnv` with deformable Newton hooks pre-registered."""
 
     def __init__(self, *args, **kwargs):
-        from isaaclab_contrib.deformable import register_hooks
-        register_hooks()
         super().__init__(*args, **kwargs)
