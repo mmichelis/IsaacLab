@@ -10,7 +10,7 @@ Changed
 * Refactored :class:`~isaaclab_newton.physics.NewtonManager` into a
   solver-agnostic abstract base with one concrete subclass per solver:
   :class:`~isaaclab_newton.physics.MJWarpManager`,
-  :class:`~isaaclab_newton.physics.XPBDManager`, 
+  :class:`~isaaclab_newton.physics.XPBDManager`,
   :class:`~isaaclab_newton.physics.KaminoManager`, and
   :class:`~isaaclab_newton.physics.FeatherstoneManager`.  Each
   ``*SolverCfg`` now declares a ``class_type`` field pointing at its

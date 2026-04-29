@@ -26,10 +26,6 @@ Covers:
 from __future__ import annotations
 
 import pytest
-
-from newton.solvers import SolverFeatherstone, SolverKamino, SolverMuJoCo, SolverXPBD
-
-from isaaclab.sim import SimulationCfg, build_simulation_context
 from isaaclab_newton.physics import (
     FeatherstoneSolverCfg,
     KaminoSolverCfg,
@@ -44,6 +40,9 @@ from isaaclab_newton.physics import (
     NewtonXPBDManager,
     XPBDSolverCfg,
 )
+from newton.solvers import SolverFeatherstone, SolverKamino, SolverMuJoCo, SolverXPBD
+
+from isaaclab.sim import SimulationCfg, build_simulation_context
 
 # ---------------------------------------------------------------------------
 # Lightweight (no sim) parametrisation
@@ -101,7 +100,6 @@ SOLVER_MATRIX = [
         id="kamino_newton_pipeline",
     ),
 ]
-
 
 
 # ---------------------------------------------------------------------------
