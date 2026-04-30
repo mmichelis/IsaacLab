@@ -13,10 +13,6 @@ from collections.abc import Sequence
 import torch
 import warp as wp
 
-from isaaclab_contrib.deformable import register_hooks as _register_deformable_hooks
-
-_register_deformable_hooks()
-
 from pxr import Gf, UsdGeom
 
 import isaaclab.sim as sim_utils
