@@ -1077,9 +1077,8 @@ def define_deformable_body_properties(
             current stage is used.
         deformable_type: The type of the deformable body (surface or volume).
             This is used to determine which USD API to use for the deformable body. Defaults to "volume".
-        sim_mesh_prim_path: Optional override for the simulation mesh creation prim path.
-            If None, it is set to ``{prim_path}/sim_mesh`` for surface deformables
-            and ``{prim_path}/sim_tetmesh`` for volume deformables.
+        sim_mesh_prim_path: Optional override for the simulation mesh creation prim path. Ignored when pre-tetrahedralized mesh is found for volume deformables.
+            If None, it is set to ``{prim_path}/sim_mesh``.
 
     Raises:
         ValueError: When the prim path is not valid.
@@ -1098,11 +1097,53 @@ def define_deformable_body_properties(
     if not root_prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
 
-    # traverse the prim and get the visual mesh. If none or multiple meshes are found, raise error.
+    # for volume deformables, we check if a pre-tetrahedralized TetMesh exists for the sim_mesh
+    if deformable_type == "volume":
+        matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
+        if len(matching_prims) == 0:
+            sim_mesh_prim = None
+        elif len(matching_prims) > 1:
+            # get list of all meshes found
+            mesh_paths = [p.GetPrimPath() for p in matching_prims]
+            raise ValueError(
+                f"Found multiple tetrahedral meshes in '{prim_path}': {mesh_paths}."
+                " Deformable body schema can only be applied to one mesh for now."
+            )
+        else:
+            # found existing tetmesh
+            sim_mesh_prim = matching_prims[0]
+            if not sim_mesh_prim.IsValid():
+                raise ValueError(f"Mesh prim path '{sim_mesh_prim.GetPrimPath()}' is not valid.")
+
+    # Search for a visual surface mesh for both surface and volume deformables
     matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
     # check if the visual surface mesh is valid
     if len(matching_prims) == 0:
-        raise ValueError(f"Could not find any visual mesh in '{prim_path}'. Please check asset.")
+        # in case a TetMesh is found but no Mesh is found, we use the surface mesh from the TetMesh for volume deformables.
+        if sim_mesh_prim is not None:
+            tet_mesh_prim = UsdGeom.TetMesh(sim_mesh_prim)
+            surface_indices = UsdGeom.TetMesh.ComputeSurfaceFaces(
+                tet_mesh_prim, Usd.TimeCode.Default()
+            )
+            if surface_indices is None or len(surface_indices) == 0:
+                raise ValueError(
+                    f"Deformable body at '{prim_path}' has no surface indices on its TetMesh prim; "
+                    "cannot sync to visual mesh."
+                )
+            # create visual mesh
+            vis_mesh_prim = create_prim(
+                prim_path + "/vis_mesh",
+                prim_type="Mesh",
+                attributes={
+                    "points": tet_mesh_prim.GetPointsAttr().Get(),
+                    "faceVertexIndices": np.asarray(surface_indices).flatten(),
+                    "faceVertexCounts": [3] * len(surface_indices),
+                },
+                stage=stage,
+            )
+            matching_prims = [vis_mesh_prim]
+        else:
+            raise ValueError(f"Could not find any visual mesh in '{prim_path}'. Please check asset.")
     if len(matching_prims) > 1:
         # get list of all meshes found
         mesh_paths = [p.GetPrimPath() for p in matching_prims]
@@ -1151,39 +1192,40 @@ def define_deformable_body_properties(
         sim_mesh_prim.GetAttribute("omniphysics:restTriVtxIndices").Set(faces)
 
     elif deformable_type == "volume":
-        from pytetwild import tetrahedralize
+        if sim_mesh_prim is None:
+            from pytetwild import tetrahedralize
 
-        tet_mesh_points, tet_mesh_indices = tetrahedralize(
-            vertices,
-            faces.reshape(-1, 3),
-            edge_length_fac=0.2,
-            simplify=False,
-            epsilon=1e-2,
-            coarsen=True,
-        )
-        # pytetwild's default ordering does not guarantee positive signed volume, which
-        # ``UsdGeom.TetMesh`` and ``ComputeSurfaceFaces`` require. Flip any inverted tets.
-        device = "cpu"
-        _tet_points_wp = wp.array(tet_mesh_points.astype(np.float32), dtype=wp.vec3, device=device)
-        _tet_indices_wp = wp.array(
-            np.asarray(tet_mesh_indices, dtype=np.int32).reshape(-1, 4), dtype=wp.int32, device=device
-        )
-        wp.launch(
-            _fix_tet_winding_kernel,
-            dim=_tet_indices_wp.shape[0],
-            inputs=[_tet_points_wp, _tet_indices_wp],
-            device=device,
-        )
-        tet_mesh_indices = _tet_indices_wp.numpy()
-        sim_mesh_prim = create_prim(
-            sim_mesh_prim_path,
-            prim_type="TetMesh",
-            attributes={
-                "points": tet_mesh_points,
-                "tetVertexIndices": tet_mesh_indices,
-            },
-            stage=stage,
-        )
+            tet_mesh_points, tet_mesh_indices = tetrahedralize(
+                vertices,
+                faces.reshape(-1, 3),
+                edge_length_fac=0.2,
+                simplify=False,
+                epsilon=1e-2,
+                coarsen=True,
+            )
+            # pytetwild's default ordering does not guarantee positive signed volume, which
+            # ``UsdGeom.TetMesh`` and ``ComputeSurfaceFaces`` require. Flip any inverted tets.
+            device = "cpu"
+            _tet_points_wp = wp.array(tet_mesh_points.astype(np.float32), dtype=wp.vec3, device=device)
+            _tet_indices_wp = wp.array(
+                np.asarray(tet_mesh_indices, dtype=np.int32).reshape(-1, 4), dtype=wp.int32, device=device
+            )
+            wp.launch(
+                _fix_tet_winding_kernel,
+                dim=_tet_indices_wp.shape[0],
+                inputs=[_tet_points_wp, _tet_indices_wp],
+                device=device,
+            )
+            tet_mesh_indices = _tet_indices_wp.numpy()
+            sim_mesh_prim = create_prim(
+                sim_mesh_prim_path,
+                prim_type="TetMesh",
+                attributes={
+                    "points": tet_mesh_points,
+                    "tetVertexIndices": tet_mesh_indices,
+                },
+                stage=stage,
+            )
 
         # apply sim API
         if not sim_mesh_prim.ApplyAPI("OmniPhysicsVolumeDeformableSimAPI"):
@@ -1198,8 +1240,8 @@ def define_deformable_body_properties(
             UsdGeom.TetMesh(sim_mesh_prim), Usd.TimeCode.Default()
         )
         UsdGeom.TetMesh(sim_mesh_prim).GetSurfaceFaceVertexIndicesAttr().Set(surface_face_indices)
-        sim_mesh_prim.GetAttribute("omniphysics:restShapePoints").Set(tet_mesh_points)
-        sim_mesh_prim.GetAttribute("omniphysics:restTetVtxIndices").Set(tet_mesh_indices)
+        sim_mesh_prim.GetAttribute("omniphysics:restShapePoints").Set(sim_mesh_prim.GetAttribute("points").Get())
+        sim_mesh_prim.GetAttribute("omniphysics:restTetVtxIndices").Set(sim_mesh_prim.GetAttribute("tetVertexIndices").Get())
 
     else:
         raise ValueError(
