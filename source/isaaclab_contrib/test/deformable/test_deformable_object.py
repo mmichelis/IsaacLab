@@ -21,7 +21,7 @@ import torch
 import warp as wp
 from flaky import flaky
 
-from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg, register_hooks
+from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg
 from isaaclab_newton.physics import NewtonCfg
 
 import isaaclab.sim as sim_utils
@@ -87,7 +87,6 @@ def generate_cubes_scene(
 @pytest.fixture
 def sim():
     """Create Newton VBD simulation context."""
-    register_hooks()
     with _newton_sim_context() as sim:
         sim._app_control_on_stop_handle = None
         yield sim
@@ -198,7 +197,6 @@ def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, random
     writes it to simulation, steps with no gravity, and verifies the mean
     nodal position (root_pos_w) matches the expected transformed centroid.
     """
-    register_hooks()
     cfg = SimulationCfg(
         physics=NewtonCfg(
             solver_cfg=VBDSolverCfg(iterations=3),
