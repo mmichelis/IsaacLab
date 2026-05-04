@@ -40,7 +40,7 @@ from isaaclab.utils import checked_apply
 from isaaclab.utils.string import resolve_matching_names
 from isaaclab.utils.timer import Timer
 
-from .newton_manager_cfg import NewtonCfg, NewtonShapeCfg
+from .newton_manager_cfg import NewtonCfg, NewtonShapeCfg, NewtonSolverCfg
 
 if TYPE_CHECKING:
     from isaaclab.sim.simulation_context import SimulationContext
@@ -911,7 +911,7 @@ class NewtonManager(PhysicsManager):
 
     @classmethod
     @abstractmethod
-    def _build_solver(cls, model: Model, solver_cfg) -> None:
+    def _build_solver(cls, model: Model, solver_cfg: NewtonSolverCfg) -> None:
         """Construct the solver this manager owns and assign it onto the base class.
 
         Subclasses must populate the canonical :class:`NewtonManager` slots:
