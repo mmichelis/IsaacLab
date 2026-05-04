@@ -16,8 +16,8 @@ from newton.solvers import SolverMuJoCo
 
 from isaaclab.physics import PhysicsManager
 
-from .newton_manager import NewtonManager
 from .mjwarp_manager_cfg import MJWarpSolverCfg
+from .newton_manager import NewtonManager
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class NewtonMJWarpManager(NewtonManager):
 
         cfg = PhysicsManager._cfg
         # Cross-config validation that needs both halves.
-        if (solver_cfg.use_mujoco_contacts and cfg.collision_cfg is not None):
+        if solver_cfg.use_mujoco_contacts and cfg.collision_cfg is not None:
             raise ValueError(
                 "NewtonCfg: collision_cfg cannot be set when "
                 "solver_cfg.use_mujoco_contacts=True. Either set "

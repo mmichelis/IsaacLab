@@ -31,7 +31,6 @@ from isaaclab_newton.physics import (
     KaminoSolverCfg,
     MJWarpSolverCfg,
     NewtonCfg,
-    NewtonCollisionPipelineCfg,
     NewtonFeatherstoneManager,
     NewtonKaminoManager,
     NewtonManager,

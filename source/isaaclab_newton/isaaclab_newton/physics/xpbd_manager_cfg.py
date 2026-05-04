@@ -70,4 +70,3 @@ class XPBDSolverCfg(NewtonSolverCfg):
 
     enable_restitution: bool = False
     """Whether to enable restitution for rigid contact simulation."""
-
