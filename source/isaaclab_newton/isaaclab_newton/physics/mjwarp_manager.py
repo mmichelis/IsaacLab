@@ -17,7 +17,7 @@ from newton.solvers import SolverMuJoCo
 from isaaclab.physics import PhysicsManager
 
 from .newton_manager import NewtonManager
-from .newton_manager_cfg import MJWarpSolverCfg
+from .mjwarp_manager_cfg import MJWarpSolverCfg
 
 logger = logging.getLogger(__name__)
 

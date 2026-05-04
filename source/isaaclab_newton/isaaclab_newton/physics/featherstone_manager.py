@@ -13,7 +13,7 @@ from newton import Model
 from newton.solvers import SolverFeatherstone
 
 from .newton_manager import NewtonManager
-from .newton_manager_cfg import FeatherstoneSolverCfg
+from .featherstone_manager_cfg import FeatherstoneSolverCfg
 
 
 class NewtonFeatherstoneManager(NewtonManager):

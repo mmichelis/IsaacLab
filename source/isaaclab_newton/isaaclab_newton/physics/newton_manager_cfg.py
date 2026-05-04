@@ -15,8 +15,6 @@ from isaaclab.utils import configclass
 from .newton_collision_cfg import NewtonCollisionPipelineCfg
 
 if TYPE_CHECKING:
-    from newton.solvers import SolverKamino
-
     from isaaclab_newton.physics import NewtonManager
 
 
@@ -108,8 +106,8 @@ class NewtonCfg(PhysicsCfg):
     If set to False, the simulation performance will be severely degraded.
     """
 
-    solver_cfg: NewtonSolverCfg = MJWarpSolverCfg()
-    """Solver configuration. Default is MJWarpSolverCfg()."""
+    solver_cfg: NewtonSolverCfg | None = None
+    """Solver configuration."""
 
     collision_cfg: NewtonCollisionPipelineCfg | None = None
     """Newton collision pipeline configuration.

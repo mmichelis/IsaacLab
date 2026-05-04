@@ -17,7 +17,7 @@ from isaaclab.physics import PhysicsManager
 from isaaclab.utils.timer import Timer
 
 from .newton_manager import NewtonManager
-from .newton_manager_cfg import KaminoSolverCfg
+from .kamino_manager_cfg import KaminoSolverCfg
 
 logger = logging.getLogger(__name__)
 

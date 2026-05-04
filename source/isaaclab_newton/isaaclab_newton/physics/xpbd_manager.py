@@ -13,7 +13,7 @@ from newton import Model
 from newton.solvers import SolverXPBD
 
 from .newton_manager import NewtonManager
-from .newton_manager_cfg import XPBDSolverCfg
+from .xpbd_manager_cfg import XPBDSolverCfg
 
 
 class NewtonXPBDManager(NewtonManager):
