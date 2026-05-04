@@ -445,7 +445,8 @@ class NewtonManager(PhysicsManager):
 
     @classmethod
     def clear(cls):
-        """Clear all Newton-specific state (callbacks cleared by super().close())."""
+        """Clear all Newton-specific state (callbacks cleared by super().close()). Start with solver specific cleanup."""
+        cls._solver_specific_clear()
         if cls._cubric is not None and cls._cubric_adapter is not None:
             cls._cubric.release_adapter(cls._cubric_adapter)
         NewtonManager._cubric = None
@@ -481,7 +482,6 @@ class NewtonManager(PhysicsManager):
         NewtonManager._pending_extended_state_attributes = set()
         NewtonManager._pending_extended_contact_attributes = set()
         NewtonManager._views = []
-        cls._solver_specific_clear()
 
     @classmethod
     def set_builder(cls, builder: ModelBuilder) -> None:
