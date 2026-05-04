@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaaclab_newton.physics.newton_manager_cfg import MJWarpSolverCfg, NewtonSolverCfg
+from isaaclab_newton.physics.newton_manager_cfg import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonSolverCfg
 
 from isaaclab.utils import configclass
 
@@ -123,6 +123,47 @@ class CoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
     - ``"one_way"``: Rigid -> soft only (default, existing behavior).
     - ``"two_way"``: Same-substep two-way coupling with normal + Coulomb friction.
     """
+
+
+@configclass
+class CoupledFeatherstoneVBDSolverCfg(NewtonSolverCfg):
+    """Configuration for the coupled rigid-body Featherstone + VBD solver.
+
+    Alternates a rigid-body solver (:class:`FeatherstoneSolverCfg`) and a soft-body solver (:class:`SolverVBD`) per
+    substep. The coupling direction is controlled by :attr:`coupling_mode`:
+
+    - ``"kinematic"`` (default): Rigid -> soft only. Rigid bodies are kinematically updated by the rigid solver, then VBD reads the updated body poses and reacts to them. The rigid solver does not feel particle contacts.
+    - ``"one_way"``: Rigid solver advances first, then VBD reads
+      the updated body poses. The rigid solver does not feel particle contacts.
+    - ``"two_way"``: Same-substep two-way coupling with normal + Coulomb
+      friction. Contact detection runs first, reaction forces are injected
+      into ``body_f``, then the rigid solver reads ``body_f`` and feels
+      resistance from the deformable object. The friction reaction lets
+      actuators carry the object against gravity during a lift.
+    """
+
+    class_type: type[NewtonManager] | str = "{DIR}.coupled_featherstone_vbd_manager:NewtonCoupledFeatherstoneVBDManager"
+    """Manager class for the VBD solver."""
+
+    solver_type: str = "coupledfeatherstonevbd"
+
+    rigid_solver_cfg: FeatherstoneSolverCfg = FeatherstoneSolverCfg()
+    """Rigid-body sub-solver configuration for :class:`FeatherstoneSolverCfg`."""
+
+    soft_solver_cfg: VBDSolverCfg = VBDSolverCfg(integrate_with_external_rigid_solver=True)
+    """VBD sub-solver configuration for cloth/particle dynamics."""
+
+    soft_contact_margin: float = 0.01
+    """Soft-contact detection margin for the CollisionPipeline [m]."""
+
+    coupling_mode: str = "kinematic"
+    """Coupling direction between the rigid and VBD solvers.
+
+    - ``"kinematic"``: Rigid -> soft only (default)
+    - ``"one_way"``: Rigid -> soft only (existing behavior).
+    - ``"two_way"``: Same-substep two-way coupling with normal + Coulomb friction.
+    """
+
 
 
 @configclass
