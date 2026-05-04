@@ -340,7 +340,6 @@ class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
                     particle_enable_self_contact=False,
                     particle_collision_detection_interval=-1,
                 ),
-                soft_contact_margin=0.01,
                 coupling_mode="two_way",
             ),
             model_cfg=NewtonModelCfg(
