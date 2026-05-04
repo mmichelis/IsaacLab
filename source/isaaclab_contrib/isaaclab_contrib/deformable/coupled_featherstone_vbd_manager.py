@@ -147,24 +147,22 @@ class NewtonCoupledFeatherstoneVBDManager(NewtonManager):
         from isaaclab.physics import PhysicsManager
 
         cfg = PhysicsManager._cfg
-        if cfg is None or not hasattr(cfg, "model_cfg") or cfg.model_cfg is None:
-            return
+        if cfg is not None and hasattr(cfg, "model_cfg") and cfg.model_cfg is not None:
+            model = cls._model
+            if model is None:
+                return
 
-        model = cls._model
-        if model is None:
-            return
+            model_cfg = cfg.model_cfg
+            model.soft_contact_ke = float(model_cfg.soft_contact_ke)
+            model.soft_contact_kd = float(model_cfg.soft_contact_kd)
+            model.soft_contact_mu = float(model_cfg.soft_contact_mu)
 
-        model_cfg = cfg.model_cfg
-        model.soft_contact_ke = float(model_cfg.soft_contact_ke)
-        model.soft_contact_kd = float(model_cfg.soft_contact_kd)
-        model.soft_contact_mu = float(model_cfg.soft_contact_mu)
-
-        if model_cfg.shape_material_ke is not None:
-            model.shape_material_ke.fill_(float(model_cfg.shape_material_ke))
-        if model_cfg.shape_material_kd is not None:
-            model.shape_material_kd.fill_(float(model_cfg.shape_material_kd))
-        if model_cfg.shape_material_mu is not None:
-            model.shape_material_mu.fill_(float(model_cfg.shape_material_mu))
+            if model_cfg.shape_material_ke is not None:
+                model.shape_material_ke.fill_(float(model_cfg.shape_material_ke))
+            if model_cfg.shape_material_kd is not None:
+                model.shape_material_kd.fill_(float(model_cfg.shape_material_kd))
+            if model_cfg.shape_material_mu is not None:
+                model.shape_material_mu.fill_(float(model_cfg.shape_material_mu))
 
         # Setup USD/Fabric sync for Kit viewport deformable rendering
         if not cls._clone_physics_only and cls._deformable_registry:

@@ -887,9 +887,9 @@ class NewtonManager(PhysicsManager):
                     "USD/Fabric body sync for RTX is skipped. "
                     "Particle-only scenes (e.g. cloth) must register their own USD mesh update."
                 )
-                cls._usdrt_stage = None
+                NewtonManager._usdrt_stage = None
             else:
-                cls._usdrt_stage = get_current_stage(fabric=True)
+                NewtonManager._usdrt_stage = get_current_stage(fabric=True)
                 for i, prim_path in enumerate(body_paths):
                     prim = cls._usdrt_stage.GetPrimAtPath(prim_path)
                     prim.CreateAttribute(cls._newton_index_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
@@ -1449,7 +1449,7 @@ class NewtonManager(PhysicsManager):
             )
 
         cls._newton_contact_sensors[sensor_key] = sensor
-        cls._report_contacts = True
+        NewtonManager._report_contacts = True
 
         if cls._solver is not None and cls._contacts is not None and cls._contacts.force is None:
             cls._initialize_contacts()
