@@ -1234,6 +1234,14 @@ class NewtonManager(PhysicsManager):
         if cls._usdrt_stage is not None:
             cls._mark_transforms_dirty()
 
+    @classmethod
+    def get_solver_convergence_steps(cls) -> dict[str, float | int]:
+        """Get the solver convergence steps. Needs to be implemented in solver-specific managers."""
+        if hasattr(cls, "_get_solver_convergence_steps"):
+            return cls._get_solver_convergence_steps()
+        else:
+            raise NotImplementedError("NewtonManager subclasses must implement _get_solver_convergence_steps()")
+
     # State accessors (used extensively by articulation/rigid object data)
     @classmethod
     def get_model(cls) -> Model:
