@@ -141,15 +141,3 @@ class NewtonCfg(PhysicsCfg):
         if self.class_type is not None:
             raise TypeError("Cannot manually set NewtonCfg.class_type; it is auto-derived from solver_cfg.class_type.")
         self.class_type = self.solver_cfg.class_type
-
-        # Cross-config validation that needs both halves.
-        if (
-            isinstance(self.solver_cfg, MJWarpSolverCfg)
-            and self.solver_cfg.use_mujoco_contacts
-            and self.collision_cfg is not None
-        ):
-            raise ValueError(
-                "NewtonCfg: collision_cfg cannot be set when "
-                "solver_cfg.use_mujoco_contacts=True. Either set "
-                "use_mujoco_contacts=False or remove collision_cfg."
-            )

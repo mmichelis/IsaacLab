@@ -46,6 +46,15 @@ class NewtonMJWarpManager(NewtonManager):
         NewtonManager._use_single_state = True
         NewtonManager._needs_collision_pipeline = not solver_cfg.use_mujoco_contacts
 
+        cfg = PhysicsManager._cfg
+        # Cross-config validation that needs both halves.
+        if (solver_cfg.use_mujoco_contacts and cfg.collision_cfg is not None):
+            raise ValueError(
+                "NewtonCfg: collision_cfg cannot be set when "
+                "solver_cfg.use_mujoco_contacts=True. Either set "
+                "use_mujoco_contacts=False or remove collision_cfg."
+            )
+
     @classmethod
     def _initialize_contacts(cls) -> None:
         """Allocate contact buffers.

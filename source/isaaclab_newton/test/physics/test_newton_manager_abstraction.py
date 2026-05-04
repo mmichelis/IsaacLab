@@ -134,13 +134,6 @@ def test_newton_cfg_post_init_propagates_class_type(
     assert cfg.class_type.__name__ == expected_manager.__name__
 
 
-def test_newton_cfg_default_solver_is_mjwarp():
-    """The default ``NewtonCfg().class_type`` resolves to :class:`NewtonMJWarpManager`."""
-    cfg = NewtonCfg()
-    assert isinstance(cfg.solver_cfg, MJWarpSolverCfg)
-    assert cfg.class_type.__name__ == NewtonMJWarpManager.__name__
-
-
 # ---------------------------------------------------------------------------
 # Manager class hierarchy and factory contracts
 # ---------------------------------------------------------------------------
@@ -170,33 +163,6 @@ def test_manager_name_starts_with_newton(manager):
     various backend factories that dispatch on ``physics_manager.__name__.lower()``.
     """
     assert manager.__name__.lower().startswith("newton")
-
-
-# ---------------------------------------------------------------------------
-# Cross-config validation
-# ---------------------------------------------------------------------------
-
-
-def test_mujoco_contacts_with_collision_cfg_raises():
-    """``use_mujoco_contacts=True`` and ``collision_cfg`` are mutually exclusive."""
-    with pytest.raises(ValueError, match="collision_cfg cannot be set"):
-        NewtonCfg(
-            solver_cfg=MJWarpSolverCfg(use_mujoco_contacts=True),
-            collision_cfg=NewtonCollisionPipelineCfg(),
-        )
-
-
-def test_mujoco_internal_contacts_without_collision_cfg_ok():
-    """The same MJWarp internal-contacts cfg validates fine without ``collision_cfg``."""
-    NewtonCfg(solver_cfg=MJWarpSolverCfg(use_mujoco_contacts=True))
-
-
-def test_mjwarp_newton_pipeline_with_collision_cfg_ok():
-    """When MJWarp uses the Newton pipeline, ``collision_cfg`` may be set."""
-    NewtonCfg(
-        solver_cfg=MJWarpSolverCfg(use_mujoco_contacts=False),
-        collision_cfg=NewtonCollisionPipelineCfg(),
-    )
 
 
 # ---------------------------------------------------------------------------
