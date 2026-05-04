@@ -82,8 +82,7 @@ class NewtonKaminoManager(NewtonManager):
                 # joint_q_prev, and joint_lambdas via wp.clone/wp.zeros during the
                 # first step() inside graph capture. Replay once to pin those
                 # memory-pool addresses before any eager solver.reset() call.
-                if isinstance(cls._solver, SolverKamino):
-                    wp.capture_launch(cls._graph)
+                wp.capture_launch(cls._graph)
                 logger.info("Newton CUDA graph captured (deferred relaxed mode, RTX-compatible)")
             else:
                 logger.warning("Newton deferred CUDA graph capture failed; using eager execution")
