@@ -27,7 +27,7 @@ class FeatherstoneSolverCfg(NewtonSolverCfg):
     See: Featherstone, Roy. Rigid Body Dynamics Algorithms. Springer US, 2014.
 
     Semi-implicit time integration is a variational integrator that
-    preserves energy, however it not unconditionally stable, and requires a time-step
+    preserves energy, however it is not unconditionally stable, and requires a time-step
     small enough to support the required stiffness and damping forces.
 
     See: https://en.wikipedia.org/wiki/Semi-implicit_Euler_method

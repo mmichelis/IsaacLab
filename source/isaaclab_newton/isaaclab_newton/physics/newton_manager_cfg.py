@@ -113,17 +113,21 @@ class NewtonCfg(PhysicsCfg):
     """Newton collision pipeline configuration.
 
     Controls how Newton's :class:`CollisionPipeline` is configured when it is active.
-    The pipeline is active when:
+    The pipeline is active when the solver delegates collision detection to Newton:
 
-    - :class:`MJWarpSolverCfg` with ``use_mujoco_contacts=False``, or
-    - any non-MuJoCo solver (:class:`XPBDSolverCfg`, :class:`FeatherstoneSolverCfg`).
+    - :class:`MJWarpSolverCfg` with ``use_mujoco_contacts=False``,
+    - :class:`KaminoSolverCfg` with ``use_collision_detector=False``,
+    - :class:`XPBDSolverCfg` (always),
+    - :class:`FeatherstoneSolverCfg` (always).
 
     If ``None`` (default), a pipeline with ``broad_phase="explicit"`` is created
     automatically.  Set this to a :class:`NewtonCollisionPipelineCfg` to customize
     parameters such as broad phase algorithm, contact limits, or hydroelastic mode.
 
     .. note::
-        Must not be set when ``use_mujoco_contacts=True`` (raises :class:`ValueError`).
+        Setting this while ``MJWarpSolverCfg.use_mujoco_contacts=True`` raises
+        :class:`ValueError`.  When ``KaminoSolverCfg.use_collision_detector=True``,
+        the field is ignored because Kamino's internal detector handles contacts.
     """
 
     default_shape_cfg: NewtonShapeCfg = NewtonShapeCfg()
