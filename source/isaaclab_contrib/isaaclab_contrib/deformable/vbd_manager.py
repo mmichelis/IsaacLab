@@ -286,7 +286,7 @@ class NewtonVBDManager(NewtonManager):
         kwargs = {k: v for k, v in solver_cfg.to_dict().items() if k in valid}
         NewtonManager._solver = SolverVBD(model, **kwargs)
         NewtonManager._use_single_state = False
-        NewtonManager._needs_collision_pipeline = solver_cfg.particle_enable_self_contact
+        NewtonManager._needs_collision_pipeline = True
 
     @classmethod
     def _simulate_physics_only(cls) -> None:
