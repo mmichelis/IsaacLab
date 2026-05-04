@@ -42,7 +42,7 @@ class NewtonKaminoManager(NewtonManager):
                 Shape ``(num_worlds,)``, dtype ``wp.int32``. If None, resets all worlds.
         """
         cls._solver.reset(
-            state_out=NewtonManager._state_0,
+            state_out=cls._state_0,
             joint_q=cls._state_0.joint_q,
             joint_u=cls._state_0.joint_qd,
             world_mask=world_mask,
