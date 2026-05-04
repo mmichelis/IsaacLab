@@ -946,8 +946,9 @@ class NewtonManager(PhysicsManager):
         Default invokes :attr:`_solver` once.  Subclasses can override to
         batch multiple solvers within a single substep.
         """
-        # By default one collision per timestep, not recomputed during substeps. None if manager does not own the
-        # collision pipeline (e.g. MuJoCo with ``use_mujoco_contacts=True``, which handles contacts internally).
+        # Only solvers that consume Newton collision-pipeline contacts receive ``_contacts`` here. Solvers with
+        # internal contact handling receive ``None`` even when ``_contacts`` is allocated for later reporting via
+        # ``solver.update_contacts`` (e.g. MuJoCo with ``use_mujoco_contacts=True``).
         contacts = cls._contacts if cls._needs_collision_pipeline else None
         cls._solver.step(state_0, state_1, control, contacts, substep_dt)
 
