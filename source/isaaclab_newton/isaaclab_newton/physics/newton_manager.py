@@ -11,6 +11,7 @@ import contextlib
 import ctypes
 import logging
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import warp as wp
@@ -32,7 +33,7 @@ from newton.sensors import SensorFrameTransform
 from newton.sensors import SensorIMU as NewtonSensorIMU
 from newton.solvers import SolverBase, SolverNotifyFlags
 
-from isaaclab.physics import PhysicsEvent, PhysicsManager
+from isaaclab.physics import CallbackHandle, PhysicsEvent, PhysicsManager
 from isaaclab.sim.utils.newton_model_utils import replace_newton_shape_colors
 from isaaclab.sim.utils.stage import get_current_stage
 from isaaclab.utils import checked_apply
@@ -412,6 +413,18 @@ class NewtonManager(PhysicsManager):
         """Clean up Newton physics resources."""
         cls.clear()
         super().close()
+
+    @classmethod
+    def register_callback(
+        cls,
+        callback: Callable,
+        event: PhysicsEvent,
+        order: int = 0,
+        name: str | None = None,
+        wrap_weak_ref: bool = True,
+    ) -> CallbackHandle:
+        """Register a callback. Passes event to parent class."""
+        return PhysicsManager.register_callback(callback, event, order, name, wrap_weak_ref)
 
     @classmethod
     def get_physics_sim_view(cls) -> list:
@@ -1333,7 +1346,7 @@ class NewtonManager(PhysicsManager):
             )
 
         cls._newton_contact_sensors[sensor_key] = sensor
-        cls._report_contacts = True
+        NewtonManager._report_contacts = True
 
         if cls._solver is not None and cls._contacts is not None and cls._contacts.force is None:
             cls._initialize_contacts()
