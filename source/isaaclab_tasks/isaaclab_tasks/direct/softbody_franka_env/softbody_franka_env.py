@@ -102,11 +102,11 @@ class SoftbodyFrankaEnv(DirectRLEnv):
             size=(sx, sy, sz),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.30, 0.15)),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.15, 0.25, 0.6)),
         )
         spawn_cuboid("/World/envs/env_0/table", table_cfg, translation=(tx, ty, tz))
 
-        light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
+        light_cfg = sim_utils.DomeLightCfg(intensity=1500.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
         # Deactivate the root_joint FixedJoint under the Physics/ scope.
