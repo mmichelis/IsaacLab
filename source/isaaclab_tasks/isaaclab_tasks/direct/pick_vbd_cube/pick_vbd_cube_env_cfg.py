@@ -66,7 +66,6 @@ class PickVBDCubePhysicsCfg(PresetCfg):
                 particle_enable_self_contact=False,
                 particle_collision_detection_interval=-1,
             ),
-            soft_contact_margin=0.01,
         ),
         model_cfg=MODEL_CFG,
         num_substeps=10,

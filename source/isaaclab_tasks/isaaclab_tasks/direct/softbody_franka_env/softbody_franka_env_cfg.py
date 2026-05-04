@@ -75,7 +75,6 @@ class SoftbodyFrankaPhysicsCfg(PresetCfg):
                 particle_enable_self_contact=False,
                 particle_collision_detection_interval=-1,
             ),
-            soft_contact_margin=0.01,
             coupling_mode="kinematic",
         ),
         model_cfg=MODEL_CFG,

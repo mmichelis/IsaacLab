@@ -114,9 +114,6 @@ class CoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
     soft_solver_cfg: VBDSolverCfg = VBDSolverCfg(integrate_with_external_rigid_solver=True)
     """VBD sub-solver configuration for cloth/particle dynamics."""
 
-    soft_contact_margin: float = 0.01
-    """Soft-contact detection margin for the CollisionPipeline [m]."""
-
     coupling_mode: str = "two_way"
     """Coupling direction between the rigid and VBD solvers.
 
@@ -152,9 +149,6 @@ class CoupledFeatherstoneVBDSolverCfg(NewtonSolverCfg):
 
     soft_solver_cfg: VBDSolverCfg = VBDSolverCfg(integrate_with_external_rigid_solver=True)
     """VBD sub-solver configuration for cloth/particle dynamics."""
-
-    soft_contact_margin: float = 0.01
-    """Soft-contact detection margin for the CollisionPipeline [m]."""
 
     coupling_mode: str = "kinematic"
     """Coupling direction between the rigid and VBD solvers.
