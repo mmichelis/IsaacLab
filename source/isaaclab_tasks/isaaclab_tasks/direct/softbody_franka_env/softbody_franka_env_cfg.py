@@ -13,7 +13,7 @@ uses PD-controlled dynamics (MuJoCo Warp) instead of kinematic integration.
 
 import numpy as np
 
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, CoupledFeatherstoneVBDSolverCfg, NewtonModelCfg, VBDSolverCfg, FeatherstoneSolverCfg
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
@@ -79,6 +79,22 @@ class SoftbodyFrankaPhysicsCfg(PresetCfg):
         ),
         model_cfg=MODEL_CFG,
         num_substeps=10,
+        use_cuda_graph=True,
+    )
+
+    newton_featherstone: DeformableNewtonCfg = DeformableNewtonCfg(
+        solver_cfg=CoupledFeatherstoneVBDSolverCfg(
+            rigid_solver_cfg=FeatherstoneSolverCfg(update_mass_matrix_interval=10),
+            soft_solver_cfg=VBDSolverCfg(
+                iterations=5,
+                integrate_with_external_rigid_solver=True,
+                particle_enable_self_contact=False,
+                particle_collision_detection_interval=-1,
+            ),
+            coupling_mode="kinematic",
+        ),
+        model_cfg=MODEL_CFG,
+        num_substeps=30,
         use_cuda_graph=True,
     )
 
