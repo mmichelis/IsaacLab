@@ -44,7 +44,7 @@ from . import mdp
 # Pre-defined configs
 ##
 
-from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
 
 
 ##
@@ -83,31 +83,7 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
     """Scene for the Franka deformable-duck environment."""
 
     # robot: Franka Panda with stiffer PD does not run stable with Featherstone
-    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
-        prim_path="/World/envs/env_.*/Robot",
-        actuators={
-            "panda_shoulder": ImplicitActuatorCfg(
-                joint_names_expr=["panda_joint[1-4]"],
-                effort_limit_sim=87.0,
-                stiffness=400.0,
-                damping=80.0,
-                armature=1e-3,
-            ),
-            "panda_forearm": ImplicitActuatorCfg(
-                joint_names_expr=["panda_joint[5-7]"],
-                effort_limit_sim=12.0,
-                stiffness=400.0,
-                damping=80.0,
-                armature=1e-3,
-            ),
-            "panda_hand": ImplicitActuatorCfg(
-                joint_names_expr=["panda_finger_joint.*"],
-                effort_limit_sim=200.0,
-                stiffness=2000.0,
-                damping=100.0,
-            ),
-        },
-    )
+    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
     # end-effector frame for reward shaping
     ee_frame: FrameTransformerCfg = FrameTransformerCfg(
@@ -338,7 +314,7 @@ class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self) -> None:
         # general settings
-        self.decimation = 2
+        self.decimation = 1
         self.episode_length_s = 5.0
 
         # simulation settings
@@ -366,14 +342,17 @@ class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
                     particle_enable_self_contact=False,
                     particle_collision_detection_interval=-1,
                 ),
-                coupling_mode="two_way",
+                coupling_mode="one_way",
             ),
             model_cfg=NewtonModelCfg(
                 soft_contact_ke=2e6,
                 soft_contact_kd=1e-7,
                 soft_contact_mu=0.5,
+                shape_material_ke=2e6,
+                shape_material_kd=1e-7,
+                shape_material_mu=1.5,
             ),
-            num_substeps=20,
+            num_substeps=10,
             use_cuda_graph=True,
         )
 
