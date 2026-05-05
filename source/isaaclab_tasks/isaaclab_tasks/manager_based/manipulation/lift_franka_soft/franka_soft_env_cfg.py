@@ -252,16 +252,16 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Lift-to-target reward, mirroring the franka_lift structure but on the deformable COM."""
+    """Lift-to-target reward for a deformable object."""
 
     reaching_deformable = RewTerm(
-        func=mdp.deformable_com_ee_distance,
+        func=mdp.deformable_ee_distance,
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
         weight=1.0,
     )
     lifting_deformable = RewTerm(
-        func=mdp.deformable_com_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
+        func=mdp.deformable_lifted,
+        params={"minimal_height": 0.06, "asset_cfg": SceneEntityCfg("deformable")},
         weight=15.0,
     )
     deformable_goal_tracking = RewTerm(
@@ -315,7 +315,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
     """Manager-based RL environment: Franka Panda lifting a volume deformable."""
 
     # Scene settings
-    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
+    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=512, env_spacing=2.5, replicate_physics=True)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
