@@ -89,22 +89,22 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
             "panda_shoulder": ImplicitActuatorCfg(
                 joint_names_expr=["panda_joint[1-4]"],
                 effort_limit_sim=87.0,
-                stiffness=80.0,
-                damping=4.0,
+                stiffness=400.0,
+                damping=80.0,
                 armature=1e-3,
             ),
             "panda_forearm": ImplicitActuatorCfg(
                 joint_names_expr=["panda_joint[5-7]"],
                 effort_limit_sim=12.0,
-                stiffness=80.0,
-                damping=4.0,
+                stiffness=400.0,
+                damping=80.0,
                 armature=1e-3,
             ),
             "panda_hand": ImplicitActuatorCfg(
                 joint_names_expr=["panda_finger_joint.*"],
                 effort_limit_sim=200.0,
-                stiffness=2e3,
-                damping=1e2,
+                stiffness=2000.0,
+                damping=100.0,
             ),
         },
     )
@@ -135,7 +135,7 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
             # μ = E / (2(1+ν)) = 2.5e6 / 2.5 = 1e6
             # λ = Eν / ((1+ν)(1−2ν)) = 2.5e6·0.25 / (1.25·0.5) = 1e6
             physics_material=sim_utils.DeformableBodyMaterialCfg(
-                density=100.0,
+                density=500.0,
                 youngs_modulus=2.5e6,
                 poissons_ratio=0.25,
             ),
@@ -213,8 +213,8 @@ class ActionsCfg:
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.04},
-        close_command_expr={"panda_finger_.*": 0.0},
+        open_command_expr={"panda_finger_.*": 0.05},
+        close_command_expr={"panda_finger_.*": 0.02},
     )
 
 
