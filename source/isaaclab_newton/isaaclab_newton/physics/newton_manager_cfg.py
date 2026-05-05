@@ -144,4 +144,6 @@ class NewtonCfg(PhysicsCfg):
         # previously silently overwritten.
         if self.class_type is not None:
             raise TypeError("Cannot manually set NewtonCfg.class_type; it is auto-derived from solver_cfg.class_type.")
+        if self.solver_cfg is None:
+            raise ValueError("NewtonCfg requires a solver_cfg. Pass e.g. NewtonCfg(solver_cfg=MJWarpSolverCfg()).")
         self.class_type = self.solver_cfg.class_type
