@@ -18,7 +18,6 @@ simulation_app = AppLauncher(headless=True).app
 
 import pytest
 import torch
-import warp as wp
 from flaky import flaky
 from isaaclab_newton.physics import NewtonCfg
 
@@ -106,23 +105,23 @@ def test_initialization(sim, num_cubes):
     particles_per_body = cube_object.max_sim_vertices_per_body
 
     # nodal_state_w: (N, V, 6)
-    nodal_state = wp.to_torch(cube_object.data.nodal_state_w)
+    nodal_state = cube_object.data.nodal_state_w.torch
     assert nodal_state.shape == (num_cubes, particles_per_body, 6)
 
     # nodal_pos_w: (N, V, 3)
-    nodal_pos = wp.to_torch(cube_object.data.nodal_pos_w)
+    nodal_pos = cube_object.data.nodal_pos_w.torch
     assert nodal_pos.shape == (num_cubes, particles_per_body, 3)
 
     # nodal_vel_w: (N, V, 3)
-    nodal_vel = wp.to_torch(cube_object.data.nodal_vel_w)
+    nodal_vel = cube_object.data.nodal_vel_w.torch
     assert nodal_vel.shape == (num_cubes, particles_per_body, 3)
 
     # root_pos_w: (N, 3)
-    root_pos = wp.to_torch(cube_object.data.root_pos_w)
+    root_pos = cube_object.data.root_pos_w.torch
     assert root_pos.shape == (num_cubes, 3)
 
     # root_vel_w: (N, 3)
-    root_vel = wp.to_torch(cube_object.data.root_vel_w)
+    root_vel = cube_object.data.root_vel_w.torch
     assert root_vel.shape == (num_cubes, 3)
 
 
@@ -135,8 +134,8 @@ def test_set_nodal_state(sim, num_cubes):
 
     for state_type_to_randomize in ["nodal_pos_w", "nodal_vel_w"]:
         state_dict = {
-            "nodal_pos_w": torch.zeros_like(wp.to_torch(cube_object.data.nodal_pos_w)),
-            "nodal_vel_w": torch.zeros_like(wp.to_torch(cube_object.data.nodal_vel_w)),
+            "nodal_pos_w": torch.zeros_like(cube_object.data.nodal_pos_w.torch),
+            "nodal_vel_w": torch.zeros_like(cube_object.data.nodal_vel_w.torch),
         }
 
         for _ in range(5):
@@ -155,7 +154,7 @@ def test_set_nodal_state(sim, num_cubes):
                 cube_object.write_nodal_state_to_sim_index(nodal_state)
 
                 torch.testing.assert_close(
-                    wp.to_torch(cube_object.data.nodal_state_w), nodal_state, rtol=1e-5, atol=1e-5
+                    cube_object.data.nodal_state_w.torch, nodal_state, rtol=1e-5, atol=1e-5
                 )
 
                 sim.step()
@@ -170,14 +169,14 @@ def test_write_partial_env_ids(sim, num_cubes):
     sim.reset()
 
     particles_per_body = cube_object.max_sim_vertices_per_body
-    default_pos = wp.to_torch(cube_object.data.nodal_pos_w).clone()
+    default_pos = cube_object.data.nodal_pos_w.torch.clone()
 
     # Write new positions only for env 0
     new_pos = torch.randn(1, particles_per_body, 3, device=sim.device)
     cube_object.write_nodal_pos_to_sim_index(new_pos, env_ids=torch.tensor([0], device=sim.device))
     cube_object.update(sim.cfg.dt)
 
-    read_pos = wp.to_torch(cube_object.data.nodal_pos_w)
+    read_pos = cube_object.data.nodal_pos_w.torch
 
     # env 0 should have new positions
     torch.testing.assert_close(read_pos[0], new_pos[0], rtol=1e-5, atol=1e-5)
@@ -212,7 +211,7 @@ def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, random
         sim.reset()
 
         for _ in range(5):
-            nodal_state = wp.to_torch(cube_object.data.default_nodal_state_w).clone()
+            nodal_state = cube_object.data.default_nodal_state_w.torch.clone()
             mean_nodal_pos_default = nodal_state[..., :3].mean(dim=1)
 
             if randomize_pos:
@@ -244,7 +243,7 @@ def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, random
                 cube_object.update(sim.cfg.dt)
 
             torch.testing.assert_close(
-                wp.to_torch(cube_object.data.root_pos_w), mean_nodal_pos_init, rtol=1e-4, atol=1e-4
+                cube_object.data.root_pos_w.torch, mean_nodal_pos_init, rtol=1e-4, atol=1e-4
             )
 
 
@@ -279,10 +278,10 @@ def test_freefall_analytical(sim):
     cube_object = generate_cubes_scene(num_cubes=1, height=5.0)
     sim.reset()
 
-    x0 = wp.to_torch(cube_object.data.nodal_pos_w).clone()
+    x0 = cube_object.data.nodal_pos_w.torch.clone()
     sim.step()
     cube_object.update(sim.cfg.dt)
-    x1 = wp.to_torch(cube_object.data.nodal_pos_w)
+    x1 = cube_object.data.nodal_pos_w.torch
 
     dz = x1[..., 2] - x0[..., 2]
     # Every vertex should have the same Z displacement under uniform gravity
@@ -302,7 +301,7 @@ def test_set_kinematic_targets(sim, num_cubes):
     sim.reset()
 
     particles_per_body = cube_object.max_sim_vertices_per_body
-    default_state = wp.to_torch(cube_object.data.default_nodal_state_w)
+    default_state = cube_object.data.default_nodal_state_w.torch
     default_pos = default_state[..., :3].clone()
 
     # Build kinematic target buffer: (N, V, 4) = [x, y, z, flag]
@@ -329,13 +328,13 @@ def test_set_kinematic_targets(sim, num_cubes):
 
             # Env 0 should stay at default position (kinematically constrained)
             torch.testing.assert_close(
-                wp.to_torch(cube_object.data.nodal_pos_w)[0],
+                cube_object.data.nodal_pos_w.torch[0],
                 default_pos[0],
                 rtol=1e-5,
                 atol=1e-5,
             )
 
         # Other envs should have fallen
-        final_root_z = wp.to_torch(cube_object.data.root_pos_w)[1:, 2]
+        final_root_z = cube_object.data.root_pos_w.torch[1:, 2]
         default_root_z = default_pos[1:, :, 2].mean(dim=1)
         assert torch.all(final_root_z < default_root_z)
