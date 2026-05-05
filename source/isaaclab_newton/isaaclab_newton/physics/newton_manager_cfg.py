@@ -146,5 +146,6 @@ class NewtonCfg(PhysicsCfg):
             raise TypeError("Cannot manually set NewtonCfg.class_type; it is auto-derived from solver_cfg.class_type.")
         if self.solver_cfg is None:
             from .mjwarp_manager_cfg import MJWarpSolverCfg
+
             self.solver_cfg = MJWarpSolverCfg()
         self.class_type = self.solver_cfg.class_type
