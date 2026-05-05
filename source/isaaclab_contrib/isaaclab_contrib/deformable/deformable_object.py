@@ -612,11 +612,6 @@ class DeformableObject(BaseDeformableObject):
             device=self.device,
         )
 
-        # Bind simulation state arrays
-        state = SimulationManager._state_0
-        if state is not None:
-            self._data.bind_simulation_state(state.particle_q, state.particle_qd)
-
         # Create buffers
         self._create_buffers()
 
@@ -625,16 +620,10 @@ class DeformableObject(BaseDeformableObject):
 
         # Register rebind callback for full resets
         self._physics_ready_handle = SimulationManager.register_callback(
-            lambda _: self._rebind_state(),
+            lambda _: self._data._create_simulation_bindings(),
             PhysicsEvent.PHYSICS_READY,
             name=f"deformable_object_rebind_{self.cfg.prim_path}",
         )
-
-    def _rebind_state(self) -> None:
-        """Rebind state arrays after a full simulation reset."""
-        state = SimulationManager._state_0
-        if state is not None and hasattr(self, "_data"):
-            self._data.bind_simulation_state(state.particle_q, state.particle_qd)
 
     def _create_buffers(self):
         """Create buffers for storing data."""
