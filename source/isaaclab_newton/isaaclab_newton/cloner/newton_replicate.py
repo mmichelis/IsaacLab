@@ -67,7 +67,7 @@ def _build_newton_builder_from_mapping(
     import re
 
     _deformable_ignore_paths: list[str] = []
-    if hasattr(NewtonManager, '_deformable_registry'):
+    if hasattr(NewtonManager, "_deformable_registry"):
         for entry in NewtonManager._deformable_registry:
             pat = re.compile(entry.prim_path.replace(".*", "[^/]*") + "$")
             for src_path in sources:
@@ -127,7 +127,7 @@ def _build_newton_builder_from_mapping(
                     local_site_map[label][col].append(offset + proto_shape_idx)
 
         # Run per-world builder hooks (e.g. deformable body registration).
-        if hasattr(NewtonManager, '_per_world_builder_hooks'):
+        if hasattr(NewtonManager, "_per_world_builder_hooks"):
             for hook in NewtonManager._per_world_builder_hooks:
                 hook(builder, col, positions[col].tolist())
 
@@ -135,7 +135,7 @@ def _build_newton_builder_from_mapping(
         builder.end_world()
 
     # Run post-replicate hooks (e.g. builder.color() for deformable coloring).
-    if hasattr(NewtonManager, '_post_replicate_hooks'):
+    if hasattr(NewtonManager, "_post_replicate_hooks"):
         for hook in NewtonManager._post_replicate_hooks:
             hook(builder)
 

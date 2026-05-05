@@ -12,8 +12,6 @@ uses PD-controlled dynamics (MuJoCo Warp) instead of kinematic integration.
 """
 
 import numpy as np
-
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, CoupledFeatherstoneVBDSolverCfg, NewtonModelCfg, VBDSolverCfg, FeatherstoneSolverCfg
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
@@ -24,8 +22,16 @@ from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
-from isaaclab.sim.spawners.from_files import UsdFileCfg, UrdfFileCfg
+from isaaclab.sim.spawners.from_files import UrdfFileCfg, UsdFileCfg
 from isaaclab.utils import configclass
+
+from isaaclab_contrib.deformable.newton_manager_cfg import (
+    CoupledFeatherstoneVBDSolverCfg,
+    CoupledMJWarpVBDSolverCfg,
+    FeatherstoneSolverCfg,
+    NewtonModelCfg,
+    VBDSolverCfg,
+)
 
 from isaaclab_tasks.utils import PresetCfg
 

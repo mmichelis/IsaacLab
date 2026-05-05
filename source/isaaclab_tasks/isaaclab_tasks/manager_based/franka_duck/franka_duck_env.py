@@ -13,6 +13,7 @@ conflict with USD schema initialisation.
 """
 
 from __future__ import annotations
+
 from isaaclab.envs import ManagerBasedRLEnv
 
 

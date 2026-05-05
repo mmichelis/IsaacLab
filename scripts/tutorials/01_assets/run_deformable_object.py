@@ -37,7 +37,6 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import torch
-import warp as wp
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -156,11 +155,14 @@ def main():
     """Main function."""
     # Load kit helper
     if args_cli.backend == "newton":
-        from isaaclab_contrib.deformable.newton_manager_cfg import VBDSolverCfg
         from isaaclab_newton.physics import NewtonCfg
+
+        from isaaclab_contrib.deformable.newton_manager_cfg import VBDSolverCfg
+
         physics_cfg = NewtonCfg(solver_cfg=VBDSolverCfg(iterations=10), num_substeps=4)
     else:
         from isaaclab_physx.physics import PhysxCfg
+
         physics_cfg = PhysxCfg()
     sim_cfg = sim_utils.SimulationCfg(dt=0.01, device=args_cli.device, physics=physics_cfg)
     sim = sim_utils.SimulationContext(sim_cfg)

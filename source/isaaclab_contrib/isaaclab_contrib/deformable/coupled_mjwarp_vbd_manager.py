@@ -9,20 +9,19 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import warp as wp
-from newton import Model, ModelBuilder, State, Control
-from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
-from newton.solvers import SolverBase, SolverVBD, SolverMuJoCo
-
 from isaaclab_newton.physics.newton_manager import NewtonManager
+from newton import Control, Model, ModelBuilder, State
+from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
+from newton.solvers import SolverBase, SolverMuJoCo, SolverVBD
+
 from isaaclab.sim.utils.stage import get_current_stage
 
-from .newton_manager_cfg import CoupledMJWarpVBDSolverCfg
 from .deformable_object import add_deformable_entry_to_builder
 from .kernels import _kernel_body_particle_reaction
+from .newton_manager_cfg import CoupledMJWarpVBDSolverCfg
 
 if TYPE_CHECKING:
     from isaaclab.sim.simulation_context import SimulationContext
@@ -36,8 +35,8 @@ _MAX_REACTION_CONTACTS: int = 2048
 
 
 class NewtonCoupledMJWarpVBDManager(NewtonManager):
-    """:class:`NewtonManager` specialization for the coupled MJWarp + VBD 
-    solver. Due to Newton deformables not being properly integrated yet, this 
+    """:class:`NewtonManager` specialization for the coupled MJWarp + VBD
+    solver. Due to Newton deformables not being properly integrated yet, this
     manager uses the same temporary solutions from VBD Manager.
 
     Always uses Newton's :class:`CollisionPipeline` for contact handling.
@@ -54,21 +53,23 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
         Args:
             sim_context: Parent simulation context.
 
-        TODO: Subclass should not override this method, once deformables 
-        supported on Newton import_usd, this can be unified with NewtonManager's 
+        TODO: Subclass should not override this method, once deformables
+        supported on Newton import_usd, this can be unified with NewtonManager's
         implementation.
         """
+
         # Newton cloner (newton_replicate) needs these hooks for now.
         def per_world_deformable_hook(builder: ModelBuilder, world_idx: int, env_position: list[float]):
             from isaaclab_newton.physics import NewtonManager
+
             for entry in NewtonManager._deformable_registry:
                 add_deformable_entry_to_builder(builder, entry, world_idx, env_position)
 
         def post_replicate_deformable_hook(builder: ModelBuilder):
             from isaaclab_newton.physics import NewtonManager
+
             if NewtonManager._deformable_registry:
                 builder.color()
-
 
         # Deformable body registry and extension hooks.
         # Experimental deformable support registers callbacks here so the manager
@@ -87,6 +88,7 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
     def step(cls) -> None:
         """Step the physics simulation."""
         from isaaclab.physics import PhysicsManager
+
         sim = PhysicsManager._sim
         if sim is None or not sim.is_playing():
             return
@@ -135,7 +137,7 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
         Note: Collision pipeline is initialized later in initialize_solver() after
         we determine whether the solver needs external collision detection.
 
-        TODO: Subclass should not override this method, missing piece is 
+        TODO: Subclass should not override this method, missing piece is
         having Newton bind a surface mesh to volume deformable tetrahedral mesh
         in addition to removing the deformable_registry data structure.
         """
@@ -166,7 +168,9 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
 
         # Setup USD/Fabric sync for Kit viewport deformable rendering
         if not cls._clone_physics_only and cls._deformable_registry:
-            import usdrt, re
+            import re
+
+            import usdrt
 
             if NewtonManager._usdrt_stage is None:
                 NewtonManager._usdrt_stage = get_current_stage(fabric=True)
@@ -187,9 +191,13 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
                     # prim so the Fabric sync kernel can find the right slice of particle_q
                     # and iterate only over this body's particles (counts vary across bodies).
                     fab_prim = NewtonManager._usdrt_stage.GetPrimAtPath(vis_prim.GetPath().pathString)
-                    fab_prim.CreateAttribute(NewtonManager._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                    fab_prim.CreateAttribute(
+                        NewtonManager._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True
+                    )
                     fab_prim.GetAttribute(NewtonManager._newton_particle_offset_attr).Set(offset)
-                    fab_prim.CreateAttribute(NewtonManager._newton_particle_count_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                    fab_prim.CreateAttribute(
+                        NewtonManager._newton_particle_count_attr, usdrt.Sdf.ValueTypeNames.UInt, True
+                    )
                     fab_prim.GetAttribute(NewtonManager._newton_particle_count_attr).Set(entry.particles_per_body)
 
             cls._mark_particles_dirty()
@@ -197,15 +205,15 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
 
     @classmethod
     def instantiate_builder_from_stage(cls):
-        """Create builder from USD stage with special treatment for deformable 
+        """Create builder from USD stage with special treatment for deformable
         bodies, as these are not read from USD yet.
 
         Detects env Xforms (e.g. ``/World/Env_0``, ``/World/Env_1``) and builds
         each as a separate Newton world via ``begin_world``/``end_world``.
         Falls back to a flat ``add_usd`` when no env Xforms are found.
 
-        TODO: Subclass should not override this method, once deformables 
-        supported on Newton import_usd, this can be unified with NewtonManager's 
+        TODO: Subclass should not override this method, once deformables
+        supported on Newton import_usd, this can be unified with NewtonManager's
         implementation.
         """
         import re
@@ -284,7 +292,7 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
                         local_site_map[label] = [[] for _ in range(num_worlds)]
                     for proto_shape_idx in proto_shape_indices:
                         local_site_map[label][col].append(offset + proto_shape_idx)
-                
+
                 # Add deformable bodies from the registry into this world.
                 for entry in cls._deformable_registry:
                     add_deformable_entry_to_builder(builder, entry, col, list(pos))
@@ -305,7 +313,7 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
 
     @classmethod
     def _build_solver(cls, model: Model, solver_cfg: CoupledMJWarpVBDSolverCfg) -> None:
-        """Construct a custom coupling between two solvers and populate the 
+        """Construct a custom coupling between two solvers and populate the
         base-class slots.
 
         VBD always uses Newton's :class:`CollisionPipeline` and steps with

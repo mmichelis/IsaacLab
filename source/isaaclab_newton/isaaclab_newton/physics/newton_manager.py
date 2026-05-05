@@ -71,6 +71,7 @@ def _set_fabric_transforms(
     transform = newton_body_q[idx]
     fabric_transforms[i] = wp.transpose(wp.mat44d(wp.math.transform_to_matrix(transform)))
 
+
 @wp.kernel(enable_backward=False)
 def _sync_particle_points(
     fabric_points: wp.fabricarrayarray(dtype=wp.vec3f),
@@ -98,6 +99,7 @@ def _sync_particle_points(
 
     for j in range(num_points):
         fabric_points[i][j] = wp.transform_point(inv_world_matrix, particle_q[offset + j])
+
 
 @wp.kernel(enable_backward=False)
 def _or_reset_masks_from_mask(
@@ -390,11 +392,7 @@ class NewtonManager(PhysicsManager):
         No-op when there is no ``_usdrt_stage``, no simulation state, or no
         deformable bodies registered.
         """
-        if (
-            cls._usdrt_stage is None
-            or cls._state_0 is None
-            or cls._state_0.particle_q is None
-        ):
+        if cls._usdrt_stage is None or cls._state_0 is None or cls._state_0.particle_q is None:
             return
         if not cls._particles_dirty:
             return

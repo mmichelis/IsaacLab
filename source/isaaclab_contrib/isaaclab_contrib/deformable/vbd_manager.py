@@ -9,24 +9,24 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import warp as wp
+from isaaclab_newton.physics.newton_manager import NewtonManager
 from newton import Model, ModelBuilder
 from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from newton.solvers import SolverVBD
 
-from isaaclab_newton.physics.newton_manager import NewtonManager
 from isaaclab.sim.utils.stage import get_current_stage
 
-from .newton_manager_cfg import VBDSolverCfg
 from .deformable_object import add_deformable_entry_to_builder
+from .newton_manager_cfg import VBDSolverCfg
 
 if TYPE_CHECKING:
     from isaaclab.sim.simulation_context import SimulationContext
 
 logger = logging.getLogger(__name__)
+
 
 class NewtonVBDManager(NewtonManager):
     """:class:`NewtonManager` specialization for the VBD solver.
@@ -41,21 +41,23 @@ class NewtonVBDManager(NewtonManager):
         Args:
             sim_context: Parent simulation context.
 
-        TODO: Subclass should not override this method, once deformables 
-        supported on Newton import_usd, this can be unified with NewtonManager's 
+        TODO: Subclass should not override this method, once deformables
+        supported on Newton import_usd, this can be unified with NewtonManager's
         implementation.
         """
+
         # Newton cloner (newton_replicate) needs these hooks for now.
         def per_world_deformable_hook(builder: ModelBuilder, world_idx: int, env_position: list[float]):
             from isaaclab_newton.physics import NewtonManager
+
             for entry in NewtonManager._deformable_registry:
                 add_deformable_entry_to_builder(builder, entry, world_idx, env_position)
 
         def post_replicate_deformable_hook(builder: ModelBuilder):
             from isaaclab_newton.physics import NewtonManager
+
             if NewtonManager._deformable_registry:
                 builder.color()
-
 
         # Deformable body registry and extension hooks.
         # Experimental deformable support registers callbacks here so the manager
@@ -105,7 +107,7 @@ class NewtonVBDManager(NewtonManager):
         Note: Collision pipeline is initialized later in initialize_solver() after
         we determine whether the solver needs external collision detection.
 
-        TODO: Subclass should not override this method, missing piece is 
+        TODO: Subclass should not override this method, missing piece is
         having Newton bind a surface mesh to volume deformable tetrahedral mesh
         in addition to removing the deformable_registry data structure.
         """
@@ -136,11 +138,12 @@ class NewtonVBDManager(NewtonManager):
 
         # Setup USD/Fabric sync for Kit viewport deformable rendering
         if not cls._clone_physics_only and cls._deformable_registry:
-            import usdrt, re
+            import re
+
+            import usdrt
 
             if NewtonManager._usdrt_stage is None:
                 NewtonManager._usdrt_stage = get_current_stage(fabric=True)
-
 
             stage = get_current_stage()
             for entry in cls._deformable_registry:
@@ -158,9 +161,13 @@ class NewtonVBDManager(NewtonManager):
                     # prim so the Fabric sync kernel can find the right slice of particle_q
                     # and iterate only over this body's particles (counts vary across bodies).
                     fab_prim = NewtonManager._usdrt_stage.GetPrimAtPath(vis_prim.GetPath().pathString)
-                    fab_prim.CreateAttribute(NewtonManager._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                    fab_prim.CreateAttribute(
+                        NewtonManager._newton_particle_offset_attr, usdrt.Sdf.ValueTypeNames.UInt, True
+                    )
                     fab_prim.GetAttribute(NewtonManager._newton_particle_offset_attr).Set(offset)
-                    fab_prim.CreateAttribute(NewtonManager._newton_particle_count_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
+                    fab_prim.CreateAttribute(
+                        NewtonManager._newton_particle_count_attr, usdrt.Sdf.ValueTypeNames.UInt, True
+                    )
                     fab_prim.GetAttribute(NewtonManager._newton_particle_count_attr).Set(entry.particles_per_body)
 
             cls._mark_particles_dirty()
@@ -168,15 +175,15 @@ class NewtonVBDManager(NewtonManager):
 
     @classmethod
     def instantiate_builder_from_stage(cls):
-        """Create builder from USD stage with special treatment for deformable 
+        """Create builder from USD stage with special treatment for deformable
         bodies, as these are not read from USD yet.
 
         Detects env Xforms (e.g. ``/World/Env_0``, ``/World/Env_1``) and builds
         each as a separate Newton world via ``begin_world``/``end_world``.
         Falls back to a flat ``add_usd`` when no env Xforms are found.
 
-        TODO: Subclass should not override this method, once deformables 
-        supported on Newton import_usd, this can be unified with NewtonManager's 
+        TODO: Subclass should not override this method, once deformables
+        supported on Newton import_usd, this can be unified with NewtonManager's
         implementation.
         """
         import re
@@ -255,7 +262,7 @@ class NewtonVBDManager(NewtonManager):
                         local_site_map[label] = [[] for _ in range(num_worlds)]
                     for proto_shape_idx in proto_shape_indices:
                         local_site_map[label][col].append(offset + proto_shape_idx)
-                
+
                 # Add deformable bodies from the registry into this world.
                 for entry in cls._deformable_registry:
                     add_deformable_entry_to_builder(builder, entry, col, list(pos))

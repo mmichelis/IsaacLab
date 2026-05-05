@@ -159,7 +159,6 @@ class CoupledFeatherstoneVBDSolverCfg(NewtonSolverCfg):
     """
 
 
-
 @configclass
 class NewtonModelCfg:
     """Global Newton model parameters.

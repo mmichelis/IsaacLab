@@ -45,7 +45,9 @@ class SoftbodyFrankaEnv(DirectRLEnv):
         # Set initial joint position targets to default config so PD doesn't
         # drive to zeros before IK is ready.
         default_pos = wp.to_torch(self.robot.data.default_joint_pos)
-        self.robot.set_joint_position_target_index(target=default_pos, joint_ids=list(range(len(self.robot.joint_names))))
+        self.robot.set_joint_position_target_index(
+            target=default_pos, joint_ids=list(range(len(self.robot.joint_names)))
+        )
 
         # Parse keyframes
         kf = KEYFRAMES.copy()
@@ -133,7 +135,9 @@ class SoftbodyFrankaEnv(DirectRLEnv):
         import newton.utils
 
         # FR3 URDF
-        if hasattr(self.cfg.robot_cfg.spawn, "asset_path") and "PLACEHOLDER" in str(self.cfg.robot_cfg.spawn.asset_path):
+        if hasattr(self.cfg.robot_cfg.spawn, "asset_path") and "PLACEHOLDER" in str(
+            self.cfg.robot_cfg.spawn.asset_path
+        ):
             franka_dir = newton.utils.download_asset("franka_emika_panda")
             self.cfg.robot_cfg.spawn.asset_path = str(franka_dir / "urdf" / "fr3_franka_hand.urdf")
 
@@ -145,21 +149,21 @@ class SoftbodyFrankaEnv(DirectRLEnv):
 
             if not wrapper_path.exists():
                 wrapper = (
-                    '#usda 1.0\n'
-                    '(\n'
+                    "#usda 1.0\n"
+                    "(\n"
                     '    defaultPrim = "duck"\n'
-                    '    metersPerUnit = 1\n'
+                    "    metersPerUnit = 1\n"
                     '    upAxis = "Z"\n'
-                    ')\n'
-                    '\n'
+                    ")\n"
+                    "\n"
                     'def Xform "duck"\n'
-                    '{\n'
+                    "{\n"
                     f'    def TetMesh "geometry" (\n'
-                    f'        prepend references = @{mesh_usd}@</TetModel>\n'
-                    '    )\n'
-                    '    {\n'
-                    '    }\n'
-                    '}\n'
+                    f"        prepend references = @{mesh_usd}@</TetModel>\n"
+                    "    )\n"
+                    "    {\n"
+                    "    }\n"
+                    "}\n"
                 )
                 wrapper_path.write_text(wrapper)
 
@@ -346,9 +350,7 @@ class SoftbodyFrankaEnv(DirectRLEnv):
 
         if self._ik_available:
             # Update IK targets
-            self._pos_obj.set_target_position(
-                0, wp.vec3(float(target[0]), float(target[1]), float(target[2]))
-            )
+            self._pos_obj.set_target_position(0, wp.vec3(float(target[0]), float(target[1]), float(target[2])))
             self._rot_obj.set_target_rotation(
                 0, wp.vec4(float(target[3]), float(target[4]), float(target[5]), float(target[6]))
             )
@@ -372,9 +374,7 @@ class SoftbodyFrankaEnv(DirectRLEnv):
                 # this to joint_qd and uses Featherstone as a kinematic integrator.
                 current_q = wp.to_torch(self.robot.data.joint_pos)[0]
                 arm_vel = (solved_arm_q - current_q[self._arm_joint_idx]) / self._step_dt
-                self.robot.set_joint_velocity_target_index(
-                    target=arm_vel.unsqueeze(0), joint_ids=self._arm_joint_idx
-                )
+                self.robot.set_joint_velocity_target_index(target=arm_vel.unsqueeze(0), joint_ids=self._arm_joint_idx)
             else:
                 # PD mode: set position targets for the PD controller.
                 self.robot.set_joint_position_target_index(
@@ -392,9 +392,7 @@ class SoftbodyFrankaEnv(DirectRLEnv):
         if self.cfg.kinematic_control:
             current_finger = wp.to_torch(self.robot.data.joint_pos)[0, self._finger_joint_idx]
             finger_vel = (finger_target[0] - current_finger) / self._step_dt
-            self.robot.set_joint_velocity_target_index(
-                target=finger_vel.unsqueeze(0), joint_ids=self._finger_joint_idx
-            )
+            self.robot.set_joint_velocity_target_index(target=finger_vel.unsqueeze(0), joint_ids=self._finger_joint_idx)
         else:
             self.robot.set_joint_position_target_index(target=finger_target, joint_ids=self._finger_joint_idx)
 

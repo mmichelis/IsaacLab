@@ -18,14 +18,14 @@ simulation_app = AppLauncher(headless=True).app
 
 import pytest
 import warp as wp
-
-from isaaclab_contrib.deformable import CoupledSolverCfg, DeformableObject, VBDSolverCfg, register_hooks
 from isaaclab_newton.assets import Articulation
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.sim import SimulationCfg, build_simulation_context
+
+from isaaclab_contrib.deformable import CoupledSolverCfg, DeformableObject, VBDSolverCfg, register_hooks
 
 from isaaclab_assets import FRANKA_PANDA_CFG  # isort:skip
 

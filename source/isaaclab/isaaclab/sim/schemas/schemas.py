@@ -1122,9 +1122,7 @@ def define_deformable_body_properties(
         # in case a TetMesh is found but no Mesh is found, we use the surface mesh from the TetMesh for volume deformables.
         if sim_mesh_prim is not None:
             tet_mesh_prim = UsdGeom.TetMesh(sim_mesh_prim)
-            surface_indices = UsdGeom.TetMesh.ComputeSurfaceFaces(
-                tet_mesh_prim, Usd.TimeCode.Default()
-            )
+            surface_indices = UsdGeom.TetMesh.ComputeSurfaceFaces(tet_mesh_prim, Usd.TimeCode.Default())
             if surface_indices is None or len(surface_indices) == 0:
                 raise ValueError(
                     f"Deformable body at '{prim_path}' has no surface indices on its TetMesh prim; "
@@ -1241,7 +1239,9 @@ def define_deformable_body_properties(
         )
         UsdGeom.TetMesh(sim_mesh_prim).GetSurfaceFaceVertexIndicesAttr().Set(surface_face_indices)
         sim_mesh_prim.GetAttribute("omniphysics:restShapePoints").Set(sim_mesh_prim.GetAttribute("points").Get())
-        sim_mesh_prim.GetAttribute("omniphysics:restTetVtxIndices").Set(sim_mesh_prim.GetAttribute("tetVertexIndices").Get())
+        sim_mesh_prim.GetAttribute("omniphysics:restTetVtxIndices").Set(
+            sim_mesh_prim.GetAttribute("tetVertexIndices").Get()
+        )
 
     else:
         raise ValueError(

@@ -1,40 +1,6 @@
 Changelog
 ---------
 
-0.5.27 (2026-05-04)
-~~~~~~~~~~~~~~~~~~~
-
-Changed
-^^^^^^^
-
-* Refactored :class:`~isaaclab_newton.physics.NewtonManager` into a
-  solver-agnostic abstract base with one concrete subclass per solver:
-  :class:`~isaaclab_newton.physics.NewtonMJWarpManager`,
-  :class:`~isaaclab_newton.physics.NewtonXPBDManager`,
-  :class:`~isaaclab_newton.physics.NewtonKaminoManager`, and
-  :class:`~isaaclab_newton.physics.NewtonFeatherstoneManager`.  Each
-  ``*SolverCfg`` now declares a ``class_type`` field pointing at its
-  matching manager subclass; :meth:`~isaaclab_newton.physics.NewtonCfg.__post_init__`
-  propagates ``solver_cfg.class_type`` onto :attr:`NewtonCfg.class_type`
-  so that ``SimulationContext`` resolves the right manager via the
-  existing dispatch path.  The previous ``solver_type`` if/elif ladder
-  in ``initialize_solver`` is replaced by polymorphic dispatch on
-  :meth:`_build_solver`, which is now an :func:`abc.abstractmethod` and
-  assigns :attr:`NewtonManager._solver`,
-  :attr:`NewtonManager._use_single_state`, and
-  :attr:`NewtonManager._needs_collision_pipeline` directly (no return
-  value).  User-facing config API is unchanged — existing
-  ``NewtonCfg(solver_cfg=MJWarpSolverCfg(...))`` code keeps working.
-
-Deprecated
-^^^^^^^^^^
-
-* Deprecated :attr:`~isaaclab_newton.physics.NewtonSolverCfg.solver_type`.
-  The field is now metadata only (kept for logging).  Manager dispatch
-  is driven by :attr:`~isaaclab_newton.physics.NewtonSolverCfg.class_type`;
-  do not branch on ``solver_type``.
-
-
 0.5.26 (2026-04-30)
 ~~~~~~~~~~~~~~~~~~~
 
