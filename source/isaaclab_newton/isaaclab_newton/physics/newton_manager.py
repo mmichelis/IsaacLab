@@ -54,22 +54,37 @@ logger = logging.getLogger(__name__)
 # _LocalSite:  (None, [[env0_idx, ...], ...])     — per-world site indices
 
 
+
 @wp.kernel(enable_backward=False)
 def _set_fabric_transforms(
-    fabric_transforms: wp.fabricarray(dtype=wp.mat44d),
+    fabric_world_transforms: wp.fabricarray(dtype=wp.mat44d),
+    fabric_local_transforms: wp.fabricarray(dtype=wp.mat44d),
     newton_indices: wp.fabricarray(dtype=wp.uint32),
+    newton_parent_indices: wp.array(dtype=wp.int32),
+    newton_parent_inv_matrices: wp.array(dtype=wp.mat44f),
     newton_body_q: wp.array(ndim=1, dtype=wp.transformf),
 ):
-    """Write Newton body transforms to Fabric world matrices.
+    """Write Newton body transforms to Fabric world and local matrices.
 
     For each Fabric prim at thread ``i``, reads the Newton body transform at
     ``newton_body_q[newton_indices[i]]`` and stores it as a column-major
-    ``mat44d`` in ``fabric_transforms[i]``.
+    ``mat44d`` in ``fabric_world_transforms[i]``. It also writes the local
+    matrix relative to the nearest Newton body ancestor so Fabric can propagate
+    updated transforms to visual child prims.
     """
     i = int(wp.tid())
     idx = int(newton_indices[i])
-    transform = newton_body_q[idx]
-    fabric_transforms[i] = wp.transpose(wp.mat44d(wp.math.transform_to_matrix(transform)))
+    world_transform = newton_body_q[idx]
+    world_matrix = wp.math.transform_to_matrix(world_transform)
+    local_matrix = world_matrix
+    parent_idx = int(newton_parent_indices[idx])
+    if parent_idx >= 0:
+        parent_matrix = wp.math.transform_to_matrix(newton_body_q[parent_idx])
+        local_matrix = wp.inverse(parent_matrix) * world_matrix
+    else:
+        local_matrix = newton_parent_inv_matrices[idx] * world_matrix
+    fabric_world_transforms[i] = wp.transpose(wp.mat44d(world_matrix))
+    fabric_local_transforms[i] = wp.transpose(wp.mat44d(local_matrix))
 
 
 @wp.kernel(enable_backward=False)
@@ -153,6 +168,8 @@ class NewtonManager(PhysicsManager):
     _newton_index_attr = "newton:index"
     _clone_physics_only = False
     _transforms_dirty: bool = False
+    _body_parent_indices: wp.array | None = None
+    _body_parent_inv_matrices: wp.array | None = None
 
     # cubric GPU transform hierarchy (replaces CPU update_world_xforms)
     _cubric = None
@@ -278,6 +295,9 @@ class NewtonManager(PhysicsManager):
             return
         if not cls._transforms_dirty:
             return
+        if cls._body_parent_indices is None or cls._body_parent_inv_matrices is None:
+            NewtonManager._transforms_dirty = False
+            return
         try:
             import usdrt
 
@@ -308,12 +328,12 @@ class NewtonManager(PhysicsManager):
             # pauses tracking before any Fabric writes.
             if use_cubric and fabric_hierarchy is not None:
                 fabric_hierarchy.track_world_xform_changes(False)
-                fabric_hierarchy.track_local_xform_changes(False)
 
             try:
                 selection = cls._usdrt_stage.SelectPrims(
                     require_attrs=[
                         (usdrt.Sdf.ValueTypeNames.Matrix4d, "omni:fabric:worldMatrix", usdrt.Usd.Access.ReadWrite),
+                        (usdrt.Sdf.ValueTypeNames.Matrix4d, "omni:fabric:localMatrix", usdrt.Usd.Access.ReadWrite),
                         (usdrt.Sdf.ValueTypeNames.UInt, cls._newton_index_attr, usdrt.Usd.Access.Read),
                     ],
                     device=str(PhysicsManager._device),
@@ -322,12 +342,20 @@ class NewtonManager(PhysicsManager):
                     cls._transforms_dirty = False
                     return
 
-                fabric_transforms = wp.fabricarray(selection, "omni:fabric:worldMatrix")
+                fabric_world_transforms = wp.fabricarray(selection, "omni:fabric:worldMatrix")
+                fabric_local_transforms = wp.fabricarray(selection, "omni:fabric:localMatrix")
                 newton_indices = wp.fabricarray(selection, cls._newton_index_attr)
                 wp.launch(
                     _set_fabric_transforms,
                     dim=newton_indices.shape[0],
-                    inputs=[fabric_transforms, newton_indices, cls._state_0.body_q],
+                    inputs=[
+                        fabric_world_transforms,
+                        fabric_local_transforms,
+                        newton_indices,
+                        cls._body_parent_indices,
+                        cls._body_parent_inv_matrices,
+                        cls._state_0.body_q,
+                    ],
                     device=PhysicsManager._device,
                 )
                 wp.synchronize_device(PhysicsManager._device)
@@ -340,12 +368,12 @@ class NewtonManager(PhysicsManager):
                         cls._cubric.bind_to_stage(cls._cubric_adapter, fabric_id)
                         cls._cubric_bound_fabric_id = fabric_id
                     cls._cubric.compute(cls._cubric_adapter)
+                    fabric_hierarchy.update_world_xforms()
                 elif fabric_hierarchy is not None:
                     fabric_hierarchy.update_world_xforms()
             finally:
                 if use_cubric and fabric_hierarchy is not None:
                     fabric_hierarchy.track_world_xform_changes(True)
-                    fabric_hierarchy.track_local_xform_changes(True)
         except Exception:
             logger.exception("[NewtonManager] sync_transforms_to_usd FAILED")
 
@@ -480,6 +508,8 @@ class NewtonManager(PhysicsManager):
         cls._graph_capture_pending = False
         cls._newton_stage_path = None
         cls._usdrt_stage = None
+        cls._body_parent_indices = None
+        cls._body_parent_inv_matrices = None
         cls._transforms_dirty = False
         cls._up_axis = "Z"
         cls._model_changes = set()
@@ -788,7 +818,55 @@ class NewtonManager(PhysicsManager):
             body_paths = getattr(cls._model, "body_label", None) or getattr(cls._model, "body_key", None)
             if body_paths is None:
                 raise RuntimeError("NewtonManager: model has no body_label/body_key, skipping USD/Fabric sync for RTX.")
-            cls._usdrt_stage = get_current_stage(fabric=True)
+            else:
+                import numpy as np
+
+                body_paths = [str(path) for path in body_paths]
+                body_index_by_path = {path: i for i, path in enumerate(body_paths)}
+                NewtonManager._usdrt_stage = get_current_stage(fabric=True)
+
+                identity_matrix = np.eye(4, dtype=np.float32)
+                parent_indices = []
+                for prim_path in body_paths:
+                    parent_index = -1
+                    parent_path = prim_path
+                    while "/" in parent_path:
+                        parent_path = parent_path.rsplit("/", 1)[0]
+                        if parent_path in body_index_by_path:
+                            parent_index = body_index_by_path[parent_path]
+                            break
+                    parent_indices.append(parent_index)
+                NewtonManager._body_parent_indices = wp.array(parent_indices, dtype=wp.int32, device=device)
+
+                parent_inv_matrices = []
+                for prim_path, parent_index in zip(body_paths, parent_indices):
+                    if parent_index >= 0:
+                        parent_inv_matrix = identity_matrix
+                    else:
+                        parent_path = prim_path.rsplit("/", 1)[0]
+                        parent_inv_matrix = identity_matrix
+                        try:
+                            parent_prim = NewtonManager._usdrt_stage.GetPrimAtPath(parent_path)
+                            parent_xformable = usdrt.Rt.Xformable(parent_prim)
+                            if not parent_xformable.HasWorldXform():
+                                parent_xformable.SetWorldXformFromUsd()
+                            parent_world_matrix = parent_prim.GetAttribute("omni:fabric:worldMatrix").Get()
+                            parent_world_matrix = np.array(
+                                [[float(parent_world_matrix[row][col]) for col in range(4)] for row in range(4)],
+                                dtype=np.float32,
+                            )
+                            parent_inv_matrix = np.linalg.inv(parent_world_matrix.T)
+                        except Exception:
+                            logger.debug(
+                                "NewtonManager: failed to read Fabric parent transform for %s; using identity.",
+                                prim_path,
+                                exc_info=True,
+                            )
+                    parent_inv_matrices.append(wp.mat44f(*parent_inv_matrix.reshape(-1).tolist()))
+                NewtonManager._body_parent_inv_matrices = wp.array(
+                    parent_inv_matrices, dtype=wp.mat44f, device=device
+                )
+
             for i, prim_path in enumerate(body_paths):
                 prim = cls._usdrt_stage.GetPrimAtPath(prim_path)
                 prim.CreateAttribute(cls._newton_index_attr, usdrt.Sdf.ValueTypeNames.UInt, True)
