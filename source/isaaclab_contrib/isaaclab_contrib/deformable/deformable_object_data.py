@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import warp as wp
+from isaaclab_newton.physics import NewtonManager as SimulationManager
 
 from isaaclab.assets.deformable_object.base_deformable_object_data import BaseDeformableObjectData
 from isaaclab.utils.buffers import TimestampedBufferWarp as TimestampedBuffer
@@ -42,9 +43,9 @@ class DeformableObjectData(BaseDeformableObjectData):
         """
         super().__init__(device)
 
-        # Store direct references (no weakref) — set later by the asset class when state is available
-        self._particle_q: wp.array | None = None
-        self._particle_qd: wp.array | None = None
+        # Direct simulation bindings are set when the Newton state is available.
+        self._sim_bind_particle_q: wp.array | None = None
+        self._sim_bind_particle_qd: wp.array | None = None
 
         # Store dimensions and indexing
         self._particle_offsets = particle_offsets
@@ -62,6 +63,8 @@ class DeformableObjectData(BaseDeformableObjectData):
         self._nodal_state_w_ta: ProxyArray | None = None
         self._root_pos_w_ta: ProxyArray | None = None
         self._root_vel_w_ta: ProxyArray | None = None
+
+        self._create_simulation_bindings()
 
     ##
     # Defaults.
@@ -81,17 +84,29 @@ class DeformableObjectData(BaseDeformableObjectData):
     Shape is (num_instances, particles_per_body) with dtype vec4f.
     """
 
-    def bind_simulation_state(self, particle_q: wp.array, particle_qd: wp.array) -> None:
-        """Bind the simulation state arrays for lazy reads.
+    def _create_simulation_bindings(self) -> None:
+        """Create simulation bindings for the deformable particle data.
 
-        Called by the asset class after the Newton model is built and states are available.
-
-        Args:
-            particle_q: Flat particle positions from Newton state. Shape is (total_particles,) vec3f.
-            particle_qd: Flat particle velocities from Newton state. Shape is (total_particles,) vec3f.
+        Direct simulation bindings are pointers to Newton simulation data. The data is not copied, and any
+        modifications made through these arrays are reflected in the simulation. The bindings are recreated after a
+        full simulation reset because Newton recreates its internal state arrays.
         """
-        self._particle_q = particle_q
-        self._particle_qd = particle_qd
+        state = SimulationManager.get_state_0()
+        if state is None or state.particle_q is None or state.particle_qd is None:
+            raise RuntimeError(
+                "Failed to bind Newton deformable particle state. Ensure the Newton model has been finalized and "
+                "contains particle position and velocity arrays."
+            )
+
+        self._sim_bind_particle_q = state.particle_q
+        self._sim_bind_particle_qd = state.particle_qd
+
+        # Invalidate lazy buffers gathered from the previous simulation bindings.
+        self._nodal_pos_w.timestamp = -1.0
+        self._nodal_vel_w.timestamp = -1.0
+        self._nodal_state_w.timestamp = -1.0
+        self._root_pos_w.timestamp = -1.0
+        self._root_vel_w.timestamp = -1.0
 
     ##
     # Properties.
@@ -104,7 +119,7 @@ class DeformableObjectData(BaseDeformableObjectData):
             wp.launch(
                 gather_particles_vec3f,
                 dim=(self._num_instances, self._particles_per_body),
-                inputs=[self._particle_q, self._particle_offsets, self._particles_per_body],
+                inputs=[self._sim_bind_particle_q, self._particle_offsets, self._particles_per_body],
                 outputs=[self._nodal_pos_w.data],
                 device=self.device,
             )
@@ -120,7 +135,7 @@ class DeformableObjectData(BaseDeformableObjectData):
             wp.launch(
                 gather_particles_vec3f,
                 dim=(self._num_instances, self._particles_per_body),
-                inputs=[self._particle_qd, self._particle_offsets, self._particles_per_body],
+                inputs=[self._sim_bind_particle_qd, self._particle_offsets, self._particles_per_body],
                 outputs=[self._nodal_vel_w.data],
                 device=self.device,
             )
