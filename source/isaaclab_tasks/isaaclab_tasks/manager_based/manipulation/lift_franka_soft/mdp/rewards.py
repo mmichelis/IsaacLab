@@ -3,12 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reward and termination functions for the Franka deformable lifting environment.
-
-These mirror the functions in ``isaaclab_tasks.manager_based.manipulation.lift.mdp.rewards``
-but read the deformable object's centre of mass via :attr:`~isaaclab.assets.DeformableObject.data.root_pos_w`
-(mean of nodal positions) instead of a rigid object's root pose.
-"""
+"""Reward and termination functions for the Franka deformable lifting environment."""
 
 from __future__ import annotations
 
@@ -26,29 +21,48 @@ if TYPE_CHECKING:
     from isaaclab.sensors import FrameTransformer
 
 
-def deformable_com_lifted(
+def deformable_lifted(
     env: ManagerBasedRLEnv,
     minimal_height: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
 ) -> torch.Tensor:
-    """Reward the agent for lifting the deformable object's COM above a minimum height [m]."""
+    """Reward if any deformable nodal point is above a minimum height.
+
+    Args:
+        env: The environment instance.
+        minimal_height: Minimum nodal height [m].
+        asset_cfg: The deformable object entity.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
     asset: DeformableObject = env.scene[asset_cfg.name]
-    com_z = wp.to_torch(asset.data.root_pos_w)[:, 2]
-    return torch.where(com_z > minimal_height, 1.0, 0.0)
+    nodal_z = wp.to_torch(asset.data.nodal_pos_w)[..., 2]
+    return torch.any(nodal_z > minimal_height, dim=1).float()
 
 
-def deformable_com_ee_distance(
+def deformable_ee_distance(
     env: ManagerBasedRLEnv,
     std: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
-    """Reward the agent for reaching the deformable's COM with the end-effector (tanh kernel)."""
+    """Reward reaching the deformable's nearest nodal point with the end-effector.
+
+    Args:
+        env: The environment instance.
+        std: The tanh kernel standard deviation [m].
+        asset_cfg: The deformable object entity.
+        ee_frame_cfg: The end-effector frame entity.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
     asset: DeformableObject = env.scene[asset_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    com_w = wp.to_torch(asset.data.root_pos_w)
+    nodal_pos_w = wp.to_torch(asset.data.nodal_pos_w)
     ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
-    distance = torch.linalg.norm(com_w - ee_w, dim=1)
+    distance = torch.linalg.norm(nodal_pos_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
     return 1.0 - torch.tanh(distance / std)
 
 
