@@ -1077,7 +1077,8 @@ def define_deformable_body_properties(
             current stage is used.
         deformable_type: The type of the deformable body (surface or volume).
             This is used to determine which USD API to use for the deformable body. Defaults to "volume".
-        sim_mesh_prim_path: Optional override for the simulation mesh creation prim path. Ignored when pre-tetrahedralized mesh is found for volume deformables.
+        sim_mesh_prim_path: Optional override for the simulation mesh creation prim path.
+            Ignored when pre-tetrahedralized mesh is found for volume deformables.
             If None, it is set to ``{prim_path}/sim_mesh``.
 
     Raises:
@@ -1119,7 +1120,7 @@ def define_deformable_body_properties(
     matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "Mesh")
     # check if the visual surface mesh is valid
     if len(matching_prims) == 0:
-        # in case a TetMesh is found but no Mesh is found, we use the surface mesh from the TetMesh for volume deformables.
+        # in case a TetMesh is found but no Mesh is found, we use the TetMesh surface as visual.
         if sim_mesh_prim is not None:
             tet_mesh_prim = UsdGeom.TetMesh(sim_mesh_prim)
             surface_indices = UsdGeom.TetMesh.ComputeSurfaceFaces(tet_mesh_prim, Usd.TimeCode.Default())

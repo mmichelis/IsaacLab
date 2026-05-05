@@ -129,7 +129,8 @@ class CoupledFeatherstoneVBDSolverCfg(NewtonSolverCfg):
     Alternates a rigid-body solver (:class:`FeatherstoneSolverCfg`) and a soft-body solver (:class:`SolverVBD`) per
     substep. The coupling direction is controlled by :attr:`coupling_mode`:
 
-    - ``"kinematic"`` (default): Rigid -> soft only. Rigid bodies are kinematically updated by the rigid solver, then VBD reads the updated body poses and reacts to them. The rigid solver does not feel particle contacts.
+    - ``"kinematic"`` (default): Rigid -> soft only. Rigid bodies are kinematically updated by the rigid solver,
+      then VBD reads the updated body poses and reacts to them. The rigid solver does not feel particle contacts.
     - ``"one_way"``: Rigid solver advances first, then VBD reads
       the updated body poses. The rigid solver does not feel particle contacts.
     - ``"two_way"``: Same-substep two-way coupling with normal + Coulomb
