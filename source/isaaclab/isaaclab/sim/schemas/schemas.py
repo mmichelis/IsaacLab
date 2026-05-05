@@ -1197,7 +1197,7 @@ def define_deformable_body_properties(
             tet_mesh_points, tet_mesh_indices = tetrahedralize(
                 vertices,
                 faces.reshape(-1, 3),
-                edge_length_fac=0.2,
+                edge_length_fac=0.1,
                 simplify=False,
                 epsilon=1e-2,
                 coarsen=True,
