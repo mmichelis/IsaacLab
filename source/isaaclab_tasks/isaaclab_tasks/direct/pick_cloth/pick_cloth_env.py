@@ -13,19 +13,16 @@ from collections.abc import Sequence
 import torch
 import warp as wp
 
-from isaaclab_contrib.deformable import register_hooks as _register_deformable_hooks
-
-_register_deformable_hooks()
-
 from pxr import Gf, UsdGeom
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
-from isaaclab.assets.deformable_object import DeformableObject
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.sim.spawners.shapes import SphereCfg, spawn_sphere
 from isaaclab.sim.utils.stage import get_current_stage
+
+from isaaclab_contrib.deformable import DeformableObject
 
 from .pick_cloth_env_cfg import PickClothEnvCfg
 
@@ -41,11 +38,17 @@ class PickClothEnv(DirectRLEnv):
         # Without a robot the coupled solver (rigid + VBD) is unnecessary and will
         # fail because there are no rigid bodies.  Swap to VBD-only automatically.
         if not self._has_robot:
-            from isaaclab_contrib.deformable.newton_manager_cfg import CoupledSolverCfg
+            from isaaclab_contrib.deformable.newton_manager_cfg import (
+                CoupledFeatherstoneVBDSolverCfg,
+                CoupledMJWarpVBDSolverCfg,
+            )
 
             physics_cfg = cfg.sim.physics
-            if hasattr(physics_cfg, "solver_cfg") and isinstance(physics_cfg.solver_cfg, CoupledSolverCfg):
-                physics_cfg.solver_cfg = physics_cfg.solver_cfg.vbd_cfg
+            if hasattr(physics_cfg, "solver_cfg") and isinstance(
+                physics_cfg.solver_cfg,
+                (CoupledFeatherstoneVBDSolverCfg, CoupledMJWarpVBDSolverCfg),
+            ):
+                physics_cfg.solver_cfg = physics_cfg.solver_cfg.soft_solver_cfg
 
         # For velocity control, override actuator gains before the robot is spawned:
         # zero stiffness (no position tracking), high damping (velocity-tracking gain).
