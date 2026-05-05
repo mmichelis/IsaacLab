@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reward and termination functions for the Franka deformable-duck lifting environment.
+"""Reward and termination functions for the Franka deformable lifting environment.
 
 These mirror the functions in ``isaaclab_tasks.manager_based.manipulation.lift.mdp.rewards``
 but read the deformable object's centre of mass via :attr:`~isaaclab.assets.DeformableObject.data.root_pos_w`
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 def deformable_com_lifted(
     env: ManagerBasedRLEnv,
     minimal_height: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("duck"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
 ) -> torch.Tensor:
     """Reward the agent for lifting the deformable object's COM above a minimum height [m]."""
     asset: DeformableObject = env.scene[asset_cfg.name]
@@ -40,7 +40,7 @@ def deformable_com_lifted(
 def deformable_com_ee_distance(
     env: ManagerBasedRLEnv,
     std: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("duck"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Reward the agent for reaching the deformable's COM with the end-effector (tanh kernel)."""
@@ -58,7 +58,7 @@ def deformable_com_goal_distance(
     minimal_height: float,
     command_name: str,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("duck"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
 ) -> torch.Tensor:
     """Reward tracking of the goal position by the deformable's COM (tanh kernel).
 
@@ -80,7 +80,7 @@ def deformable_com_goal_distance(
 def deformable_com_below_minimum(
     env: ManagerBasedRLEnv,
     minimum_height: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("duck"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
 ) -> torch.Tensor:
     """Termination signal when the deformable's COM falls below ``minimum_height`` [m]."""
     asset: DeformableObject = env.scene[asset_cfg.name]

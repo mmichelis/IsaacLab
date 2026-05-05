@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Observation functions for the Franka deformable-duck lifting environment."""
+"""Observation functions for the Franka deformable lifting environment."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 def deformable_com_in_robot_root_frame(
     env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("duck"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Position of the deformable object's COM in the robot's root frame [m].

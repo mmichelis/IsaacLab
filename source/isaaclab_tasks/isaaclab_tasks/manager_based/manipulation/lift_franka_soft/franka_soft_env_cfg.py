@@ -3,11 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Configuration for the Franka deformable-duck lifting environment.
+"""Configuration for the Franka deformable lifting environment.
 
 The scene mirrors ``newton/examples/softbody/example_softbody_franka.py``:
-a Franka Panda manipulator on a tabletop with a tetrahedral rubber duck simulated
-by VBD. The RL task is to lift the duck's centre of mass to a randomised target
+a Franka Panda manipulator on a tabletop with a tetrahedral deformable object simulated
+by VBD. The RL task is to lift the deformable object's centre of mass to a randomised target
 position sampled in the robot's root frame.
 """
 
@@ -51,14 +51,6 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
 # Helpers
 ##
 
-# Local copy of the Newton rubber-duck asset, flattened into a self-contained
-# USDA file with ``defaultPrim = "root"`` and a ``UsdGeom.Mesh`` at
-# ``/root/Model/SurfaceMesh`` that IsaacLab's deformable spawner can find when
-# applying the deformable-body schema. See ``data/duck.LICENSE`` for the asset
-# license. Sourced from
-# ``newton.utils.download_asset("manipulation_objects/rubber_duck")``.
-DUCK_USD_PATH = os.path.join(os.path.dirname(__file__), "data", "duck.usda")
-
 
 @configclass
 class DeformableNewtonCfg(NewtonCfg):
@@ -79,10 +71,9 @@ class DeformableNewtonCfg(NewtonCfg):
 
 
 @configclass
-class FrankaDuckSceneCfg(InteractiveSceneCfg):
-    """Scene for the Franka deformable-duck environment."""
+class FrankaSoftSceneCfg(InteractiveSceneCfg):
+    """Scene for the Franka deformable environment."""
 
-    # robot: Franka Panda with stiffer PD does not run stable with Featherstone
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
     # end-effector frame for reward shaping
@@ -99,8 +90,8 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
     )
 
     # deformable rubber duck (tetrahedral mesh from Newton's asset cache)
-    # duck: DeformableObjectCfg = DeformableObjectCfg(
-    #     prim_path="/World/envs/env_.*/Duck",
+    # deformable: DeformableObjectCfg = DeformableObjectCfg(
+    #     prim_path="/World/envs/env_.*/Deformable",
     #     init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
     #     spawn=UsdFileCfg(
     #         usd_path=DUCK_USD_PATH,
@@ -117,24 +108,24 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
     #         ),
     #     ),
     # )
-    duck: DeformableObjectCfg = DeformableObjectCfg(
-        prim_path="/World/envs/env_.*/Duck",
+    deformable: DeformableObjectCfg = DeformableObjectCfg(
+        prim_path="/World/envs/env_.*/Deformable",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.05, 0.05),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
             physics_material=sim_utils.DeformableBodyMaterialCfg(
-                density=50.0,
-                youngs_modulus=2.5e6,
+                density=1000.0,
+                youngs_modulus=5e4,
                 poissons_ratio=0.25,
-                particle_radius=0.01
+                # particle_radius=0.01
             ),
         ),
     )
 
     # static table matching the Newton example: half-extents (0.4, 0.4, 0.1) → top at z = 0.2
-    # NOTE: SeattleLabTable USD has its origin on the top surface, so the deformable duck
+    # NOTE: SeattleLabTable USD has its origin on the top surface, so the deformable object
     # sits directly on it when placed at z = 0.05.
     table: AssetBaseCfg = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
@@ -170,9 +161,9 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class CommandsCfg:
-    """Commands for the duck goal pose (xyz + identity quat in robot root frame)."""
+    """Commands for the deformable goal pose (xyz + identity quat in robot root frame)."""
 
-    duck_pose = mdp.UniformPoseCommandCfg(
+    deformable_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
         body_name="panda_hand",
         resampling_time_range=(5.0, 5.0),
@@ -212,27 +203,27 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.015},
+        close_command_expr={"panda_finger_.*": 0.02},
     )
 
 
 @configclass
 class ObservationsCfg:
-    """Policy observations: joint state, duck COM in robot frame, target, last action."""
+    """Policy observations: joint state, deformable COM in robot frame, target, last action."""
 
     @configclass
     class PolicyCfg(ObsGroup):
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        duck_com = ObsTerm(
+        deformable_com = ObsTerm(
             func=mdp.deformable_com_in_robot_root_frame,
-            params={"asset_cfg": SceneEntityCfg("duck")},
+            params={"asset_cfg": SceneEntityCfg("deformable")},
         )
-        target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "duck_pose"})
+        target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "deformable_pose"})
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self) -> None:
-            self.enable_corruption = False
+            self.enable_corruption = True
             self.concatenate_terms = True
 
     policy: PolicyCfg = PolicyCfg()
@@ -240,56 +231,56 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    """Reset events: robot to default joint config, duck with small position randomization."""
+    """Reset events: robot to default joint config, deformable with small position randomization."""
 
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
-        params={"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)},
+        params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
     )
 
-    reset_duck = EventTerm(
+    reset_deformable = EventTerm(
         func=mdp.reset_nodal_state_uniform,
         mode="reset",
         params={
             "position_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (0.0, 0.0)},
             "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("duck"),
+            "asset_cfg": SceneEntityCfg("deformable"),
         },
     )
 
 
 @configclass
 class RewardsCfg:
-    """Lift-to-target reward, mirroring the franka_lift structure but on the duck COM."""
+    """Lift-to-target reward, mirroring the franka_lift structure but on the deformable COM."""
 
-    reaching_duck = RewTerm(
+    reaching_deformable = RewTerm(
         func=mdp.deformable_com_ee_distance,
-        params={"std": 0.1, "asset_cfg": SceneEntityCfg("duck")},
+        params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
         weight=1.0,
     )
-    lifting_duck = RewTerm(
+    lifting_deformable = RewTerm(
         func=mdp.deformable_com_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("duck")},
+        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
         weight=15.0,
     )
-    duck_goal_tracking = RewTerm(
+    deformable_goal_tracking = RewTerm(
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.3,
             "minimal_height": 0.04,
-            "command_name": "duck_pose",
-            "asset_cfg": SceneEntityCfg("duck"),
+            "command_name": "deformable_pose",
+            "asset_cfg": SceneEntityCfg("deformable"),
         },
         weight=16.0,
     )
-    duck_goal_tracking_fine_grained = RewTerm(
+    deformable_goal_tracking_fine_grained = RewTerm(
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.05,
             "minimal_height": 0.04,
-            "command_name": "duck_pose",
-            "asset_cfg": SceneEntityCfg("duck"),
+            "command_name": "deformable_pose",
+            "asset_cfg": SceneEntityCfg("deformable"),
         },
         weight=5.0,
     )
@@ -308,9 +299,9 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    duck_dropped = DoneTerm(
+    deformable_dropped = DoneTerm(
         func=mdp.deformable_com_below_minimum,
-        params={"minimum_height": -0.1, "asset_cfg": SceneEntityCfg("duck")},
+        params={"minimum_height": -0.1, "asset_cfg": SceneEntityCfg("deformable")},
     )
 
 
@@ -320,11 +311,11 @@ class TerminationsCfg:
 
 
 @configclass
-class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
-    """Manager-based RL environment: Franka Panda lifting a deformable rubber duck."""
+class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
+    """Manager-based RL environment: Franka Panda lifting a volume deformable."""
 
     # Scene settings
-    scene: FrankaDuckSceneCfg = FrankaDuckSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
+    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -366,12 +357,12 @@ class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
                 coupling_mode="one_way",
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e8,
-                soft_contact_kd=1e-5,
-                soft_contact_mu=10.0,
-                shape_material_ke=1e8,
-                shape_material_kd=1e-5,
-                shape_material_mu=10.0,
+                soft_contact_ke=1e6,
+                soft_contact_kd=1e-3,
+                soft_contact_mu=5.0,
+                shape_material_ke=1e6,
+                shape_material_kd=1e-3,
+                shape_material_mu=5.0,
             ),
             num_substeps=10,
             use_cuda_graph=True,
