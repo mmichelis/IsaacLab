@@ -18,6 +18,7 @@ import os
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
 import isaaclab.sim as sim_utils
+from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -82,7 +83,31 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
     """Scene for the Franka deformable-duck environment."""
 
     # robot: Franka Panda with stiffer PD does not run stable with Featherstone
-    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(
+        prim_path="/World/envs/env_.*/Robot",
+        actuators={
+            "panda_shoulder": ImplicitActuatorCfg(
+                joint_names_expr=["panda_joint[1-4]"],
+                effort_limit_sim=87.0,
+                stiffness=80.0,
+                damping=4.0,
+                armature=1e-3,
+            ),
+            "panda_forearm": ImplicitActuatorCfg(
+                joint_names_expr=["panda_joint[5-7]"],
+                effort_limit_sim=12.0,
+                stiffness=80.0,
+                damping=4.0,
+                armature=1e-3,
+            ),
+            "panda_hand": ImplicitActuatorCfg(
+                joint_names_expr=["panda_finger_joint.*"],
+                effort_limit_sim=200.0,
+                stiffness=2e3,
+                damping=1e2,
+            ),
+        },
+    )
 
     # end-effector frame for reward shaping
     ee_frame: FrameTransformerCfg = FrameTransformerCfg(
