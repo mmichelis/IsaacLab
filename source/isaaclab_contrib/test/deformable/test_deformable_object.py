@@ -20,14 +20,14 @@ import pytest
 import torch
 import warp as wp
 from flaky import flaky
-
-from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg
 from isaaclab_newton.physics import NewtonCfg
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.sim import SimulationCfg, build_simulation_context
+
+from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg
 
 NEWTON_VBD_CFG = SimulationCfg(
     physics=NewtonCfg(

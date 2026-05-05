@@ -8,7 +8,6 @@
 import importlib.util
 import os.path
 
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledSolverCfg, NewtonModelCfg, VBDSolverCfg
 from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
@@ -18,6 +17,8 @@ from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
+
+from isaaclab_contrib.deformable.newton_manager_cfg import CoupledSolverCfg, NewtonModelCfg, VBDSolverCfg
 
 from isaaclab_tasks.utils import PresetCfg, preset
 
@@ -31,6 +32,7 @@ _SHIRT_USD = os.path.join(
     "assets",
     "unisex_shirt.usd",
 )
+
 
 @configclass
 class DeformableNewtonCfg(NewtonCfg):

@@ -134,8 +134,7 @@ def add_deformable_entry_to_builder(
         )
     else:
         raise ValueError(
-            f"Invalid deformable type '{entry.deformable_type}' for registry entry "
-            f"with prim path '{entry.prim_path}'"
+            f"Invalid deformable type '{entry.deformable_type}' for registry entry with prim path '{entry.prim_path}'"
         )
 
     after_count = getattr(builder, "particle_count", 0)
@@ -443,12 +442,8 @@ class DeformableObject(BaseDeformableObject):
         def _is_sim_mesh(prim) -> bool:
             return any("DeformableSimAPI" in api for api in prim.GetAppliedSchemas())
 
-        tet_prims = sim_utils.get_all_matching_child_prims(
-            template_prim_path, lambda p: p.GetTypeName() == "TetMesh"
-        )
-        mesh_prims = sim_utils.get_all_matching_child_prims(
-            template_prim_path, lambda p: p.GetTypeName() == "Mesh"
-        )
+        tet_prims = sim_utils.get_all_matching_child_prims(template_prim_path, lambda p: p.GetTypeName() == "TetMesh")
+        mesh_prims = sim_utils.get_all_matching_child_prims(template_prim_path, lambda p: p.GetTypeName() == "Mesh")
 
         if len(tet_prims) > 1:
             raise ValueError(
@@ -481,7 +476,7 @@ class DeformableObject(BaseDeformableObject):
             raise ValueError(
                 f"Could not find any surface or volume mesh in '{template_prim_path}'. Please check asset."
             )
-        
+
         # Revert visual and simulation mesh prim paths back to template-relative form for registry storage,
         # since the actual prim paths will differ per world instance after replication.
         # When vis_candidates is empty the visual mesh IS the simulation mesh
@@ -666,7 +661,9 @@ class DeformableObject(BaseDeformableObject):
             nodal_velocities = wp.zeros(
                 (self._num_instances, self._particles_per_body), dtype=wp.vec3f, device=self.device
             )
-            default_nodal_state_w = wp.zeros((self._num_instances, self._particles_per_body), dtype=vec6f, device=self.device)
+            default_nodal_state_w = wp.zeros(
+                (self._num_instances, self._particles_per_body), dtype=vec6f, device=self.device
+            )
             wp.launch(
                 compute_nodal_state_w,
                 dim=(self._num_instances, self._particles_per_body),
