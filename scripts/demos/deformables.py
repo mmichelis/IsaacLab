@@ -21,6 +21,7 @@ from isaaclab.app import AppLauncher
 
 # create argparser
 parser = argparse.ArgumentParser(description="This script demonstrates how to spawn deformable prims into the scene.")
+parser.add_argument("--backend", type=str, default="physx", choices=["physx", "newton"], help="Physics backend.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # demos should open Kit visualizer by default
@@ -39,11 +40,8 @@ import numpy as np
 import torch
 import tqdm
 
-# deformables supported in PhysX
-from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
-from isaaclab_physx.sim import DeformableBodyMaterialCfg, DeformableBodyPropertiesCfg, SurfaceDeformableBodyMaterialCfg
-
 import isaaclab.sim as sim_utils
+from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 
@@ -82,49 +80,49 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # spawn a red cone
     cfg_sphere = sim_utils.MeshSphereCfg(
         radius=0.4,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cuboid = sim_utils.MeshCuboidCfg(
         size=(0.6, 0.6, 0.6),
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cylinder = sim_utils.MeshCylinderCfg(
         radius=0.25,
         height=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
         radius=0.35,
         height=0.5,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cone = sim_utils.MeshConeCfg(
         radius=0.35,
         height=0.75,
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
     )
     cfg_cloth = sim_utils.MeshSquareCfg(
         size=1.5,
         resolution=(21, 21),
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=SurfaceDeformableBodyMaterialCfg(),
+        physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(),
     )
     cfg_usd = sim_utils.UsdFileCfg(
         usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
-        deformable_props=DeformableBodyPropertiesCfg(),
+        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=DeformableBodyMaterialCfg(),
+        physics_material=sim_utils.DeformableBodyMaterialCfg(),
         scale=[0.05, 0.05, 0.05],
     )
     # create a dictionary of all the objects to be spawned
@@ -141,50 +139,37 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # Create separate groups of deformable objects
     origins = define_origins(num_origins=12, radius=1.5, center_height=2.0)
     print("[INFO]: Spawning objects...")
-    num_volumes = 0
-    num_surfaces = 0
-    # Iterate over all the origins and randomly spawn objects
+    # Iterate over all the origins, spawn objects, and create a view for all the deformables
+    # note: since we manually spawned random deformable meshes above, we don't need to
+    #   specify the spawn configuration for the deformable object
+    scene_entities = {}
     for idx, origin in tqdm.tqdm(enumerate(origins), total=len(origins)):
         # randomly select an object to spawn
         obj_name = random.choice(list(objects_cfg.keys()))
         obj_cfg = objects_cfg[obj_name]
         # randomize the young modulus
         obj_cfg.physics_material.youngs_modulus = random.uniform(5e5, 1e8)
-        # higher mesh resolution causes instability at low stiffness
-        if obj_name in ["sphere", "capsule", "cloth", "usd"]:
-            obj_cfg.physics_material.youngs_modulus = random.uniform(1e8, 5e9)
         # randomize the poisson's ratio
         obj_cfg.physics_material.poissons_ratio = random.uniform(0.25, 0.45)
         # randomize the color
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
         # spawn the object, separate groups for surface and volume deformables
         if obj_name in ["cloth"]:
-            obj_cfg.func(f"/World/Origin/Surface{idx:02d}", obj_cfg, translation=origin)
-            num_surfaces += 1
+            prim_path = f"/World/Origin/Surface{idx:02d}"
+            cfg = DeformableObjectCfg(
+                prim_path=prim_path,
+                spawn=obj_cfg,
+                init_state=DeformableObjectCfg.InitialStateCfg(pos=origin),
+            )
+            scene_entities[f"Surface{idx:02d}"] = DeformableObject(cfg=cfg)
         else:
-            obj_cfg.func(f"/World/Origin/Volume{idx:02d}", obj_cfg, translation=origin)
-            num_volumes += 1
-
-    # create a view for all the deformables, separate views for volume and surface deformables
-    # note: since we manually spawned random deformable meshes above, we don't need to
-    #   specify the spawn configuration for the deformable object
-    scene_entities = {}
-    if num_volumes > 0:
-        cfg = DeformableObjectCfg(
-            prim_path="/World/Origin/Volume.*",
-            spawn=None,
-            init_state=DeformableObjectCfg.InitialStateCfg(),
-        )
-        volume_deformable_object = DeformableObject(cfg=cfg)
-        scene_entities["volume_deformable_object"] = volume_deformable_object
-    if num_surfaces > 0:
-        cfg = DeformableObjectCfg(
-            prim_path="/World/Origin/Surface.*",
-            spawn=None,
-            init_state=DeformableObjectCfg.InitialStateCfg(),
-        )
-        surface_deformable_object = DeformableObject(cfg=cfg)
-        scene_entities["surface_deformable_object"] = surface_deformable_object
+            prim_path = f"/World/Origin/Volume{idx:02d}"
+            cfg = DeformableObjectCfg(
+                prim_path=prim_path,
+                spawn=obj_cfg,
+                init_state=DeformableObjectCfg.InitialStateCfg(pos=origin),
+            )
+            scene_entities[f"Volume{idx:02d}"] = DeformableObject(cfg=cfg)
 
     # return the scene information
     return scene_entities, origins
@@ -224,7 +209,14 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Deformab
 def main():
     """Main function."""
     # Initialize the simulation context
-    sim_cfg = sim_utils.SimulationCfg(dt=0.01, device=args_cli.device)
+    if args_cli.backend == "newton":
+        from isaaclab_contrib.deformable.newton_manager_cfg import VBDSolverCfg
+        from isaaclab_newton.physics import NewtonCfg
+        physics_cfg = NewtonCfg(solver_cfg=VBDSolverCfg(iterations=10), num_substeps=4)
+    else:
+        from isaaclab_physx.physics import PhysxCfg
+        physics_cfg = PhysxCfg()
+    sim_cfg = sim_utils.SimulationCfg(dt=0.01, device=args_cli.device, physics=physics_cfg)
     sim = sim_utils.SimulationContext(sim_cfg)
     # Set main camera
     sim.set_camera_view([4.0, 4.0, 3.0], [0.5, 0.5, 0.0])
