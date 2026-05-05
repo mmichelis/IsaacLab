@@ -54,7 +54,6 @@ logger = logging.getLogger(__name__)
 # _LocalSite:  (None, [[env0_idx, ...], ...])     — per-world site indices
 
 
-
 @wp.kernel(enable_backward=False)
 def _set_fabric_transforms(
     fabric_world_transforms: wp.fabricarray(dtype=wp.mat44d),
@@ -818,54 +817,51 @@ class NewtonManager(PhysicsManager):
             body_paths = getattr(cls._model, "body_label", None) or getattr(cls._model, "body_key", None)
             if body_paths is None:
                 raise RuntimeError("NewtonManager: model has no body_label/body_key, skipping USD/Fabric sync for RTX.")
-            else:
-                import numpy as np
+            import numpy as np
 
-                body_paths = [str(path) for path in body_paths]
-                body_index_by_path = {path: i for i, path in enumerate(body_paths)}
-                NewtonManager._usdrt_stage = get_current_stage(fabric=True)
+            body_paths = [str(path) for path in body_paths]
+            body_index_by_path = {path: i for i, path in enumerate(body_paths)}
+            NewtonManager._usdrt_stage = get_current_stage(fabric=True)
 
-                identity_matrix = np.eye(4, dtype=np.float32)
-                parent_indices = []
-                for prim_path in body_paths:
-                    parent_index = -1
-                    parent_path = prim_path
-                    while "/" in parent_path:
-                        parent_path = parent_path.rsplit("/", 1)[0]
-                        if parent_path in body_index_by_path:
-                            parent_index = body_index_by_path[parent_path]
-                            break
-                    parent_indices.append(parent_index)
-                NewtonManager._body_parent_indices = wp.array(parent_indices, dtype=wp.int32, device=device)
+            identity_matrix = np.eye(4, dtype=np.float32)
+            parent_indices = []
+            for prim_path in body_paths:
+                parent_index = -1
+                parent_path = prim_path
+                while "/" in parent_path:
+                    parent_path = parent_path.rsplit("/", 1)[0]
+                    if parent_path in body_index_by_path:
+                        parent_index = body_index_by_path[parent_path]
+                        break
+                parent_indices.append(parent_index)
+            NewtonManager._body_parent_indices = wp.array(parent_indices, dtype=wp.int32, device=device)
 
-                parent_inv_matrices = []
-                for prim_path, parent_index in zip(body_paths, parent_indices):
-                    if parent_index >= 0:
-                        parent_inv_matrix = identity_matrix
-                    else:
-                        parent_path = prim_path.rsplit("/", 1)[0]
-                        parent_inv_matrix = identity_matrix
-                        try:
-                            parent_prim = NewtonManager._usdrt_stage.GetPrimAtPath(parent_path)
-                            parent_xformable = usdrt.Rt.Xformable(parent_prim)
-                            if not parent_xformable.HasWorldXform():
-                                parent_xformable.SetWorldXformFromUsd()
-                            parent_world_matrix = parent_prim.GetAttribute("omni:fabric:worldMatrix").Get()
-                            parent_world_matrix = np.array(
-                                [[float(parent_world_matrix[row][col]) for col in range(4)] for row in range(4)],
-                                dtype=np.float32,
-                            )
-                            parent_inv_matrix = np.linalg.inv(parent_world_matrix.T)
-                        except Exception:
-                            logger.debug(
-                                "NewtonManager: failed to read Fabric parent transform for %s; using identity.",
-                                prim_path,
-                                exc_info=True,
-                            )
-                    parent_inv_matrices.append(wp.mat44f(*parent_inv_matrix.reshape(-1).tolist()))
-                NewtonManager._body_parent_inv_matrices = wp.array(
-                    parent_inv_matrices, dtype=wp.mat44f, device=device
-                )
+            parent_inv_matrices = []
+            for prim_path, parent_index in zip(body_paths, parent_indices):
+                if parent_index >= 0:
+                    parent_inv_matrix = identity_matrix
+                else:
+                    parent_path = prim_path.rsplit("/", 1)[0]
+                    parent_inv_matrix = identity_matrix
+                    try:
+                        parent_prim = NewtonManager._usdrt_stage.GetPrimAtPath(parent_path)
+                        parent_xformable = usdrt.Rt.Xformable(parent_prim)
+                        if not parent_xformable.HasWorldXform():
+                            parent_xformable.SetWorldXformFromUsd()
+                        parent_world_matrix = parent_prim.GetAttribute("omni:fabric:worldMatrix").Get()
+                        parent_world_matrix = np.array(
+                            [[float(parent_world_matrix[row][col]) for col in range(4)] for row in range(4)],
+                            dtype=np.float32,
+                        )
+                        parent_inv_matrix = np.linalg.inv(parent_world_matrix.T)
+                    except Exception:
+                        logger.debug(
+                            "NewtonManager: failed to read Fabric parent transform for %s; using identity.",
+                            prim_path,
+                            exc_info=True,
+                        )
+                parent_inv_matrices.append(wp.mat44f(*parent_inv_matrix.reshape(-1).tolist()))
+            NewtonManager._body_parent_inv_matrices = wp.array(parent_inv_matrices, dtype=wp.mat44f, device=device)
 
             for i, prim_path in enumerate(body_paths):
                 prim = cls._usdrt_stage.GetPrimAtPath(prim_path)
