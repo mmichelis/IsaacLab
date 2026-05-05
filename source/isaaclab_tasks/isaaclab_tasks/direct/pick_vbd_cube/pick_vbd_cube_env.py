@@ -17,11 +17,12 @@ from pxr import Gf, UsdGeom
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
-from isaaclab.assets.deformable_object import DeformableObject
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.sim.spawners.shapes import SphereCfg, spawn_sphere
 from isaaclab.sim.utils.stage import get_current_stage
+
+from isaaclab_contrib.deformable import DeformableObject
 
 from .pick_vbd_cube_env_cfg import PickVBDCubeEnvCfg
 

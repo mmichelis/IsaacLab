@@ -18,7 +18,12 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
 
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledSolverCfg, NewtonModelCfg, VBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import (
+    CoupledFeatherstoneVBDSolverCfg,
+    CoupledMJWarpVBDSolverCfg,
+    NewtonModelCfg,
+    VBDSolverCfg,
+)
 
 from isaaclab_tasks.utils import PresetCfg, preset
 
@@ -64,7 +69,7 @@ class PickClothPhysicsCfg(PresetCfg):
     """
 
     default: DeformableNewtonCfg = DeformableNewtonCfg(
-        solver_cfg=CoupledSolverCfg(
+        solver_cfg=CoupledMJWarpVBDSolverCfg(
             rigid_solver_cfg=MJWarpSolverCfg(
                 njmax=40,
                 nconmax=20,
@@ -75,7 +80,7 @@ class PickClothPhysicsCfg(PresetCfg):
                 integrator="implicitfast",
                 ccd_iterations=100,
             ),
-            vbd_cfg=VBDSolverCfg(
+            soft_solver_cfg=VBDSolverCfg(
                 iterations=5,
                 particle_enable_self_contact=True,
                 particle_self_contact_radius=2e-3,  # good for substeps=10
@@ -87,7 +92,7 @@ class PickClothPhysicsCfg(PresetCfg):
                 particle_collision_detection_interval=-1,
                 integrate_with_external_rigid_solver=True,
             ),
-            coupling_mode="one_way",
+            coupling_mode="two_way",
         ),
         model_cfg=MODEL_CFG,
         num_substeps=10,
@@ -98,9 +103,9 @@ class PickClothPhysicsCfg(PresetCfg):
     newton_mjwarp: DeformableNewtonCfg = default
 
     newton_featherstone: DeformableNewtonCfg = DeformableNewtonCfg(
-        solver_cfg=CoupledSolverCfg(
+        solver_cfg=CoupledFeatherstoneVBDSolverCfg(
             rigid_solver_cfg=FeatherstoneSolverCfg(),
-            vbd_cfg=VBDSolverCfg(
+            soft_solver_cfg=VBDSolverCfg(
                 iterations=5,
                 particle_enable_self_contact=True,
                 particle_self_contact_radius=1e-4,
@@ -112,6 +117,7 @@ class PickClothPhysicsCfg(PresetCfg):
                 particle_collision_detection_interval=-1,
                 integrate_with_external_rigid_solver=True,
             ),
+            coupling_mode="kinematic",
         ),
         model_cfg=MODEL_CFG,
         num_substeps=30,

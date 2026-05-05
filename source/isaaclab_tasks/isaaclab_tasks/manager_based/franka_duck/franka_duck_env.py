@@ -5,10 +5,9 @@
 
 """Manager-based RL env for the Franka deformable-duck task.
 
-This thin subclass exists only to register the ``isaaclab_contrib.deformable``
-hooks with :class:`NewtonManager` before the scene is built. It is imported by
-``gym.make("Isaac-Franka-Duck-v0")``, which happens after :class:`SimulationApp`
-has started, so the deferred Newton imports done by ``register_hooks()`` do not
+This thin subclass keeps a task-specific entry point for deformable Newton
+setup. It is imported by ``gym.make("Isaac-Franka-Duck-v0")``, which happens
+after :class:`SimulationApp` has started, so deferred Newton imports do not
 conflict with USD schema initialisation.
 """
 

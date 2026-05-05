@@ -5,7 +5,7 @@
 
 """Configuration for the Pick-VBD-Cube environment: Franka robot + deformable cube with coupled solver."""
 
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
 import isaaclab.sim as sim_utils
@@ -15,7 +15,12 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
 
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import (
+    CoupledFeatherstoneVBDSolverCfg,
+    CoupledMJWarpVBDSolverCfg,
+    NewtonModelCfg,
+    VBDSolverCfg,
+)
 
 from isaaclab_tasks.utils import PresetCfg, preset
 
@@ -76,6 +81,22 @@ class PickVBDCubePhysicsCfg(PresetCfg):
 
     newton: DeformableNewtonCfg = default
     newton_mjwarp: DeformableNewtonCfg = default
+
+    newton_featherstone: DeformableNewtonCfg = DeformableNewtonCfg(
+        solver_cfg=CoupledFeatherstoneVBDSolverCfg(
+            rigid_solver_cfg=FeatherstoneSolverCfg(),
+            soft_solver_cfg=VBDSolverCfg(
+                iterations=5,
+                integrate_with_external_rigid_solver=True,
+                particle_enable_self_contact=False,
+                particle_collision_detection_interval=-1,
+            ),
+            coupling_mode="kinematic",
+        ),
+        model_cfg=MODEL_CFG,
+        num_substeps=30,
+        use_cuda_graph=True,
+    )
 
 
 @configclass
