@@ -99,21 +99,36 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
     )
 
     # deformable rubber duck (tetrahedral mesh from Newton's asset cache)
+    # duck: DeformableObjectCfg = DeformableObjectCfg(
+    #     prim_path="/World/envs/env_.*/Duck",
+    #     init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
+    #     spawn=UsdFileCfg(
+    #         usd_path=DUCK_USD_PATH,
+    #         scale=(1.0, 1.0, 1.0),
+    #         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+    #         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
+    #         # Lamé parameters from the Newton example (k_mu = k_lambda = 1e6, density = 100, k_damp ≈ 0):
+    #         # μ = E / (2(1+ν)) = 2.5e6 / 2.5 = 1e6
+    #         # λ = Eν / ((1+ν)(1−2ν)) = 2.5e6·0.25 / (1.25·0.5) = 1e6
+    #         physics_material=sim_utils.DeformableBodyMaterialCfg(
+    #             density=500.0,
+    #             youngs_modulus=2.5e6,
+    #             poissons_ratio=0.25,
+    #         ),
+    #     ),
+    # )
     duck: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/Duck",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
-        spawn=UsdFileCfg(
-            usd_path=DUCK_USD_PATH,
-            scale=(1.0, 1.0, 1.0),
+        spawn=sim_utils.MeshCuboidCfg(
+            size=(0.3, 0.05, 0.05),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
-            # Lamé parameters from the Newton example (k_mu = k_lambda = 1e6, density = 100, k_damp ≈ 0):
-            # μ = E / (2(1+ν)) = 2.5e6 / 2.5 = 1e6
-            # λ = Eν / ((1+ν)(1−2ν)) = 2.5e6·0.25 / (1.25·0.5) = 1e6
             physics_material=sim_utils.DeformableBodyMaterialCfg(
-                density=500.0,
+                density=50.0,
                 youngs_modulus=2.5e6,
                 poissons_ratio=0.25,
+                particle_radius=0.01
             ),
         ),
     )
@@ -135,9 +150,16 @@ class FrankaDuckSceneCfg(InteractiveSceneCfg):
     )
 
     # lights
-    dome_light: AssetBaseCfg = AssetBaseCfg(
-        prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=2000.0),
+    # dome_light: AssetBaseCfg = AssetBaseCfg(
+    #     prim_path="/World/light",
+    #     spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=2000.0),
+    # )
+    sky_light = AssetBaseCfg(
+        prim_path="/World/skyLight",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=750.0,
+            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+        ),
     )
 
 
@@ -190,7 +212,7 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.02},
+        close_command_expr={"panda_finger_.*": 0.015},
     )
 
 
@@ -321,11 +343,10 @@ class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
 
-        # Newton physics: Featherstone rigid + VBD soft, two-way coupled
+        # Newton physics: MJWarp rigid + VBD soft, one-way coupled
         # (matches newton/examples/softbody/example_softbody_franka.py)
         self.sim.physics = DeformableNewtonCfg(
             solver_cfg=CoupledMJWarpVBDSolverCfg(
-                # rigid_solver_cfg=FeatherstoneSolverCfg(update_mass_matrix_interval=10),
                 rigid_solver_cfg=MJWarpSolverCfg(
                     njmax=40,
                     nconmax=20,
@@ -345,19 +366,13 @@ class FrankaDuckEnvCfg(ManagerBasedRLEnvCfg):
                 coupling_mode="one_way",
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=2e6,
-                soft_contact_kd=1e-7,
-                soft_contact_mu=0.5,
-                shape_material_ke=2e6,
-                shape_material_kd=1e-7,
-                shape_material_mu=1.5,
+                soft_contact_ke=1e8,
+                soft_contact_kd=1e-5,
+                soft_contact_mu=10.0,
+                shape_material_ke=1e8,
+                shape_material_kd=1e-5,
+                shape_material_mu=10.0,
             ),
             num_substeps=10,
             use_cuda_graph=True,
         )
-
-        # Soften the gripper actuator so it does not crush the soft duck.
-        # Same values used by the franka_lift teddy-bear deformable example.
-        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 50.0
-        self.scene.robot.actuators["panda_hand"].stiffness = 40.0
-        self.scene.robot.actuators["panda_hand"].damping = 10.0
