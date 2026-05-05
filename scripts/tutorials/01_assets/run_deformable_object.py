@@ -70,7 +70,14 @@ def design_scene():
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
             physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5, density=500.0),
-            # physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e4, surface_thickness=0.001, surface_bend_stiffness=1e0, surface_shear_stiffness=1e0, surface_stretch_stiffness=1e0),
+            # physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(
+            #     poissons_ratio=0.4,
+            #     youngs_modulus=1e4,
+            #     surface_thickness=0.001,
+            #     surface_bend_stiffness=1e0,
+            #     surface_shear_stiffness=1e0,
+            #     surface_stretch_stiffness=1e0
+            # ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         debug_vis=True,

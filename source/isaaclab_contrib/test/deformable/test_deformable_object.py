@@ -83,6 +83,78 @@ def generate_cubes_scene(
     return cube_object
 
 
+def generate_cloth_scene(
+    num_cloths: int = 1,
+    height: float = 1.0,
+    device: str = "cuda:0",
+) -> DeformableObject:
+    """Generate a scene with surface deformable cloth squares.
+
+    Args:
+        num_cloths: Number of cloths to generate.
+        height: Height of the cloths.
+        device: Device to use for the simulation.
+
+    Returns:
+        The deformable object representing the cloths.
+    """
+    origins = torch.tensor([(i * 1.0, 0, height) for i in range(num_cloths)]).to(device)
+    for i, origin in enumerate(origins):
+        sim_utils.create_prim(f"/World/env_{i}", "Xform", translation=origin)
+
+    cloth_object_cfg = DeformableObjectCfg(
+        prim_path="/World/env_.*/Cloth",
+        spawn=sim_utils.MeshSquareCfg(
+            size=0.2,
+            resolution=(3, 3),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.8)),
+            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(density=0.02, particle_radius=0.005),
+        ),
+        init_state=DeformableObjectCfg.InitialStateCfg(
+            pos=(0.0, 0.0, height),
+            rot=(1.0, 0.0, 0.0, 0.0),
+        ),
+    )
+    return DeformableObject(cfg=cloth_object_cfg)
+
+
+def generate_cuboid_and_cylinder_scene(height: float = 1.0) -> tuple[DeformableObject, DeformableObject]:
+    """Generate two independent deformable assets with different mesh shapes."""
+    sim_utils.create_prim("/World/env_0", "Xform", translation=(0.0, 0.0, 0.0))
+
+    cuboid_cfg = DeformableObjectCfg(
+        prim_path="/World/env_.*/Cuboid",
+        spawn=sim_utils.MeshCuboidCfg(
+            size=(0.16, 0.08, 0.12),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(
+                density=500.0,
+                youngs_modulus=2.5e4,
+                poissons_ratio=0.25,
+            ),
+        ),
+        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, height)),
+    )
+    cylinder_cfg = DeformableObjectCfg(
+        prim_path="/World/env_.*/Cylinder",
+        spawn=sim_utils.MeshCylinderCfg(
+            radius=0.06,
+            height=0.14,
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(
+                density=500.0,
+                youngs_modulus=2.5e4,
+                poissons_ratio=0.25,
+            ),
+        ),
+        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.4, 0.0, height + 0.2)),
+    )
+    return DeformableObject(cfg=cuboid_cfg), DeformableObject(cfg=cylinder_cfg)
+
+
 @pytest.fixture
 def sim():
     """Create Newton VBD simulation context."""
@@ -125,6 +197,31 @@ def test_initialization(sim, num_cubes):
     assert root_vel.shape == (num_cubes, 3)
 
 
+@pytest.mark.parametrize("num_cloths", [1, 2])
+def test_surface_initialization_and_freefall(sim, num_cloths):
+    """Test initialization and stepping for surface deformable objects."""
+    cloth_object = generate_cloth_scene(num_cloths=num_cloths, height=5.0)
+
+    sim.reset()
+
+    assert cloth_object.is_initialized
+    assert cloth_object.num_instances == num_cloths
+    assert cloth_object._deformable_type == "surface"
+    assert cloth_object.max_sim_vertices_per_body > 0
+    assert cloth_object.data.nodal_pos_w.torch.shape == (
+        num_cloths,
+        cloth_object.max_sim_vertices_per_body,
+        3,
+    )
+
+    initial_root_z = cloth_object.data.root_pos_w.torch[:, 2].clone()
+    for _ in range(5):
+        sim.step()
+        cloth_object.update(sim.cfg.dt)
+
+    assert torch.all(cloth_object.data.root_pos_w.torch[:, 2] < initial_root_z)
+
+
 @pytest.mark.parametrize("num_cubes", [1, 2])
 def test_set_nodal_state(sim, num_cubes):
     """Test setting the state of the deformable object."""
@@ -153,9 +250,7 @@ def test_set_nodal_state(sim, num_cubes):
                 )
                 cube_object.write_nodal_state_to_sim_index(nodal_state)
 
-                torch.testing.assert_close(
-                    cube_object.data.nodal_state_w.torch, nodal_state, rtol=1e-5, atol=1e-5
-                )
+                torch.testing.assert_close(cube_object.data.nodal_state_w.torch, nodal_state, rtol=1e-5, atol=1e-5)
 
                 sim.step()
                 cube_object.update(sim.cfg.dt)
@@ -183,6 +278,77 @@ def test_write_partial_env_ids(sim, num_cubes):
 
     # other envs should be unchanged
     torch.testing.assert_close(read_pos[1:], default_pos[1:], rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("num_cubes", [2, 4])
+def test_write_partial_velocity_env_ids(sim, num_cubes):
+    """Test writing nodal velocities to a subset of environments."""
+    cube_object = generate_cubes_scene(num_cubes=num_cubes)
+
+    sim.reset()
+
+    particles_per_body = cube_object.max_sim_vertices_per_body
+    default_vel = cube_object.data.nodal_vel_w.torch.clone()
+
+    env_ids = torch.tensor([1], device=sim.device)
+    new_vel = torch.full((1, particles_per_body, 3), 0.25, device=sim.device)
+    new_vel[..., 2] = 1.0
+    cube_object.write_nodal_velocity_to_sim_index(new_vel, env_ids=env_ids)
+    cube_object.update(sim.cfg.dt)
+
+    read_vel = cube_object.data.nodal_vel_w.torch
+    torch.testing.assert_close(read_vel[1], new_vel[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(cube_object.data.root_vel_w.torch[1], new_vel[0].mean(dim=0), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_vel[0], default_vel[0], rtol=1e-5, atol=1e-5)
+    if num_cubes > 2:
+        torch.testing.assert_close(read_vel[2:], default_vel[2:], rtol=1e-5, atol=1e-5)
+
+
+def test_full_data_writes_selected_env(sim):
+    """Test full-sized write buffers with selected environment ids."""
+    num_cubes = 3
+    cube_object = generate_cubes_scene(num_cubes=num_cubes)
+
+    sim.reset()
+
+    particles_per_body = cube_object.max_sim_vertices_per_body
+    env_ids = torch.tensor([1], device=sim.device)
+
+    default_pos = cube_object.data.nodal_pos_w.torch.clone()
+    full_pos = default_pos + torch.linspace(0.1, 0.3, num_cubes, device=sim.device).view(num_cubes, 1, 1)
+    cube_object.write_nodal_pos_to_sim_index(full_pos, env_ids=env_ids, full_data=True)
+    cube_object.update(sim.cfg.dt)
+
+    read_pos = cube_object.data.nodal_pos_w.torch
+    torch.testing.assert_close(read_pos[1], full_pos[1], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_pos[0], default_pos[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_pos[2], default_pos[2], rtol=1e-5, atol=1e-5)
+
+    default_vel = cube_object.data.nodal_vel_w.torch.clone()
+    full_vel = torch.zeros(num_cubes, particles_per_body, 3, device=sim.device)
+    full_vel[0, :, 0] = 0.5
+    full_vel[1, :, 1] = 0.75
+    full_vel[2, :, 2] = 1.0
+    cube_object.write_nodal_velocity_to_sim_index(full_vel, env_ids=env_ids, full_data=True)
+    cube_object.update(sim.cfg.dt)
+
+    read_vel = cube_object.data.nodal_vel_w.torch
+    torch.testing.assert_close(read_vel[1], full_vel[1], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_vel[0], default_vel[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_vel[2], default_vel[2], rtol=1e-5, atol=1e-5)
+
+    default_targets = cube_object.data.nodal_kinematic_target.torch.clone()
+    full_targets = torch.zeros(num_cubes, particles_per_body, 4, device=sim.device)
+    full_targets[..., :3] = cube_object.data.default_nodal_state_w.torch[..., :3]
+    full_targets[..., 3] = 1.0
+    full_targets[1, :, :3] += torch.tensor([0.0, 0.0, 0.1], device=sim.device)
+    full_targets[1, :, 3] = 0.0
+    cube_object.write_nodal_kinematic_target_to_sim_index(full_targets, env_ids=env_ids, full_data=True)
+
+    read_targets = cube_object.data.nodal_kinematic_target.torch
+    torch.testing.assert_close(read_targets[1], full_targets[1], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_targets[0], default_targets[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_targets[2], default_targets[2], rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.parametrize("num_cubes", [1, 2])
@@ -242,9 +408,7 @@ def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, random
                 sim.step()
                 cube_object.update(sim.cfg.dt)
 
-            torch.testing.assert_close(
-                cube_object.data.root_pos_w.torch, mean_nodal_pos_init, rtol=1e-4, atol=1e-4
-            )
+            torch.testing.assert_close(cube_object.data.root_pos_w.torch, mean_nodal_pos_init, rtol=1e-4, atol=1e-4)
 
 
 def test_freefall_analytical(sim):
@@ -338,3 +502,94 @@ def test_set_kinematic_targets(sim, num_cubes):
         final_root_z = cube_object.data.root_pos_w.torch[1:, 2]
         default_root_z = default_pos[1:, :, 2].mean(dim=1)
         assert torch.all(final_root_z < default_root_z)
+
+
+def test_kinematic_target_release_restores_free_motion(sim):
+    """Test that a pinned deformable falls again after kinematic targets are released."""
+    cube_object = generate_cubes_scene(num_cubes=1, height=5.0)
+
+    sim.reset()
+
+    particles_per_body = cube_object.max_sim_vertices_per_body
+    default_state = cube_object.data.default_nodal_state_w.torch
+    default_pos = default_state[..., :3].clone()
+
+    targets = torch.zeros(1, particles_per_body, 4, device=sim.device)
+    targets[0, :, :3] = default_pos[0]
+    targets[0, :, 3] = 0.0
+    cube_object.write_nodal_kinematic_target_to_sim_index(targets)
+
+    for _ in range(5):
+        cube_object.write_data_to_sim()
+        sim.step()
+        cube_object.update(sim.cfg.dt)
+
+    torch.testing.assert_close(cube_object.data.nodal_pos_w.torch[0], default_pos[0], rtol=1e-5, atol=1e-5)
+
+    targets[0, :, 3] = 1.0
+    cube_object.write_nodal_kinematic_target_to_sim_index(targets)
+
+    for _ in range(20):
+        cube_object.write_data_to_sim()
+        sim.step()
+        cube_object.update(sim.cfg.dt)
+
+    assert cube_object.data.root_pos_w.torch[0, 2] < default_pos[0, :, 2].mean()
+
+
+def test_multiple_deformable_assets_do_not_alias(sim):
+    """Test independent writes for two different deformable assets in one scene."""
+    cuboid, cylinder = generate_cuboid_and_cylinder_scene(height=2.0)
+
+    sim.reset()
+
+    cuboid_default = cuboid.data.nodal_pos_w.torch.clone()
+    cylinder_default = cylinder.data.nodal_pos_w.torch.clone()
+
+    cuboid_pos = cuboid_default + torch.tensor([0.15, -0.05, 0.1], device=sim.device)
+    cuboid.write_nodal_pos_to_sim_index(cuboid_pos)
+    cuboid.update(sim.cfg.dt)
+    cylinder.update(sim.cfg.dt)
+
+    torch.testing.assert_close(cuboid.data.nodal_pos_w.torch, cuboid_pos, rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(cylinder.data.nodal_pos_w.torch, cylinder_default, rtol=1e-5, atol=1e-5)
+    assert cuboid._recorded_particle_offsets != cylinder._recorded_particle_offsets
+
+
+def test_rebind_after_sim_reset(sim):
+    """Test that deformable write paths remain valid after a simulation reset."""
+    cube_object = generate_cubes_scene(num_cubes=1, height=2.0)
+
+    sim.reset()
+
+    initial_pos = cube_object.data.default_nodal_state_w.torch[..., :3].clone()
+    first_pos = initial_pos + torch.tensor([0.1, 0.0, 0.0], device=sim.device)
+    cube_object.write_nodal_pos_to_sim_index(first_pos)
+    cube_object.update(sim.cfg.dt)
+    torch.testing.assert_close(cube_object.data.nodal_pos_w.torch, first_pos, rtol=1e-5, atol=1e-5)
+
+    sim.reset()
+
+    second_pos = initial_pos + torch.tensor([0.0, -0.1, 0.2], device=sim.device)
+    cube_object.write_nodal_pos_to_sim_index(second_pos)
+    cube_object.update(sim.cfg.dt)
+    torch.testing.assert_close(cube_object.data.nodal_pos_w.torch, second_pos, rtol=1e-5, atol=1e-5)
+
+
+def test_write_shape_validation(sim):
+    """Test public write APIs reject wrong tensor shapes."""
+    cube_object = generate_cubes_scene(num_cubes=2)
+
+    sim.reset()
+
+    particles_per_body = cube_object.max_sim_vertices_per_body
+    wrong_pos = torch.zeros(particles_per_body, 3, device=sim.device)
+    wrong_vel = torch.zeros(1, particles_per_body, 2, device=sim.device)
+    wrong_targets = torch.zeros(2, particles_per_body, 3, device=sim.device)
+
+    with pytest.raises(AssertionError, match="Shape mismatch"):
+        cube_object.write_nodal_pos_to_sim_index(wrong_pos)
+    with pytest.raises(AssertionError, match="Shape mismatch"):
+        cube_object.write_nodal_velocity_to_sim_index(wrong_vel, env_ids=torch.tensor([0], device=sim.device))
+    with pytest.raises(AssertionError, match="Shape mismatch"):
+        cube_object.write_nodal_kinematic_target_to_sim_index(wrong_targets)

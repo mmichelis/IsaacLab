@@ -381,7 +381,7 @@ class DeformableObject(BaseDeformableObject):
         # Store kinematic targets in our data buffer
         if self._data.nodal_kinematic_target is not None:
             targets_torch = wp.to_torch(targets)
-            buffer_torch = wp.to_torch(self._data.nodal_kinematic_target)
+            buffer_torch = self._data.nodal_kinematic_target.torch
             env_ids_torch = wp.to_torch(env_ids).long()
             if full_data:
                 buffer_torch[env_ids_torch] = targets_torch[env_ids_torch]
@@ -705,7 +705,7 @@ class DeformableObject(BaseDeformableObject):
     def _debug_vis_callback(self, event):
         num_enabled = 0
         if self._deformable_type == "volume":
-            kinematic_target_torch = wp.to_torch(self.data.nodal_kinematic_target)
+            kinematic_target_torch = self.data.nodal_kinematic_target.torch
             targets_enabled = kinematic_target_torch[:, :, 3] == 0.0
             num_enabled = int(torch.sum(targets_enabled).item())
         if num_enabled == 0:
