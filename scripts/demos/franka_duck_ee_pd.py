@@ -43,7 +43,7 @@ parser.add_argument("--task", type=str, default=TASK, help="Task name.")
 parser.add_argument(
     "--max_steps",
     type=int,
-    default=None,
+    default=360,
     help="Maximum number of environment steps. Defaults to one episode without a visualizer.",
 )
 parser.add_argument("--episode_length_s", type=float, default=12.0, help="Episode length [s].")
@@ -54,13 +54,7 @@ parser.add_argument("--damping", type=float, default=0.1, help="Damped least-squ
 parser.add_argument("--max_joint_step", type=float, default=0.04, help="Maximum joint command step [rad/env step].")
 parser.add_argument("--approach_steps", type=int, default=90, help="Steps used to blend from the reset pose to hover.")
 parser.add_argument("--hover_height", type=float, default=0.22, help="Hover target above the duck COM [m].")
-parser.add_argument("--grasp_height", type=float, default=0.02, help="Grasp target above the duck COM [m].")
-parser.add_argument(
-    "--goal_height_offset",
-    type=float,
-    default=0.20,
-    help="End-effector offset above the commanded duck goal [m].",
-)
+parser.add_argument("--grasp_height", type=float, default=0.0, help="Grasp target above the duck COM [m].")
 parser.add_argument("--print_interval", type=int, default=30, help="Print tracking error every N env steps.")
 parser.add_argument("--record_video", action="store_true", default=False, help="Record Kit camera frames.")
 parser.add_argument(
@@ -332,17 +326,17 @@ def _target_ee_pos_w(env, step_count: int) -> tuple[torch.Tensor, torch.Tensor]:
 
     hover_pos_w = duck_pos_w + args_cli.hover_height * z_axis
     grasp_pos_w = duck_pos_w + args_cli.grasp_height * z_axis
-    lift_pos_w = goal_pos_w + args_cli.goal_height_offset * z_axis
+    lift_pos_w = goal_pos_w
 
     phase = (step_count % max(args_cli.cycle_steps, 1)) / max(args_cli.cycle_steps, 1)
     if phase < 0.25:
         ee_target_pos_w = hover_pos_w
         gripper_action = torch.ones(env.num_envs, 1, device=device)
-    elif phase < 0.45:
+    elif phase < 0.55:
         alpha = torch.tensor((phase - 0.25) / 0.20, device=device)
         ee_target_pos_w = torch.lerp(hover_pos_w, grasp_pos_w, _smoothstep(alpha))
         gripper_action = torch.ones(env.num_envs, 1, device=device)
-    elif phase < 0.58:
+    elif phase < 0.65:
         ee_target_pos_w = grasp_pos_w
         gripper_action = -torch.ones(env.num_envs, 1, device=device)
     elif phase < 0.85:
