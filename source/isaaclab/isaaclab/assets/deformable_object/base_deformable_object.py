@@ -15,6 +15,7 @@ import warp as wp
 
 import isaaclab.utils.math as math_utils
 from isaaclab.assets.asset_base import AssetBase
+from isaaclab.utils.warp import ProxyArray
 
 if TYPE_CHECKING:
     from .base_deformable_object_data import BaseDeformableObjectData
@@ -119,7 +120,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_state_to_sim_index(
         self,
-        nodal_state: torch.Tensor | wp.array,
+        nodal_state: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
         full_data: bool = False,
     ) -> None:
@@ -135,8 +136,10 @@ class BaseDeformableObject(AssetBase):
             env_ids: Environment indices. If None, then all indices are used.
             full_data: Whether to expect full data. Defaults to False.
         """
-        # Convert warp to torch if needed
-        if isinstance(nodal_state, wp.array):
+        # Convert array wrappers to torch for slicing into position and velocity views.
+        if isinstance(nodal_state, ProxyArray):
+            nodal_state = nodal_state.torch
+        elif isinstance(nodal_state, wp.array):
             nodal_state = wp.to_torch(nodal_state)
         # set into simulation
         self.write_nodal_pos_to_sim_index(nodal_state[..., :3], env_ids=env_ids, full_data=full_data)
@@ -145,7 +148,7 @@ class BaseDeformableObject(AssetBase):
     @abstractmethod
     def write_nodal_pos_to_sim_index(
         self,
-        nodal_pos: torch.Tensor | wp.array,
+        nodal_pos: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
         full_data: bool = False,
     ) -> None:
@@ -163,7 +166,7 @@ class BaseDeformableObject(AssetBase):
     @abstractmethod
     def write_nodal_velocity_to_sim_index(
         self,
-        nodal_vel: torch.Tensor | wp.array,
+        nodal_vel: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
         full_data: bool = False,
     ) -> None:
@@ -181,7 +184,7 @@ class BaseDeformableObject(AssetBase):
     @abstractmethod
     def write_nodal_kinematic_target_to_sim_index(
         self,
-        targets: torch.Tensor | wp.array,
+        targets: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
         full_data: bool = False,
     ) -> None:
@@ -209,7 +212,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_state_to_sim_mask(
         self,
-        nodal_state: torch.Tensor | wp.array,
+        nodal_state: torch.Tensor | wp.array | ProxyArray,
         env_mask: wp.array | None = None,
     ) -> None:
         """Set the nodal state over selected environment mask into the simulation.
@@ -227,7 +230,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_pos_to_sim_mask(
         self,
-        nodal_pos: torch.Tensor | wp.array,
+        nodal_pos: torch.Tensor | wp.array | ProxyArray,
         env_mask: wp.array | None = None,
     ) -> None:
         """Set the nodal positions over selected environment mask into the simulation.
@@ -245,7 +248,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_velocity_to_sim_mask(
         self,
-        nodal_vel: torch.Tensor | wp.array,
+        nodal_vel: torch.Tensor | wp.array | ProxyArray,
         env_mask: wp.array | None = None,
     ) -> None:
         """Set the nodal velocity over selected environment mask into the simulation.
@@ -263,7 +266,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_kinematic_target_to_sim_mask(
         self,
-        targets: torch.Tensor | wp.array,
+        targets: torch.Tensor | wp.array | ProxyArray,
         env_mask: wp.array | None = None,
     ) -> None:
         """Set the kinematic targets of the simulation mesh for the deformable bodies using mask.
@@ -285,7 +288,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_state_to_sim(
         self,
-        nodal_state: torch.Tensor | wp.array,
+        nodal_state: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
     ) -> None:
         """Deprecated. Please use :meth:`write_nodal_state_to_sim_index` instead."""
@@ -298,7 +301,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_kinematic_target_to_sim(
         self,
-        targets: torch.Tensor | wp.array,
+        targets: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
     ) -> None:
         """Deprecated. Please use :meth:`write_nodal_kinematic_target_to_sim_index` instead."""
@@ -312,7 +315,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_pos_to_sim(
         self,
-        nodal_pos: torch.Tensor | wp.array,
+        nodal_pos: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
     ) -> None:
         """Deprecated. Please use :meth:`write_nodal_pos_to_sim_index` instead."""
@@ -325,7 +328,7 @@ class BaseDeformableObject(AssetBase):
 
     def write_nodal_velocity_to_sim(
         self,
-        nodal_vel: torch.Tensor | wp.array,
+        nodal_vel: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
     ) -> None:
         """Deprecated. Please use :meth:`write_nodal_velocity_to_sim_index` instead."""
