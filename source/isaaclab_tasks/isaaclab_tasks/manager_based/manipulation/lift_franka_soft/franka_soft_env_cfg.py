@@ -261,7 +261,7 @@ class RewardsCfg:
     )
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifted,
-        params={"minimal_height": 0.06, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
         weight=5.0,
     )
     deformable_goal_tracking = RewTerm(
@@ -285,12 +285,10 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
-    joint_vel = RewTerm(
-        func=mdp.joint_vel_l2,
-        weight=-1e-4,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-3)
+    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-5e-4)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
 
 
 @configclass
