@@ -20,6 +20,7 @@ requirements = [
     "hidapi",
     "gymnasium==0.29.0",
     "trimesh",
+    "pytetwild",
     "websockets"
 ]
 
@@ -31,6 +32,7 @@ modules = [
     "hid",
     "gymnasium",
     "trimesh",
+    "pytetwild",
     "websockets"
 ]
 
