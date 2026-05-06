@@ -269,7 +269,7 @@ class DeformableObject(BaseDeformableObject):
 
     def write_nodal_pos_to_sim_index(
         self,
-        nodal_pos: torch.Tensor | wp.array,
+        nodal_pos: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
         full_data: bool = False,
     ) -> None:
@@ -283,6 +283,8 @@ class DeformableObject(BaseDeformableObject):
             full_data: Whether to expect full data. Defaults to False.
         """
         env_ids = self._resolve_env_ids(env_ids)
+        if isinstance(nodal_pos, ProxyArray):
+            nodal_pos = nodal_pos.warp
         if full_data:
             self.assert_shape_and_dtype(
                 nodal_pos, (self.num_instances, self._particles_per_body), wp.vec3f, "nodal_pos"
@@ -310,7 +312,7 @@ class DeformableObject(BaseDeformableObject):
 
     def write_nodal_velocity_to_sim_index(
         self,
-        nodal_vel: torch.Tensor | wp.array,
+        nodal_vel: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
         full_data: bool = False,
     ) -> None:
@@ -324,6 +326,8 @@ class DeformableObject(BaseDeformableObject):
             full_data: Whether to expect full data. Defaults to False.
         """
         env_ids = self._resolve_env_ids(env_ids)
+        if isinstance(nodal_vel, ProxyArray):
+            nodal_vel = nodal_vel.warp
         if full_data:
             self.assert_shape_and_dtype(
                 nodal_vel, (self.num_instances, self._particles_per_body), wp.vec3f, "nodal_vel"
@@ -351,7 +355,7 @@ class DeformableObject(BaseDeformableObject):
 
     def write_nodal_kinematic_target_to_sim_index(
         self,
-        targets: torch.Tensor | wp.array,
+        targets: torch.Tensor | wp.array | ProxyArray,
         env_ids: Sequence[int] | torch.Tensor | wp.array | None = None,
         full_data: bool = False,
     ) -> None:
@@ -369,6 +373,8 @@ class DeformableObject(BaseDeformableObject):
             full_data: Whether to expect full data. Defaults to False.
         """
         env_ids = self._resolve_env_ids(env_ids)
+        if isinstance(targets, ProxyArray):
+            targets = targets.warp
         if full_data:
             self.assert_shape_and_dtype(targets, (self.num_instances, self._particles_per_body), wp.vec4f, "targets")
         else:
