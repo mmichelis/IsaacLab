@@ -285,10 +285,10 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-3)
-    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-5e-4)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-2)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-2)
+    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-3)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-3)
 
 
 @configclass
@@ -309,6 +309,11 @@ class TerminationsCfg:
     deformable_dropped = DoneTerm(
         func=mdp.deformable_com_below_minimum,
         params={"minimum_height": -0.1, "asset_cfg": SceneEntityCfg("deformable")},
+    )
+
+    ee_below_table = DoneTerm(
+        func=mdp.ee_below_minimum,
+        params={"minimum_height": 0.0, "ee_frame_cfg": SceneEntityCfg("ee_frame")},
     )
 
 

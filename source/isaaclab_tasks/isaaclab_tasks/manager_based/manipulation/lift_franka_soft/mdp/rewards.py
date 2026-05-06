@@ -124,3 +124,26 @@ def deformable_outside_table_bounds(
     outside_x = (nodal_pos[..., 0] < x_bounds[0]) | (nodal_pos[..., 0] > x_bounds[1])
     outside_y = (nodal_pos[..., 1] < y_bounds[0]) | (nodal_pos[..., 1] > y_bounds[1])
     return torch.any(outside_x | outside_y, dim=1)
+
+
+def ee_below_minimum(
+    env: ManagerBasedRLEnv,
+    minimum_height: float,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Termination signal when the end-effector falls below ``minimum_height`` [m].
+
+    Height is measured in the environment frame (``z`` of the EE position with the env
+    origin subtracted), so the threshold is independent of the environment's xy offset.
+
+    Args:
+        env: The environment instance.
+        minimum_height: Minimum allowed EE height in the environment frame [m].
+        ee_frame_cfg: The end-effector frame entity.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    ee_z = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, 2] - env.scene.env_origins[:, 2]
+    return ee_z < minimum_height
