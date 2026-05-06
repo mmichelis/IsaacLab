@@ -26,19 +26,19 @@ def deformable_lifted(
     minimal_height: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
 ) -> torch.Tensor:
-    """Reward if any deformable nodal point is above a minimum height.
+    """Reward if the deformable COM is above a minimum height.
 
     Args:
         env: The environment instance.
-        minimal_height: Minimum nodal height [m].
+        minimal_height: Minimum COM height [m].
         asset_cfg: The deformable object entity.
 
     Returns:
         Reward tensor with shape ``(num_envs,)``.
     """
     asset: DeformableObject = env.scene[asset_cfg.name]
-    nodal_z = wp.to_torch(asset.data.nodal_pos_w)[..., 2]
-    return torch.any(nodal_z > minimal_height, dim=1).float()
+    com_z = wp.to_torch(asset.data.root_pos_w)[:, 2]
+    return torch.where(com_z > minimal_height, 1.0, 0.0)
 
 
 def deformable_ee_distance(
