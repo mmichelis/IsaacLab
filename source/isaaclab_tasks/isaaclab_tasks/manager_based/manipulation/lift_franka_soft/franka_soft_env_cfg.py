@@ -293,11 +293,11 @@ class RewardsCfg:
     gripper_close = RewTerm(
         func=mdp.gripper_close_action,
         params={"action_name": "gripper_action"},
-        weight=-2.0,
+        weight=-1.0,
     )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-2)
-    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-3)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-3)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-5e-2)
+    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-2e-3)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-5e-3)
 
 
 @configclass
