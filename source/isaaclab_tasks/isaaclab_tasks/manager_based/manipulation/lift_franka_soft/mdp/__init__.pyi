@@ -9,6 +9,7 @@ __all__ = [
     "deformable_com_goal_distance",
     "deformable_com_in_robot_root_frame",
     "deformable_lifted",
+    "deformable_outside_table_bounds",
 ]
 
 from .observations import deformable_com_in_robot_root_frame
@@ -17,5 +18,6 @@ from .rewards import (
     deformable_ee_distance,
     deformable_com_goal_distance,
     deformable_lifted,
+    deformable_outside_table_bounds,
 )
 from isaaclab.envs.mdp import *

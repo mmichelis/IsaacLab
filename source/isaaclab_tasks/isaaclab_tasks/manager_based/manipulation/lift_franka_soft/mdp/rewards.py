@@ -100,3 +100,27 @@ def deformable_com_below_minimum(
     asset: DeformableObject = env.scene[asset_cfg.name]
     com_z = wp.to_torch(asset.data.root_pos_w)[:, 2]
     return com_z < minimum_height
+
+
+def deformable_outside_table_bounds(
+    env: ManagerBasedRLEnv,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+) -> torch.Tensor:
+    """Terminate if any deformable nodal point leaves the table footprint.
+
+    Args:
+        env: The environment instance.
+        x_bounds: Allowed x-position range in the environment frame [m].
+        y_bounds: Allowed y-position range in the environment frame [m].
+        asset_cfg: The deformable object entity.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    asset: DeformableObject = env.scene[asset_cfg.name]
+    nodal_pos = wp.to_torch(asset.data.nodal_pos_w) - env.scene.env_origins.unsqueeze(1)
+    outside_x = (nodal_pos[..., 0] < x_bounds[0]) | (nodal_pos[..., 0] > x_bounds[1])
+    outside_y = (nodal_pos[..., 1] < y_bounds[0]) | (nodal_pos[..., 1] > y_bounds[1])
+    return torch.any(outside_x | outside_y, dim=1)
