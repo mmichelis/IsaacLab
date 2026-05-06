@@ -215,9 +215,13 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        deformable_com = ObsTerm(
-            func=mdp.deformable_com_in_robot_root_frame,
-            params={"asset_cfg": SceneEntityCfg("deformable")},
+        # deformable_com = ObsTerm(
+        #     func=mdp.deformable_com_in_robot_root_frame,
+        #     params={"asset_cfg": SceneEntityCfg("deformable")},
+        # )
+        deformable_sampled_points = ObsTerm(
+            func=mdp.DeformableSampledPointsInRobotRootFrame,
+            params={"asset_cfg": SceneEntityCfg("deformable"), "num_points": 20},
         )
         target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "deformable_pose"})
         actions = ObsTerm(func=mdp.last_action)
@@ -257,7 +261,7 @@ class RewardsCfg:
     reaching_deformable = RewTerm(
         func=mdp.deformable_ee_distance,
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
-        weight=1.0,
+        weight=5.0,
     )
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifted,
@@ -286,6 +290,11 @@ class RewardsCfg:
     )
 
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-2)
+    gripper_close = RewTerm(
+        func=mdp.gripper_close_action,
+        params={"action_name": "gripper_action"},
+        weight=-2.0,
+    )
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-2)
     joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-3)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-3)
