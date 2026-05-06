@@ -18,6 +18,7 @@ pyproject.dependencies.all = [
     "gymnasium==1.2.0",
     # procedural-generation
     "trimesh",
+    "pytetwild",
     "pyglet>=2.1.6",
     # image processing
     "transformers==4.57.6",
