@@ -91,6 +91,26 @@ def deformable_com_goal_distance(
     return (com_w[:, 2] > minimal_height) * (1.0 - torch.tanh(distance / std))
 
 
+def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:
+    """Penalty signal for commanding the gripper to close.
+
+    The binary gripper action uses negative float actions for close commands and
+    non-negative actions for open commands.
+
+    Args:
+        env: The environment instance.
+        action_name: Name of the gripper action term.
+
+    Returns:
+        Tensor with shape ``(num_envs,)`` containing ``1`` when the gripper is
+        commanded closed and ``0`` otherwise.
+    """
+    gripper_action = env.action_manager.get_term(action_name).raw_actions
+    if gripper_action.dtype == torch.bool:
+        return torch.any(torch.logical_not(gripper_action), dim=1).float()
+    return torch.any(gripper_action < 0.0, dim=1).float()
+
+
 def deformable_com_below_minimum(
     env: ManagerBasedRLEnv,
     minimum_height: float,
