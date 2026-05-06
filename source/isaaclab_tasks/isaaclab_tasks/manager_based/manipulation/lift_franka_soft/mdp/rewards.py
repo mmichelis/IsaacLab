@@ -106,8 +106,6 @@ def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_act
         commanded closed and ``0`` otherwise.
     """
     gripper_action = env.action_manager.get_term(action_name).raw_actions
-    if gripper_action.dtype == torch.bool:
-        return torch.any(torch.logical_not(gripper_action), dim=1).float()
     return torch.any(gripper_action < 0.0, dim=1).float()
 
 
