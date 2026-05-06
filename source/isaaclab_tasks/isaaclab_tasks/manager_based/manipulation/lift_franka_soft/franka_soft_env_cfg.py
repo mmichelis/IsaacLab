@@ -119,7 +119,7 @@ class FrankaSoftSceneCfg(InteractiveSceneCfg):
                 density=1000.0,
                 youngs_modulus=8e4,
                 poissons_ratio=0.25,
-                # particle_radius=0.01
+                particle_radius=0.01
             ),
         ),
     )
@@ -356,11 +356,11 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
 
         # viewer settings
-        self.viewer.origin_type = "asset_root"
-        self.viewer.asset_name = "robot"
-        self.viewer.env_index = 6
-        self.viewer.eye = (4.0, 5.0, 1.0)
-        self.viewer.resolution = (1920, 1080)
+        # self.viewer.origin_type = "asset_root"
+        # self.viewer.asset_name = "robot"
+        # self.viewer.env_index = 6
+        # self.viewer.eye = (4.0, 5.0, 1.0)
+        # self.viewer.resolution = (1920, 1080)
 
         # Newton physics: MJWarp rigid + VBD soft, one-way coupled
         # (matches newton/examples/softbody/example_softbody_franka.py)
@@ -377,21 +377,26 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
                     ccd_iterations=100,
                 ),
                 soft_solver_cfg=VBDSolverCfg(
-                    iterations=5,
+                    iterations=10,
                     integrate_with_external_rigid_solver=True,
                     particle_enable_self_contact=False,
                     particle_collision_detection_interval=-1,
                 ),
-                coupling_mode="one_way",
+                coupling_mode="two_way",
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e6,
-                soft_contact_kd=1e-3,
+                soft_contact_ke=1e4,
+                soft_contact_kd=1e-6,
                 soft_contact_mu=5.0,
-                shape_material_ke=1e6,
-                shape_material_kd=1e-3,
+                shape_material_ke=1e4,
+                shape_material_kd=1e-6,
                 shape_material_mu=5.0,
             ),
             num_substeps=10,
             use_cuda_graph=True,
         )
+
+        # increase franka gripper stiffness
+        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
+        self.scene.robot.actuators["panda_hand"].stiffness = 3000.0
+        self.scene.robot.actuators["panda_hand"].damping = 200.0

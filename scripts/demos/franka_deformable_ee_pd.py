@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Run the Franka duck environment with a simple end-effector position PD controller.
+"""Run the Lift Soft Franka environment with a simple end-effector position PD controller.
 
 The controller tracks a scripted end-effector position and sends a binary
 open/close command to the gripper. It solves a damped least-squares joint update
@@ -12,7 +12,7 @@ environment's joint-position action term.
 
 Usage::
 
-    ./isaaclab.sh -p scripts/demos/franka_duck_ee_pd.py --num_envs 1 --visualizer newton
+    ./isaaclab.sh -p scripts/demos/franka_deformable_ee_pd.py --num_envs 1 --visualizer newton
 
 """
 
@@ -35,9 +35,9 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab.utils.math import combine_frame_transforms
 from isaaclab_tasks.utils import add_launcher_args, launch_simulation, resolve_task_config
 
-TASK = "Isaac-Franka-Duck-v0"
+TASK = "Isaac-Lift-Soft-Franka-v0"
 
-parser = argparse.ArgumentParser(description="Run Franka Duck with an end-effector position PD controller.")
+parser = argparse.ArgumentParser(description="Run Lift Soft Franka with an end-effector position PD controller.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments.")
 parser.add_argument("--task", type=str, default=TASK, help="Task name.")
 parser.add_argument(
@@ -53,17 +53,17 @@ parser.add_argument("--kd", type=float, default=0.2, help="End-effector position
 parser.add_argument("--damping", type=float, default=0.1, help="Damped least-squares Jacobian damping.")
 parser.add_argument("--max_joint_step", type=float, default=0.04, help="Maximum joint command step [rad/env step].")
 parser.add_argument("--approach_steps", type=int, default=90, help="Steps used to blend from the reset pose to hover.")
-parser.add_argument("--hover_height", type=float, default=0.22, help="Hover target above the duck COM [m].")
-parser.add_argument("--grasp_height", type=float, default=0.0, help="Grasp target above the duck COM [m].")
+parser.add_argument("--hover_height", type=float, default=0.22, help="Hover target above the deformable COM [m].")
+parser.add_argument("--grasp_height", type=float, default=0.0, help="Grasp target above the deformable COM [m].")
 parser.add_argument("--print_interval", type=int, default=30, help="Print tracking error every N env steps.")
 parser.add_argument("--record_video", action="store_true", default=False, help="Record Kit camera frames.")
 parser.add_argument(
     "--record_dir",
     type=str,
-    default=os.path.join("scripts", "demos", "output", "franka_duck_ee_pd"),
+    default=os.path.join("scripts", "demos", "output", "franka_deformable_ee_pd"),
     help="Directory where recording frames and video are written.",
 )
-parser.add_argument("--record_name", type=str, default="franka_duck_ee_pd.mp4", help="Output video filename.")
+parser.add_argument("--record_name", type=str, default="franka_deformable_ee_pd.mp4", help="Output video filename.")
 parser.add_argument("--record_fps", type=int, default=60, help="Frame rate for the ffmpeg output.")
 parser.add_argument("--record_width", type=int, default=1920, help="Recording width in pixels.")
 parser.add_argument("--record_height", type=int, default=1080, help="Recording height in pixels.")
@@ -302,15 +302,15 @@ def _solve_damped_least_squares(jacobian: torch.Tensor, velocity: torch.Tensor, 
     return (jacobian_t @ torch.linalg.solve(lhs, velocity.unsqueeze(-1))).squeeze(-1)
 
 
-def _duck_com_w(env) -> torch.Tensor:
-    """Return the deformable duck COM in world frame [m]."""
-    return _to_torch(env.scene["duck"].data.root_pos_w)
+def _deformable_com_w(env) -> torch.Tensor:
+    """Return the deformable COM in world frame [m]."""
+    return _to_torch(env.scene["deformable"].data.root_pos_w)
 
 
-def _duck_goal_w(env) -> torch.Tensor:
-    """Return the commanded duck goal in world frame [m]."""
+def _deformable_goal_w(env) -> torch.Tensor:
+    """Return the commanded deformable goal in world frame [m]."""
     robot = env.scene["robot"]
-    command = env.command_manager.get_command("duck_pose")
+    command = env.command_manager.get_command("deformable_pose")
     goal_pos_w, _ = combine_frame_transforms(
         _to_torch(robot.data.root_pos_w), _to_torch(robot.data.root_quat_w), command[:, :3]
     )
@@ -320,12 +320,13 @@ def _duck_goal_w(env) -> torch.Tensor:
 def _target_ee_pos_w(env, step_count: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Compute the scripted end-effector position target and gripper command."""
     device = env.device
-    duck_pos_w = _duck_com_w(env)
-    goal_pos_w = _duck_goal_w(env)
+    deformable_pos_w = _deformable_com_w(env)
+    goal_pos_w = _deformable_goal_w(env)
+    y_axis = torch.tensor([0.0, 1.0, 0.0], device=device).expand(env.num_envs, -1)
     z_axis = torch.tensor([0.0, 0.0, 1.0], device=device).expand(env.num_envs, -1)
 
-    hover_pos_w = duck_pos_w + args_cli.hover_height * z_axis
-    grasp_pos_w = duck_pos_w + args_cli.grasp_height * z_axis
+    hover_pos_w = deformable_pos_w + args_cli.hover_height * z_axis
+    grasp_pos_w = deformable_pos_w + args_cli.grasp_height * z_axis + 0.04 * y_axis
     lift_pos_w = goal_pos_w
 
     phase = (step_count % max(args_cli.cycle_steps, 1)) / max(args_cli.cycle_steps, 1)
