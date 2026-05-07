@@ -44,7 +44,7 @@ from . import mdp
 # Pre-defined configs
 ##
 
-from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
 
 
 ##
@@ -56,10 +56,10 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
 class DeformableNewtonCfg(NewtonCfg):
     """NewtonCfg extended with model-level contact parameters for deformable objects.
 
-    Mirrors the pattern in ``isaaclab_tasks.direct.pick_vbd_cube``: a distinct class
-    so that ``_is_kitless_physics`` does not match it, ensuring Kit is launched for
-    USD deformable spawning.
+    Uses a distinct class name so that ``_is_kitless_physics`` does not
+    match it, ensuring Kit is launched for USD deformable spawning.
     """
+    # TODO: 
 
     model_cfg: NewtonModelCfg | None = None
     """Global Newton model parameters applied after builder finalization."""
@@ -74,7 +74,7 @@ class DeformableNewtonCfg(NewtonCfg):
 class FrankaSoftSceneCfg(InteractiveSceneCfg):
     """Scene for the Franka deformable environment."""
 
-    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
     # end-effector frame for reward shaping
     ee_frame: FrameTransformerCfg = FrameTransformerCfg(
@@ -119,7 +119,7 @@ class FrankaSoftSceneCfg(InteractiveSceneCfg):
                 density=1000.0,
                 youngs_modulus=8e4,
                 poissons_ratio=0.25,
-                particle_radius=0.01
+                # particle_radius=0.01
             ),
         ),
     )
@@ -203,7 +203,7 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.02},
+        close_command_expr={"panda_finger_.*": 0.0},
     )
 
 
@@ -289,15 +289,15 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-2)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-1)
     gripper_close = RewTerm(
         func=mdp.gripper_close_action,
         params={"action_name": "gripper_action"},
         weight=-1.0,
     )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-5e-2)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-1)
     joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-2e-3)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-5e-3)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-2)
 
 
 @configclass
@@ -309,8 +309,8 @@ class TerminationsCfg:
     deformable_outside_table = DoneTerm(
         func=mdp.deformable_outside_table_bounds,
         params={
-            "x_bounds": (0.1, 0.9),
-            "y_bounds": (-0.4, 0.4),
+            "x_bounds": (0.0, 1.0),
+            "y_bounds": (-0.5, 0.5),
             "asset_cfg": SceneEntityCfg("deformable"),
         },
     )
@@ -336,7 +336,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
     """Manager-based RL environment: Franka Panda lifting a volume deformable."""
 
     # Scene settings
-    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
+    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=512, env_spacing=2.5, replicate_physics=True)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -385,10 +385,10 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
                 coupling_mode="two_way",
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e4,
+                soft_contact_ke=5e3,
                 soft_contact_kd=1e-6,
                 soft_contact_mu=5.0,
-                shape_material_ke=1e4,
+                shape_material_ke=5e3,
                 shape_material_kd=1e-6,
                 shape_material_mu=5.0,
             ),
@@ -397,6 +397,6 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         )
 
         # increase franka gripper stiffness
-        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
-        self.scene.robot.actuators["panda_hand"].stiffness = 3000.0
-        self.scene.robot.actuators["panda_hand"].damping = 200.0
+        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 100.0
+        self.scene.robot.actuators["panda_hand"].stiffness = 500.0
+        self.scene.robot.actuators["panda_hand"].damping = 50.0

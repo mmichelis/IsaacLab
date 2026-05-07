@@ -48,13 +48,13 @@ parser.add_argument(
 )
 parser.add_argument("--episode_length_s", type=float, default=12.0, help="Episode length [s].")
 parser.add_argument("--cycle_steps", type=int, default=360, help="Controller phase cycle length [env steps].")
-parser.add_argument("--kp", type=float, default=4.0, help="End-effector position proportional gain [1/s].")
-parser.add_argument("--kd", type=float, default=0.2, help="End-effector position derivative gain.")
-parser.add_argument("--damping", type=float, default=0.1, help="Damped least-squares Jacobian damping.")
+parser.add_argument("--kp", type=float, default=0.7, help="End-effector position proportional gain [1/s].")
+parser.add_argument("--kd", type=float, default=0.3, help="End-effector position derivative gain.")
+parser.add_argument("--damping", type=float, default=0.05, help="Damped least-squares Jacobian damping.")
 parser.add_argument("--max_joint_step", type=float, default=0.04, help="Maximum joint command step [rad/env step].")
 parser.add_argument("--approach_steps", type=int, default=90, help="Steps used to blend from the reset pose to hover.")
 parser.add_argument("--hover_height", type=float, default=0.22, help="Hover target above the deformable COM [m].")
-parser.add_argument("--grasp_height", type=float, default=0.0, help="Grasp target above the deformable COM [m].")
+parser.add_argument("--grasp_height", type=float, default=-0.02, help="Grasp target above the deformable COM [m].")
 parser.add_argument("--print_interval", type=int, default=30, help="Print tracking error every N env steps.")
 parser.add_argument("--record_video", action="store_true", default=False, help="Record Kit camera frames.")
 parser.add_argument(
@@ -326,7 +326,7 @@ def _target_ee_pos_w(env, step_count: int) -> tuple[torch.Tensor, torch.Tensor]:
     z_axis = torch.tensor([0.0, 0.0, 1.0], device=device).expand(env.num_envs, -1)
 
     hover_pos_w = deformable_pos_w + args_cli.hover_height * z_axis
-    grasp_pos_w = deformable_pos_w + args_cli.grasp_height * z_axis + 0.04 * y_axis
+    grasp_pos_w = deformable_pos_w + args_cli.grasp_height * z_axis #+ 0.05 * y_axis
     lift_pos_w = goal_pos_w
 
     phase = (step_count % max(args_cli.cycle_steps, 1)) / max(args_cli.cycle_steps, 1)
