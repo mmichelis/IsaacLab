@@ -172,25 +172,6 @@ class FrankaSoftSceneCfg(InteractiveSceneCfg):
         ],
     )
 
-    # deformable rubber duck (tetrahedral mesh from Newton's asset cache)
-    # deformable: DeformableObjectCfg = DeformableObjectCfg(
-    #     prim_path="/World/envs/env_.*/Deformable",
-    #     init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
-    #     spawn=UsdFileCfg(
-    #         usd_path=DUCK_USD_PATH,
-    #         scale=(1.0, 1.0, 1.0),
-    #         deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
-    #         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
-    #         # Lamé parameters from the Newton example (k_mu = k_lambda = 1e6, density = 100, k_damp ≈ 0):
-    #         # μ = E / (2(1+ν)) = 2.5e6 / 2.5 = 1e6
-    #         # λ = Eν / ((1+ν)(1−2ν)) = 2.5e6·0.25 / (1.25·0.5) = 1e6
-    #         physics_material=sim_utils.DeformableBodyMaterialCfg(
-    #             density=500.0,
-    #             youngs_modulus=2.5e6,
-    #             poissons_ratio=0.25,
-    #         ),
-    #     ),
-    # )
     deformable: DeformableCfg = DeformableCfg()
 
     # static table matching the Newton example: half-extents (0.4, 0.4, 0.1) → top at z = 0.2
