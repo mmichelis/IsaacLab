@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""XPBD Newton manager."""
+"""Coupled MJWarp + VBD Newton manager."""
 
 from __future__ import annotations
 

@@ -35,6 +35,8 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab_tasks.utils import PresetCfg
+from isaaclab_physx.physics import PhysxCfg
+
 
 from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
 
@@ -86,6 +88,23 @@ class DeformableCfg(PresetCfg):
         ),
     )
 
+    physx: DeformableObjectCfg = DeformableObjectCfg(
+        prim_path="/World/envs/env_.*/Deformable",
+        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
+        spawn=sim_utils.MeshCuboidCfg(
+            size=(0.3, 0.05, 0.05),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(
+                density=300.0,
+                youngs_modulus=8e4,
+                poissons_ratio=0.25,
+                static_friction=10.0,
+                dynamic_friction=5.0,
+            ),
+        ),
+    )
+
     default = newton
 
 
@@ -124,6 +143,8 @@ class PhysicsCfg(PresetCfg):
         num_substeps=10,
         use_cuda_graph=True,
     )
+
+    physx: PhysxCfg = PhysxCfg()
 
     default = newton
 
@@ -402,6 +423,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
+        self.sim.physics = PhysicsCfg()
 
         # viewer settings
         self.viewer.origin_type = "asset_root"
@@ -409,7 +431,6 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.env_index = 0
         self.viewer.eye = (1.25, -1.5, 0.75)
         self.viewer.resolution = (1920, 1080)
-        self.sim.physics = PhysicsCfg()
 
         # increase franka gripper stiffness
         self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
