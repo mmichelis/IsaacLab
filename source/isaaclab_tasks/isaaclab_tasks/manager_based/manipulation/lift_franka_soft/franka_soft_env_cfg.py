@@ -35,8 +35,10 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab_tasks.utils import PresetCfg
 
 from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
+
 
 from . import mdp
 
@@ -64,6 +66,67 @@ class DeformableNewtonCfg(NewtonCfg):
     model_cfg: NewtonModelCfg | None = None
     """Global Newton model parameters applied after builder finalization."""
 
+
+@configclass
+class DeformableCfg(PresetCfg):
+    """Preset config for the deformable object, matching the Newton example."""
+
+    newton: DeformableObjectCfg = DeformableObjectCfg(
+        prim_path="/World/envs/env_.*/Deformable",
+        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
+        spawn=sim_utils.MeshCuboidCfg(
+            size=(0.3, 0.05, 0.05),
+            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
+            physics_material=sim_utils.DeformableBodyMaterialCfg(
+                density=300.0,
+                youngs_modulus=8e4,
+                poissons_ratio=0.25,
+                particle_radius=0.01,
+            ),
+        ),
+    )
+
+    default = newton
+
+
+@configclass
+class PhysicsCfg(PresetCfg):
+    # Newton physics: MJWarp rigid + VBD soft, one-way coupled
+    # (matches newton/examples/softbody/example_softbody_franka.py)
+    newton: DeformableNewtonCfg = DeformableNewtonCfg(
+        solver_cfg=CoupledMJWarpVBDSolverCfg(
+            rigid_solver_cfg=MJWarpSolverCfg(
+                njmax=40,
+                nconmax=20,
+                ls_iterations=20,
+                cone="pyramidal",
+                impratio=1,
+                ls_parallel=False,
+                integrator="implicitfast",
+                ccd_iterations=100,
+            ),
+            soft_solver_cfg=VBDSolverCfg(
+                iterations=10,
+                integrate_with_external_rigid_solver=True,
+                particle_enable_self_contact=False,
+                particle_collision_detection_interval=-1,
+            ),
+            coupling_mode="two_way",
+        ),
+        model_cfg=NewtonModelCfg(
+            soft_contact_ke=1e4,
+            soft_contact_kd=1e-5,
+            soft_contact_mu=5.0,
+            shape_material_ke=4e4,
+            shape_material_kd=1e-5,
+            shape_material_mu=5.0,
+        ),
+        num_substeps=10,
+        use_cuda_graph=True,
+    )
+
+    default = newton
 
 ##
 # Scene definition
@@ -108,21 +171,7 @@ class FrankaSoftSceneCfg(InteractiveSceneCfg):
     #         ),
     #     ),
     # )
-    deformable: DeformableObjectCfg = DeformableObjectCfg(
-        prim_path="/World/envs/env_.*/Deformable",
-        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
-        spawn=sim_utils.MeshCuboidCfg(
-            size=(0.3, 0.05, 0.05),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(
-                density=1000.0,
-                youngs_modulus=8e4,
-                poissons_ratio=0.25,
-                particle_radius=0.01
-            ),
-        ),
-    )
+    deformable: DeformableCfg = DeformableCfg()
 
     # static table matching the Newton example: half-extents (0.4, 0.4, 0.1) → top at z = 0.2
     # NOTE: SeattleLabTable USD has its origin on the top surface, so the deformable object
@@ -361,40 +410,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.env_index = 0
         self.viewer.eye = (1.25, -1.5, 0.75)
         self.viewer.resolution = (1920, 1080)
-
-        # Newton physics: MJWarp rigid + VBD soft, one-way coupled
-        # (matches newton/examples/softbody/example_softbody_franka.py)
-        self.sim.physics = DeformableNewtonCfg(
-            solver_cfg=CoupledMJWarpVBDSolverCfg(
-                rigid_solver_cfg=MJWarpSolverCfg(
-                    njmax=40,
-                    nconmax=20,
-                    ls_iterations=20,
-                    cone="pyramidal",
-                    impratio=1,
-                    ls_parallel=False,
-                    integrator="implicitfast",
-                    ccd_iterations=100,
-                ),
-                soft_solver_cfg=VBDSolverCfg(
-                    iterations=10,
-                    integrate_with_external_rigid_solver=True,
-                    particle_enable_self_contact=False,
-                    particle_collision_detection_interval=-1,
-                ),
-                coupling_mode="two_way",
-            ),
-            model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e4,
-                soft_contact_kd=1e-5,
-                soft_contact_mu=5.0,
-                shape_material_ke=4e4,
-                shape_material_kd=1e-5,
-                shape_material_mu=5.0,
-            ),
-            num_substeps=10,
-            use_cuda_graph=True,
-        )
+        self.sim.physics = PhysicsCfg()
 
         # increase franka gripper stiffness
         self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
