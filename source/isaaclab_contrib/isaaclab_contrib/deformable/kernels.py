@@ -121,6 +121,30 @@ def write_nodal_kinematic_target_mask(
 
 
 @wp.kernel
+def write_nodal_kinematic_target_index(
+    src: wp.array2d(dtype=wp.vec4f),
+    env_ids: wp.array(dtype=wp.int32),
+    full_data: bool,
+    dst: wp.array2d(dtype=wp.vec4f),
+):
+    """Write kinematic target data into the per-instance target buffer using indices.
+
+    Args:
+        src: Input kinematic targets [m]. Shape is (len(env_ids), num_particles)
+            or (num_instances, num_particles).
+        env_ids: Environment indices to write. Shape is (num_selected,).
+        full_data: If True, index src with env_ids[i]; otherwise index src with i.
+        dst: Destination kinematic target buffer [m]. Shape is (num_instances, num_particles).
+    """
+    i, j = wp.tid()
+    env_id = env_ids[i]
+    if full_data:
+        dst[env_id, j] = src[env_id, j]
+    else:
+        dst[env_id, j] = src[i, j]
+
+
+@wp.kernel
 def compute_nodal_state_w(
     nodal_pos: wp.array2d(dtype=wp.vec3f),
     nodal_vel: wp.array2d(dtype=wp.vec3f),

@@ -30,6 +30,7 @@ from .kernels import (
     scatter_particles_state_vec6f_mask,
     set_kinematic_flags_to_one,
     vec6f,
+    write_nodal_kinematic_target_index,
     write_nodal_kinematic_target_mask,
 )
 
@@ -239,13 +240,11 @@ class DeformableObject(BaseDeformableObject):
         if self._data.nodal_kinematic_target is None or self._default_particle_inv_mass is None:
             return
 
-        model = SimulationManager._model
+        model = SimulationManager.get_model()
         if model is None:
             return
 
-        for state in (SimulationManager._state_0, SimulationManager._state_1):
-            if state is None:
-                continue
+        for state in self._iter_particle_states():
             wp.launch(
                 enforce_kinematic_targets,
                 dim=(self._num_instances, self._particles_per_body),
@@ -297,21 +296,16 @@ class DeformableObject(BaseDeformableObject):
         if isinstance(nodal_pos, torch.Tensor):
             nodal_pos = wp.from_torch(nodal_pos.contiguous(), dtype=wp.vec3f)
 
-        # Scatter into both Newton states
-        for state in (SimulationManager._state_0, SimulationManager._state_1):
-            if state is not None and state.particle_q is not None:
-                wp.launch(
-                    scatter_particles_vec3f_index,
-                    dim=(env_ids.shape[0], self._particles_per_body),
-                    inputs=[nodal_pos, env_ids, self._particle_offsets, full_data],
-                    outputs=[state.particle_q],
-                    device=self.device,
-                )
+        for state in self._iter_particle_states():
+            wp.launch(
+                scatter_particles_vec3f_index,
+                dim=(env_ids.shape[0], self._particles_per_body),
+                inputs=[nodal_pos, env_ids, self._particle_offsets, full_data],
+                outputs=[state.particle_q],
+                device=self.device,
+            )
 
-        # Invalidate data caches
-        self._data._nodal_pos_w.timestamp = -1.0
-        self._data._nodal_state_w.timestamp = -1.0
-        self._data._root_pos_w.timestamp = -1.0
+        self._invalidate_nodal_pos_cache()
 
     def write_nodal_velocity_to_sim_index(
         self,
@@ -340,21 +334,16 @@ class DeformableObject(BaseDeformableObject):
         if isinstance(nodal_vel, torch.Tensor):
             nodal_vel = wp.from_torch(nodal_vel.contiguous(), dtype=wp.vec3f)
 
-        # Scatter into both Newton states
-        for state in (SimulationManager._state_0, SimulationManager._state_1):
-            if state is not None and state.particle_qd is not None:
-                wp.launch(
-                    scatter_particles_vec3f_index,
-                    dim=(env_ids.shape[0], self._particles_per_body),
-                    inputs=[nodal_vel, env_ids, self._particle_offsets, full_data],
-                    outputs=[state.particle_qd],
-                    device=self.device,
-                )
+        for state in self._iter_particle_states():
+            wp.launch(
+                scatter_particles_vec3f_index,
+                dim=(env_ids.shape[0], self._particles_per_body),
+                inputs=[nodal_vel, env_ids, self._particle_offsets, full_data],
+                outputs=[state.particle_qd],
+                device=self.device,
+            )
 
-        # Invalidate data caches
-        self._data._nodal_vel_w.timestamp = -1.0
-        self._data._nodal_state_w.timestamp = -1.0
-        self._data._root_vel_w.timestamp = -1.0
+        self._invalidate_nodal_vel_cache()
 
     def write_nodal_kinematic_target_to_sim_index(
         self,
@@ -389,13 +378,13 @@ class DeformableObject(BaseDeformableObject):
 
         # Store kinematic targets in our data buffer
         if self._data.nodal_kinematic_target is not None:
-            targets_torch = wp.to_torch(targets)
-            buffer_torch = self._data.nodal_kinematic_target.torch
-            env_ids_torch = wp.to_torch(env_ids).long()
-            if full_data:
-                buffer_torch[env_ids_torch] = targets_torch[env_ids_torch]
-            else:
-                buffer_torch[env_ids_torch] = targets_torch
+            wp.launch(
+                write_nodal_kinematic_target_index,
+                dim=(env_ids.shape[0], self._particles_per_body),
+                inputs=[targets, env_ids, full_data],
+                outputs=[self._data.nodal_kinematic_target.warp],
+                device=self.device,
+            )
 
     """
     Operations - Write to simulation (mask variants).
@@ -423,21 +412,16 @@ class DeformableObject(BaseDeformableObject):
         if isinstance(nodal_state, torch.Tensor):
             nodal_state = wp.from_torch(nodal_state.contiguous(), dtype=vec6f)
 
-        for state in (SimulationManager._state_0, SimulationManager._state_1):
-            if state is not None and state.particle_q is not None and state.particle_qd is not None:
-                wp.launch(
-                    scatter_particles_state_vec6f_mask,
-                    dim=(env_mask.shape[0], self._particles_per_body),
-                    inputs=[nodal_state, env_mask, self._particle_offsets],
-                    outputs=[state.particle_q, state.particle_qd],
-                    device=self.device,
-                )
+        for state in self._iter_particle_states():
+            wp.launch(
+                scatter_particles_state_vec6f_mask,
+                dim=(env_mask.shape[0], self._particles_per_body),
+                inputs=[nodal_state, env_mask, self._particle_offsets],
+                outputs=[state.particle_q, state.particle_qd],
+                device=self.device,
+            )
 
-        self._data._nodal_pos_w.timestamp = -1.0
-        self._data._nodal_vel_w.timestamp = -1.0
-        self._data._nodal_state_w.timestamp = -1.0
-        self._data._root_pos_w.timestamp = -1.0
-        self._data._root_vel_w.timestamp = -1.0
+        self._invalidate_nodal_state_cache()
 
     def write_nodal_pos_to_sim_mask(
         self,
@@ -459,19 +443,16 @@ class DeformableObject(BaseDeformableObject):
         if isinstance(nodal_pos, torch.Tensor):
             nodal_pos = wp.from_torch(nodal_pos.contiguous(), dtype=wp.vec3f)
 
-        for state in (SimulationManager._state_0, SimulationManager._state_1):
-            if state is not None and state.particle_q is not None:
-                wp.launch(
-                    scatter_particles_vec3f_mask,
-                    dim=(env_mask.shape[0], self._particles_per_body),
-                    inputs=[nodal_pos, env_mask, self._particle_offsets],
-                    outputs=[state.particle_q],
-                    device=self.device,
-                )
+        for state in self._iter_particle_states():
+            wp.launch(
+                scatter_particles_vec3f_mask,
+                dim=(env_mask.shape[0], self._particles_per_body),
+                inputs=[nodal_pos, env_mask, self._particle_offsets],
+                outputs=[state.particle_q],
+                device=self.device,
+            )
 
-        self._data._nodal_pos_w.timestamp = -1.0
-        self._data._nodal_state_w.timestamp = -1.0
-        self._data._root_pos_w.timestamp = -1.0
+        self._invalidate_nodal_pos_cache()
 
     def write_nodal_velocity_to_sim_mask(
         self,
@@ -493,19 +474,16 @@ class DeformableObject(BaseDeformableObject):
         if isinstance(nodal_vel, torch.Tensor):
             nodal_vel = wp.from_torch(nodal_vel.contiguous(), dtype=wp.vec3f)
 
-        for state in (SimulationManager._state_0, SimulationManager._state_1):
-            if state is not None and state.particle_qd is not None:
-                wp.launch(
-                    scatter_particles_vec3f_mask,
-                    dim=(env_mask.shape[0], self._particles_per_body),
-                    inputs=[nodal_vel, env_mask, self._particle_offsets],
-                    outputs=[state.particle_qd],
-                    device=self.device,
-                )
+        for state in self._iter_particle_states():
+            wp.launch(
+                scatter_particles_vec3f_mask,
+                dim=(env_mask.shape[0], self._particles_per_body),
+                inputs=[nodal_vel, env_mask, self._particle_offsets],
+                outputs=[state.particle_qd],
+                device=self.device,
+            )
 
-        self._data._nodal_vel_w.timestamp = -1.0
-        self._data._nodal_state_w.timestamp = -1.0
-        self._data._root_vel_w.timestamp = -1.0
+        self._invalidate_nodal_vel_cache()
 
     def write_nodal_kinematic_target_to_sim_mask(
         self,
@@ -559,6 +537,30 @@ class DeformableObject(BaseDeformableObject):
                 mask = mask.to(torch.bool)
             return wp.from_torch(mask, dtype=wp.bool)
         return mask
+
+    def _iter_particle_states(self):
+        """Yield active Newton states."""
+        for state in (SimulationManager.get_state_0(), SimulationManager.get_state_1()):
+            if state is None:
+                continue
+            yield state
+
+    def _invalidate_nodal_pos_cache(self) -> None:
+        """Invalidate cached position-derived deformable data."""
+        self._data._nodal_pos_w.timestamp = -1.0
+        self._data._nodal_state_w.timestamp = -1.0
+        self._data._root_pos_w.timestamp = -1.0
+
+    def _invalidate_nodal_vel_cache(self) -> None:
+        """Invalidate cached velocity-derived deformable data."""
+        self._data._nodal_vel_w.timestamp = -1.0
+        self._data._nodal_state_w.timestamp = -1.0
+        self._data._root_vel_w.timestamp = -1.0
+
+    def _invalidate_nodal_state_cache(self) -> None:
+        """Invalidate all cached nodal state data."""
+        self._invalidate_nodal_pos_cache()
+        self._invalidate_nodal_vel_cache()
 
     def _register_deformable(self) -> DeformableRegistryEntry:
         """Read mesh from the spawned USD prim and register in NewtonManager's deformable registry.
@@ -790,7 +792,7 @@ class DeformableObject(BaseDeformableObject):
         self._ALL_ENV_MASK = wp.ones((self._num_instances,), dtype=wp.bool, device=self.device)
 
         # Snapshot default positions from current state (after finalize + FK)
-        state = SimulationManager._state_0
+        state = SimulationManager.get_state_0()
         if state is not None and state.particle_q is not None:
             from .kernels import gather_particles_vec3f
 
@@ -824,7 +826,7 @@ class DeformableObject(BaseDeformableObject):
             self._default_nodal_pos_w = None
 
         # Snapshot default particle_inv_mass for kinematic target restoration
-        model = SimulationManager._model
+        model = SimulationManager.get_model()
         if model is not None and hasattr(model, "particle_inv_mass") and model.particle_inv_mass is not None:
             self._default_particle_inv_mass = wp.clone(model.particle_inv_mass)
         else:
@@ -843,7 +845,7 @@ class DeformableObject(BaseDeformableObject):
         self._data.nodal_kinematic_target = ProxyArray(nodal_kinematic_target)
 
         # Set up the model parameters
-        model = SimulationManager._model
+        model = SimulationManager.get_model()
         if model is not None:
             if hasattr(model, "edge_rest_angle"):
                 model.edge_rest_angle.zero_()

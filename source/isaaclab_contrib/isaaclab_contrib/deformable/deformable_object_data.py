@@ -43,10 +43,6 @@ class DeformableObjectData(BaseDeformableObjectData):
         """
         super().__init__(device)
 
-        # Direct simulation bindings are set when the Newton state is available.
-        self._sim_bind_particle_q: wp.array | None = None
-        self._sim_bind_particle_qd: wp.array | None = None
-
         # Store dimensions and indexing
         self._particle_offsets = particle_offsets
         self._particles_per_body = particles_per_body
@@ -85,28 +81,30 @@ class DeformableObjectData(BaseDeformableObjectData):
     """
 
     def _create_simulation_bindings(self) -> None:
-        """Create simulation bindings for the deformable particle data.
+        """Validate the current Newton particle state and invalidate gathered buffers.
 
-        Direct simulation bindings are pointers to Newton simulation data. The data is not copied, and any
-        modifications made through these arrays are reflected in the simulation. The bindings are recreated after a
-        full simulation reset because Newton recreates its internal state arrays.
+        Newton may swap :attr:`state_0` and :attr:`state_1` across substeps, so deformable data does not keep
+        long-lived particle array bindings. Read properties query :meth:`SimulationManager.get_state_0` at gather time
+        and materialize object-local views from the current flat particle arrays.
         """
-        state = SimulationManager.get_state_0()
-        if state is None or state.particle_q is None or state.particle_qd is None:
-            raise RuntimeError(
-                "Failed to bind Newton deformable particle state. Ensure the Newton model has been finalized and "
-                "contains particle position and velocity arrays."
-            )
+        self._get_current_particle_state()
 
-        self._sim_bind_particle_q = state.particle_q
-        self._sim_bind_particle_qd = state.particle_qd
-
-        # Invalidate lazy buffers gathered from the previous simulation bindings.
+        # Invalidate lazy buffers gathered from the previous simulation state.
         self._nodal_pos_w.timestamp = -1.0
         self._nodal_vel_w.timestamp = -1.0
         self._nodal_state_w.timestamp = -1.0
         self._root_pos_w.timestamp = -1.0
         self._root_vel_w.timestamp = -1.0
+
+    def _get_current_particle_state(self):
+        """Return the current Newton state containing deformable particle arrays."""
+        state = SimulationManager.get_state_0()
+        if state is None or state.particle_q is None or state.particle_qd is None:
+            raise RuntimeError(
+                "Failed to access Newton deformable particle state. Ensure the Newton model has been finalized and "
+                "contains particle position and velocity arrays."
+            )
+        return state
 
     ##
     # Properties.
@@ -116,10 +114,11 @@ class DeformableObjectData(BaseDeformableObjectData):
     def nodal_pos_w(self) -> ProxyArray:
         """Nodal positions in simulation world frame [m]. Shape is (num_instances, particles_per_body) vec3f."""
         if self._nodal_pos_w.timestamp < self._sim_timestamp:
+            state = self._get_current_particle_state()
             wp.launch(
                 gather_particles_vec3f,
                 dim=(self._num_instances, self._particles_per_body),
-                inputs=[self._sim_bind_particle_q, self._particle_offsets, self._particles_per_body],
+                inputs=[state.particle_q, self._particle_offsets, self._particles_per_body],
                 outputs=[self._nodal_pos_w.data],
                 device=self.device,
             )
@@ -132,10 +131,11 @@ class DeformableObjectData(BaseDeformableObjectData):
     def nodal_vel_w(self) -> ProxyArray:
         """Nodal velocities in simulation world frame [m/s]. Shape is (num_instances, particles_per_body) vec3f."""
         if self._nodal_vel_w.timestamp < self._sim_timestamp:
+            state = self._get_current_particle_state()
             wp.launch(
                 gather_particles_vec3f,
                 dim=(self._num_instances, self._particles_per_body),
-                inputs=[self._sim_bind_particle_qd, self._particle_offsets, self._particles_per_body],
+                inputs=[state.particle_qd, self._particle_offsets, self._particles_per_body],
                 outputs=[self._nodal_vel_w.data],
                 device=self.device,
             )

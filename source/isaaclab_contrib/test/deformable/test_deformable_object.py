@@ -353,6 +353,32 @@ def test_full_data_writes_selected_env(sim):
     torch.testing.assert_close(read_targets[2], default_targets[2], rtol=1e-5, atol=1e-5)
 
 
+def test_kinematic_target_partial_env_ids_with_warp_input(sim):
+    """Test indexed kinematic target writes with device-native input arrays."""
+    num_cubes = 3
+    cube_object = generate_cubes_scene(num_cubes=num_cubes)
+
+    sim.reset()
+
+    particles_per_body = cube_object.max_sim_vertices_per_body
+    env_ids = torch.tensor([2], device=sim.device)
+
+    default_targets = cube_object.data.nodal_kinematic_target.torch.clone()
+    targets = torch.zeros(1, particles_per_body, 4, device=sim.device)
+    targets[0, :, :3] = cube_object.data.default_nodal_state_w.torch[2, :, :3]
+    targets[0, :, :3] += torch.tensor([0.0, 0.0, 0.1], device=sim.device)
+    targets[0, :, 3] = 0.0
+
+    cube_object.write_nodal_kinematic_target_to_sim_index(
+        wp.from_torch(targets.contiguous(), dtype=wp.vec4f), env_ids=env_ids
+    )
+
+    read_targets = cube_object.data.nodal_kinematic_target.torch
+    torch.testing.assert_close(read_targets[2], targets[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_targets[0], default_targets[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_targets[1], default_targets[1], rtol=1e-5, atol=1e-5)
+
+
 def test_mask_writes_selected_env(sim):
     """Test full-sized write buffers with selected environment masks."""
     num_cubes = 3
@@ -510,6 +536,32 @@ def test_freefall_analytical(sim):
     dz = x1[..., 2] - x0[..., 2]
     # Every vertex should have the same Z displacement under uniform gravity
     torch.testing.assert_close(dz, torch.full_like(dz, expected_dz), rtol=1e-2, atol=1e-5)
+
+
+def test_nodal_pos_reads_current_state_after_odd_substep_swap():
+    """Test deformable reads use the current Newton state after state swapping."""
+    cfg = SimulationCfg(
+        physics=NewtonCfg(
+            solver_cfg=VBDSolverCfg(iterations=3),
+            num_substeps=1,
+            use_cuda_graph=False,
+        ),
+    )
+    cfg.device = "cuda:0"
+    cfg.gravity = (0.0, 0.0, -9.81)
+
+    with build_simulation_context(device="cuda:0", sim_cfg=cfg, auto_add_lighting=True) as sim:
+        sim._app_control_on_stop_handle = None
+        cube_object = generate_cubes_scene(num_cubes=1, height=5.0)
+
+        sim.reset()
+
+        initial_pos = cube_object.data.nodal_pos_w.torch.clone()
+        sim.step()
+        cube_object.update(sim.cfg.dt)
+
+        stepped_pos = cube_object.data.nodal_pos_w.torch
+        assert torch.all(stepped_pos[..., 2] < initial_pos[..., 2])
 
 
 @pytest.mark.parametrize("num_cubes", [2, 4])
