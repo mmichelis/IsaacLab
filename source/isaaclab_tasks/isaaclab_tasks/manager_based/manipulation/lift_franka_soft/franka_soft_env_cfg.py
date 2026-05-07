@@ -265,14 +265,14 @@ class RewardsCfg:
     )
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifted,
-        params={"minimal_height": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
         weight=5.0,
     )
     deformable_goal_tracking = RewTerm(
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.3,
-            "minimal_height": 0.1,
+            "minimal_height": 0.075,
             "command_name": "deformable_pose",
             "asset_cfg": SceneEntityCfg("deformable"),
         },
@@ -282,7 +282,7 @@ class RewardsCfg:
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.05,
-            "minimal_height": 0.1,
+            "minimal_height": 0.075,
             "command_name": "deformable_pose",
             "asset_cfg": SceneEntityCfg("deformable"),
         },
