@@ -18,15 +18,17 @@ simulation_app = AppLauncher(headless=True).app
 
 import pytest
 import torch
+import warp as wp
 from flaky import flaky
 from isaaclab_newton.physics import NewtonCfg
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
-from isaaclab.assets.deformable_object import DeformableObjectCfg
+from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.sim import SimulationCfg, build_simulation_context
 
-from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import VBDSolverCfg
+
 
 NEWTON_VBD_CFG = SimulationCfg(
     physics=NewtonCfg(
@@ -344,6 +346,64 @@ def test_full_data_writes_selected_env(sim):
     full_targets[1, :, :3] += torch.tensor([0.0, 0.0, 0.1], device=sim.device)
     full_targets[1, :, 3] = 0.0
     cube_object.write_nodal_kinematic_target_to_sim_index(full_targets, env_ids=env_ids, full_data=True)
+
+    read_targets = cube_object.data.nodal_kinematic_target.torch
+    torch.testing.assert_close(read_targets[1], full_targets[1], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_targets[0], default_targets[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_targets[2], default_targets[2], rtol=1e-5, atol=1e-5)
+
+
+def test_mask_writes_selected_env(sim):
+    """Test full-sized write buffers with selected environment masks."""
+    num_cubes = 3
+    cube_object = generate_cubes_scene(num_cubes=num_cubes)
+
+    sim.reset()
+
+    env_mask = wp.array([False, True, False], dtype=wp.bool, device=sim.device)
+
+    default_state = cube_object.data.nodal_state_w.torch.clone()
+    full_state = default_state.clone()
+    full_state[:, :, :3] += torch.tensor([10.0, 10.0, 10.0], device=sim.device)
+    full_state[:, :, 3:] = 10.0
+    full_state[1, :, :3] = default_state[1, :, :3] + torch.tensor([0.1, 0.2, 0.3], device=sim.device)
+    full_state[1, :, 3:] = torch.tensor([0.4, 0.5, 0.6], device=sim.device)
+    cube_object.write_nodal_state_to_sim_mask(full_state, env_mask=env_mask)
+    cube_object.update(sim.cfg.dt)
+
+    read_state = cube_object.data.nodal_state_w.torch
+    torch.testing.assert_close(read_state[1], full_state[1], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_state[0], default_state[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_state[2], default_state[2], rtol=1e-5, atol=1e-5)
+
+    pos_before = cube_object.data.nodal_pos_w.torch.clone()
+    full_pos = pos_before + torch.tensor([5.0, 5.0, 5.0], device=sim.device)
+    full_pos[1] = pos_before[1] + torch.tensor([0.0, -0.1, 0.2], device=sim.device)
+    cube_object.write_nodal_pos_to_sim_mask(full_pos, env_mask=env_mask)
+    cube_object.update(sim.cfg.dt)
+
+    read_pos = cube_object.data.nodal_pos_w.torch
+    torch.testing.assert_close(read_pos[1], full_pos[1], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_pos[0], pos_before[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_pos[2], pos_before[2], rtol=1e-5, atol=1e-5)
+
+    vel_before = cube_object.data.nodal_vel_w.torch.clone()
+    full_vel = torch.full_like(vel_before, 7.0)
+    full_vel[1] = torch.tensor([0.7, 0.8, 0.9], device=sim.device)
+    cube_object.write_nodal_velocity_to_sim_mask(full_vel, env_mask=env_mask)
+    cube_object.update(sim.cfg.dt)
+
+    read_vel = cube_object.data.nodal_vel_w.torch
+    torch.testing.assert_close(read_vel[1], full_vel[1], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_vel[0], vel_before[0], rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(read_vel[2], vel_before[2], rtol=1e-5, atol=1e-5)
+
+    default_targets = cube_object.data.nodal_kinematic_target.torch.clone()
+    full_targets = default_targets.clone()
+    full_targets[:, :, :3] = 3.0
+    full_targets[:, :, 3] = 0.0
+    full_targets[1, :, :3] = read_pos[1] + torch.tensor([0.0, 0.0, 0.1], device=sim.device)
+    cube_object.write_nodal_kinematic_target_to_sim_mask(full_targets, env_mask=env_mask)
 
     read_targets = cube_object.data.nodal_kinematic_target.torch
     torch.testing.assert_close(read_targets[1], full_targets[1], rtol=1e-5, atol=1e-5)

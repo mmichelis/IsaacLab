@@ -26,8 +26,11 @@ from .kernels import (
     compute_nodal_state_w,
     enforce_kinematic_targets,
     scatter_particles_vec3f_index,
+    scatter_particles_vec3f_mask,
+    scatter_particles_state_vec6f_mask,
     set_kinematic_flags_to_one,
     vec6f,
+    write_nodal_kinematic_target_mask,
 )
 
 
@@ -395,6 +398,145 @@ class DeformableObject(BaseDeformableObject):
                 buffer_torch[env_ids_torch] = targets_torch
 
     """
+    Operations - Write to simulation (mask variants).
+    """
+
+    def write_nodal_state_to_sim_mask(
+        self,
+        nodal_state: torch.Tensor | wp.array | ProxyArray,
+        env_mask: wp.array | torch.Tensor | None = None,
+    ) -> None:
+        """Set the nodal state over selected environment mask into the simulation.
+
+        Args:
+            nodal_state: Nodal state in simulation frame [m, m/s].
+                Shape is (num_instances, max_sim_vertices_per_body, 6).
+            env_mask: Environment mask. If None, then all indices are used.
+                Shape is (num_instances,).
+        """
+        env_mask = self._resolve_mask(env_mask, self._ALL_ENV_MASK)
+        if isinstance(nodal_state, ProxyArray):
+            nodal_state = nodal_state.warp
+        self.assert_shape_and_dtype(
+            nodal_state, (env_mask.shape[0], self._particles_per_body), vec6f, "nodal_state"
+        )
+        if isinstance(nodal_state, torch.Tensor):
+            nodal_state = wp.from_torch(nodal_state.contiguous(), dtype=vec6f)
+
+        for state in (SimulationManager._state_0, SimulationManager._state_1):
+            if state is not None and state.particle_q is not None and state.particle_qd is not None:
+                wp.launch(
+                    scatter_particles_state_vec6f_mask,
+                    dim=(env_mask.shape[0], self._particles_per_body),
+                    inputs=[nodal_state, env_mask, self._particle_offsets],
+                    outputs=[state.particle_q, state.particle_qd],
+                    device=self.device,
+                )
+
+        self._data._nodal_pos_w.timestamp = -1.0
+        self._data._nodal_vel_w.timestamp = -1.0
+        self._data._nodal_state_w.timestamp = -1.0
+        self._data._root_pos_w.timestamp = -1.0
+        self._data._root_vel_w.timestamp = -1.0
+
+    def write_nodal_pos_to_sim_mask(
+        self,
+        nodal_pos: torch.Tensor | wp.array | ProxyArray,
+        env_mask: wp.array | torch.Tensor | None = None,
+    ) -> None:
+        """Set the nodal positions over selected environment mask into the simulation.
+
+        Args:
+            nodal_pos: Nodal positions in simulation frame [m].
+                Shape is (num_instances, max_sim_vertices_per_body, 3).
+            env_mask: Environment mask. If None, then all indices are used.
+                Shape is (num_instances,).
+        """
+        env_mask = self._resolve_mask(env_mask, self._ALL_ENV_MASK)
+        if isinstance(nodal_pos, ProxyArray):
+            nodal_pos = nodal_pos.warp
+        self.assert_shape_and_dtype(nodal_pos, (env_mask.shape[0], self._particles_per_body), wp.vec3f, "nodal_pos")
+        if isinstance(nodal_pos, torch.Tensor):
+            nodal_pos = wp.from_torch(nodal_pos.contiguous(), dtype=wp.vec3f)
+
+        for state in (SimulationManager._state_0, SimulationManager._state_1):
+            if state is not None and state.particle_q is not None:
+                wp.launch(
+                    scatter_particles_vec3f_mask,
+                    dim=(env_mask.shape[0], self._particles_per_body),
+                    inputs=[nodal_pos, env_mask, self._particle_offsets],
+                    outputs=[state.particle_q],
+                    device=self.device,
+                )
+
+        self._data._nodal_pos_w.timestamp = -1.0
+        self._data._nodal_state_w.timestamp = -1.0
+        self._data._root_pos_w.timestamp = -1.0
+
+    def write_nodal_velocity_to_sim_mask(
+        self,
+        nodal_vel: torch.Tensor | wp.array | ProxyArray,
+        env_mask: wp.array | torch.Tensor | None = None,
+    ) -> None:
+        """Set the nodal velocity over selected environment mask into the simulation.
+
+        Args:
+            nodal_vel: Nodal velocities in simulation frame [m/s].
+                Shape is (num_instances, max_sim_vertices_per_body, 3).
+            env_mask: Environment mask. If None, then all indices are used.
+                Shape is (num_instances,).
+        """
+        env_mask = self._resolve_mask(env_mask, self._ALL_ENV_MASK)
+        if isinstance(nodal_vel, ProxyArray):
+            nodal_vel = nodal_vel.warp
+        self.assert_shape_and_dtype(nodal_vel, (env_mask.shape[0], self._particles_per_body), wp.vec3f, "nodal_vel")
+        if isinstance(nodal_vel, torch.Tensor):
+            nodal_vel = wp.from_torch(nodal_vel.contiguous(), dtype=wp.vec3f)
+
+        for state in (SimulationManager._state_0, SimulationManager._state_1):
+            if state is not None and state.particle_qd is not None:
+                wp.launch(
+                    scatter_particles_vec3f_mask,
+                    dim=(env_mask.shape[0], self._particles_per_body),
+                    inputs=[nodal_vel, env_mask, self._particle_offsets],
+                    outputs=[state.particle_qd],
+                    device=self.device,
+                )
+
+        self._data._nodal_vel_w.timestamp = -1.0
+        self._data._nodal_state_w.timestamp = -1.0
+        self._data._root_vel_w.timestamp = -1.0
+
+    def write_nodal_kinematic_target_to_sim_mask(
+        self,
+        targets: torch.Tensor | wp.array | ProxyArray,
+        env_mask: wp.array | torch.Tensor | None = None,
+    ) -> None:
+        """Set the kinematic targets over selected environment mask into the target buffer.
+
+        Args:
+            targets: The kinematic targets comprising of nodal positions and flags [m].
+                Shape is (num_instances, max_sim_vertices_per_body, 4).
+            env_mask: Environment mask. If None, then all indices are used.
+                Shape is (num_instances,).
+        """
+        env_mask = self._resolve_mask(env_mask, self._ALL_ENV_MASK)
+        if isinstance(targets, ProxyArray):
+            targets = targets.warp
+        self.assert_shape_and_dtype(targets, (env_mask.shape[0], self._particles_per_body), wp.vec4f, "targets")
+        if isinstance(targets, torch.Tensor):
+            targets = wp.from_torch(targets.contiguous(), dtype=wp.vec4f)
+
+        if self._data.nodal_kinematic_target is not None:
+            wp.launch(
+                write_nodal_kinematic_target_mask,
+                dim=(env_mask.shape[0], self._particles_per_body),
+                inputs=[targets, env_mask],
+                outputs=[self._data.nodal_kinematic_target.warp],
+                device=self.device,
+            )
+
+    """
     Internal helper.
     """
 
@@ -407,6 +549,16 @@ class DeformableObject(BaseDeformableObject):
         elif isinstance(env_ids, torch.Tensor):
             return wp.from_torch(env_ids.to(torch.int32), dtype=wp.int32)
         return env_ids
+
+    def _resolve_mask(self, mask: wp.array | torch.Tensor | None, full_mask: wp.array) -> wp.array:
+        """Resolve an environment mask to a warp bool array."""
+        if mask is None:
+            return full_mask
+        if isinstance(mask, torch.Tensor):
+            if mask.dtype != torch.bool:
+                mask = mask.to(torch.bool)
+            return wp.from_torch(mask, dtype=wp.bool)
+        return mask
 
     def _register_deformable(self) -> DeformableRegistryEntry:
         """Read mesh from the spawned USD prim and register in NewtonManager's deformable registry.
@@ -635,6 +787,7 @@ class DeformableObject(BaseDeformableObject):
         """Create buffers for storing data."""
         # Constants
         self._ALL_INDICES = wp.array(np.arange(self._num_instances, dtype=np.int32), device=self.device)
+        self._ALL_ENV_MASK = wp.ones((self._num_instances,), dtype=wp.bool, device=self.device)
 
         # Snapshot default positions from current state (after finalize + FK)
         state = SimulationManager._state_0

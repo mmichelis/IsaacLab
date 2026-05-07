@@ -58,6 +58,69 @@ def scatter_particles_vec3f_index(
 
 
 @wp.kernel
+def scatter_particles_vec3f_mask(
+    src: wp.array2d(dtype=wp.vec3f),
+    env_mask: wp.array(dtype=wp.bool),
+    offsets: wp.array(dtype=wp.int32),
+    dst: wp.array(dtype=wp.vec3f),
+):
+    """Scatter per-instance particle data into the flat simulation array using a mask.
+
+    Args:
+        src: Input particle data [m] or [m/s]. Shape is (num_instances, num_particles).
+        env_mask: Environment mask. Shape is (num_instances,).
+        offsets: Per-instance start offset into the flat array. Shape is (num_instances,).
+        dst: Flat destination particle array. Shape is (total_particles,).
+    """
+    i, j = wp.tid()
+    if env_mask[i]:
+        dst[offsets[i] + j] = src[i, j]
+
+
+@wp.kernel
+def scatter_particles_state_vec6f_mask(
+    src: wp.array2d(dtype=vec6f),
+    env_mask: wp.array(dtype=wp.bool),
+    offsets: wp.array(dtype=wp.int32),
+    particle_q: wp.array(dtype=wp.vec3f),
+    particle_qd: wp.array(dtype=wp.vec3f),
+):
+    """Scatter per-instance nodal state into the flat simulation arrays using a mask.
+
+    Args:
+        src: Input nodal state data [m, m/s]. Shape is (num_instances, num_particles).
+        env_mask: Environment mask. Shape is (num_instances,).
+        offsets: Per-instance start offset into the flat arrays. Shape is (num_instances,).
+        particle_q: Flat destination particle positions [m]. Shape is (total_particles,).
+        particle_qd: Flat destination particle velocities [m/s]. Shape is (total_particles,).
+    """
+    i, j = wp.tid()
+    if env_mask[i]:
+        state = src[i, j]
+        flat_idx = offsets[i] + j
+        particle_q[flat_idx] = wp.vec3f(state[0], state[1], state[2])
+        particle_qd[flat_idx] = wp.vec3f(state[3], state[4], state[5])
+
+
+@wp.kernel
+def write_nodal_kinematic_target_mask(
+    src: wp.array2d(dtype=wp.vec4f),
+    env_mask: wp.array(dtype=wp.bool),
+    dst: wp.array2d(dtype=wp.vec4f),
+):
+    """Write kinematic target data into the per-instance target buffer using a mask.
+
+    Args:
+        src: Input kinematic targets [m]. Shape is (num_instances, num_particles).
+        env_mask: Environment mask. Shape is (num_instances,).
+        dst: Destination kinematic target buffer [m]. Shape is (num_instances, num_particles).
+    """
+    i, j = wp.tid()
+    if env_mask[i]:
+        dst[i, j] = src[i, j]
+
+
+@wp.kernel
 def compute_nodal_state_w(
     nodal_pos: wp.array2d(dtype=wp.vec3f),
     nodal_vel: wp.array2d(dtype=wp.vec3f),
