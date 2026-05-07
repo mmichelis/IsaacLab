@@ -1,24 +1,31 @@
 Added
 ^^^^^
 
-* Added solver-specific Newton manager classes for MuJoCo Warp, XPBD, Kamino,
-  and Featherstone through :class:`~isaaclab_newton.physics.NewtonMJWarpManager`,
-  :class:`~isaaclab_newton.physics.NewtonXPBDManager`,
-  :class:`~isaaclab_newton.physics.NewtonKaminoManager`, and
-  :class:`~isaaclab_newton.physics.NewtonFeatherstoneManager`.
 * Added Newton deformable asset exports under
   :mod:`isaaclab_newton.assets.deformable_object`.
+* Added deformable registration hooks to Newton cloning so deformable assets can
+  be added per replicated world while their USD proxy meshes are skipped by the
+  Newton USD importer.
 
 Changed
 ^^^^^^^
 
-* Changed :class:`~isaaclab_newton.physics.NewtonCfg` manager selection to use
-  :attr:`~isaaclab_newton.physics.NewtonSolverCfg.class_type` from the solver
-  config. Existing ``NewtonCfg(solver_cfg=...)`` usage continues to work.
+* Changed Newton solver configuration exports so
+  :class:`~isaaclab_newton.physics.MJWarpSolverCfg`,
+  :class:`~isaaclab_newton.physics.XPBDSolverCfg`,
+  :class:`~isaaclab_newton.physics.FeatherstoneSolverCfg`, and
+  :class:`~isaaclab_newton.physics.KaminoSolverCfg` are provided from
+  :mod:`isaaclab_newton.physics.newton_manager_cfg`.
+* Changed :class:`~isaaclab_newton.physics.NewtonCfg` to use
+  :class:`~isaaclab_newton.physics.MJWarpSolverCfg` as its explicit default
+  solver configuration.
+* Changed :class:`~isaaclab_newton.physics.NewtonCfg` validation to reject
+  :class:`~isaaclab_newton.physics.MJWarpSolverCfg` configurations that combine
+  ``use_mujoco_contacts=True`` with ``collision_cfg``. Remove ``collision_cfg``
+  or set ``use_mujoco_contacts=False``.
 
-Deprecated
-^^^^^^^^^^
+Fixed
+^^^^^
 
-* Deprecated :attr:`~isaaclab_newton.physics.NewtonSolverCfg.solver_type` in
-  favor of :attr:`~isaaclab_newton.physics.NewtonSolverCfg.class_type`.
-  ``solver_type`` is retained as metadata for logging and debugging only.
+* Fixed Newton Fabric synchronization for deformable particle meshes and
+  particle-only scenes.
