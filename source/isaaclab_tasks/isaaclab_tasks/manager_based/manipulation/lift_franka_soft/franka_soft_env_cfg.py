@@ -265,14 +265,14 @@ class RewardsCfg:
     )
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"minimal_height": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
         weight=5.0,
     )
     deformable_goal_tracking = RewTerm(
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.3,
-            "minimal_height": 0.04,
+            "minimal_height": 0.1,
             "command_name": "deformable_pose",
             "asset_cfg": SceneEntityCfg("deformable"),
         },
@@ -282,22 +282,22 @@ class RewardsCfg:
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.05,
-            "minimal_height": 0.04,
+            "minimal_height": 0.1,
             "command_name": "deformable_pose",
             "asset_cfg": SceneEntityCfg("deformable"),
         },
         weight=5.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-1)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
     gripper_close = RewTerm(
         func=mdp.gripper_close_action,
         params={"action_name": "gripper_action"},
         weight=-1.0,
     )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-1)
-    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-2e-3)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-2)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-2)
+    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-4)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
 
 
 @configclass
@@ -336,7 +336,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
     """Manager-based RL environment: Franka Panda lifting a volume deformable."""
 
     # Scene settings
-    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=512, env_spacing=2.5, replicate_physics=True)
+    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -356,11 +356,11 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
 
         # viewer settings
-        # self.viewer.origin_type = "asset_root"
-        # self.viewer.asset_name = "robot"
-        # self.viewer.env_index = 6
-        # self.viewer.eye = (4.0, 5.0, 1.0)
-        # self.viewer.resolution = (1920, 1080)
+        self.viewer.origin_type = "asset_root"
+        self.viewer.asset_name = "robot"
+        self.viewer.env_index = 0
+        self.viewer.eye = (1.25, -1.5, 0.75)
+        self.viewer.resolution = (1920, 1080)
 
         # Newton physics: MJWarp rigid + VBD soft, one-way coupled
         # (matches newton/examples/softbody/example_softbody_franka.py)
