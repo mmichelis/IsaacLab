@@ -6,6 +6,8 @@ Added
 * Added deformable registration hooks to Newton cloning so deformable assets can
   be added per replicated world while their USD proxy meshes are skipped by the
   Newton USD importer.
+* Added Newton manager abstraction documentation for adding solver managers and
+  custom coupled solvers.
 
 Changed
 ^^^^^^^

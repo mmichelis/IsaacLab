@@ -10,10 +10,15 @@ Here is a non-exhaustive list of capabilities currently supported in the Newton 
 
 * isaaclab:
     * Articulation API (supports both articulations and single-body articulations as rigid bodies)
+    * Backend-neutral deformable object API
     * Contact Sensor
     * Direct & Manager single agent workflows
     * Omniverse Kit visualizer
     * Newton visualizer
+* isaaclab_contrib:
+    * Experimental Newton deformable objects
+    * VBD deformable solver
+    * Coupled MJWarp + VBD and Featherstone + VBD solver managers
 * isaaclab_assets:
     * Quadrupeds
         * Anymal-B, Anymal-C, Anymal-D
@@ -53,3 +58,5 @@ Here is a non-exhaustive list of capabilities currently supported in the Newton 
         * Manipulation reach
             * Franka
             * UR10
+        * Manipulation lift with deformable objects
+            * Franka soft-body lift

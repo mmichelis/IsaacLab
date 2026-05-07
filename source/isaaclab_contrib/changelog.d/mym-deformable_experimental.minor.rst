@@ -10,3 +10,7 @@ Added
   one- and two-way rigid-deformable coupling.
 * Added :class:`~isaaclab_contrib.deformable.NewtonModelCfg` for shared Newton
   deformable contact parameters.
+* Added Newton deformable coupling documentation with Franka soft-body lift
+  tuning guidance for
+  :class:`~isaaclab_contrib.deformable.CoupledMJWarpVBDSolverCfg` and
+  :class:`~isaaclab_contrib.deformable.NewtonModelCfg`.

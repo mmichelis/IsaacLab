@@ -1,30 +1,15 @@
+:orphan:
+
+.. This page is kept as a migration stub for older links.
+
 isaaclab_physx.sim.schemas
 ==========================
 
-.. automodule:: isaaclab_physx.sim.schemas
+The deformable body schema APIs are now backend-neutral and live in
+:mod:`isaaclab.sim.schemas`.
 
-  .. rubric:: Classes
+Use :class:`isaaclab.sim.schemas.DeformableBodyPropertiesCfg`,
+:func:`isaaclab.sim.schemas.define_deformable_body_properties`, and
+:func:`isaaclab.sim.schemas.modify_deformable_body_properties` instead.
 
-  .. autosummary::
-
-    DeformableBodyPropertiesCfg
-
-  .. rubric:: Functions
-
-  .. autosummary::
-
-    define_deformable_body_properties
-    modify_deformable_body_properties
-
-.. currentmodule:: isaaclab_physx.sim.schemas
-
-Deformable Body
----------------
-
-.. autoclass:: DeformableBodyPropertiesCfg
-    :members:
-    :show-inheritance:
-    :exclude-members: __init__
-
-.. autofunction:: define_deformable_body_properties
-.. autofunction:: modify_deformable_body_properties
+For migration details, see :ref:`migrating-deformables`.

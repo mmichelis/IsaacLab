@@ -6,6 +6,8 @@ While Newton supports several different solvers, our initial focus for Isaac Lab
 MuJoCo-Warp solver from Google DeepMind. Isaac Lab also includes beta support for the Kamino
 solver on selected classic tasks. Kamino is selected through a physics preset rather than as a
 separate backend; see :ref:`hydra-backend-solver-presets`.
+For details on how solver-specific managers are implemented, or how to add a new solver manager,
+see :doc:`newton-manager-abstraction`.
 
 .. note::
 

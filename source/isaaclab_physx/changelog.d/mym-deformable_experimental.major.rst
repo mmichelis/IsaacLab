@@ -14,6 +14,8 @@ Changed
   instead of :mod:`isaaclab_physx.sim`; import
   :class:`~isaaclab.assets.DeformableObjectCfg` from :mod:`isaaclab.assets`
   instead of :mod:`isaaclab_physx.assets`.
+* Changed PhysX deformable API documentation to direct users to the
+  backend-neutral :mod:`isaaclab.assets` and :mod:`isaaclab.sim` imports.
 
 Fixed
 ^^^^^

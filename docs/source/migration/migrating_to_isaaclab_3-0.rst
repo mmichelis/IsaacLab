@@ -69,9 +69,9 @@ New ``isaaclab_physx`` and ``isaaclab_newton`` Extensions
 
 Two new backend extensions have been introduced:
 
-- **``isaaclab_physx``** — PhysX-specific implementations of all asset and sensor classes.
-- **``isaaclab_newton``** — Newton-specific implementations of asset classes (Articulation and
-  RigidObject).
+- **``isaaclab_physx``** — PhysX-specific implementations of asset and sensor classes.
+- **``isaaclab_newton``** — Newton-specific implementations of supported asset classes, including
+  articulations, rigid objects, and deformable objects.
 
 The following classes have been moved to ``isaaclab_physx``:
 
@@ -81,16 +81,17 @@ The following classes have been moved to ``isaaclab_physx``:
 
    * - Isaac Lab 2.x
      - Isaac Lab 3.0
-   * - ``from isaaclab.assets import DeformableObject``
-     - ``from isaaclab_physx.assets import DeformableObject``
-   * - ``from isaaclab.assets import DeformableObjectCfg``
-     - ``from isaaclab_physx.assets import DeformableObjectCfg``
-   * - ``from isaaclab.assets import DeformableObjectData``
-     - ``from isaaclab_physx.assets import DeformableObjectData``
    * - ``from isaaclab.assets import SurfaceGripper``
      - ``from isaaclab_physx.assets import SurfaceGripper``
    * - ``from isaaclab.assets import SurfaceGripperCfg``
      - ``from isaaclab_physx.assets import SurfaceGripperCfg``
+
+.. note::
+
+   Deformable object public APIs remain in the backend-neutral ``isaaclab``
+   package. Continue importing :class:`~isaaclab.assets.DeformableObject`,
+   :class:`~isaaclab.assets.DeformableObjectCfg`, and
+   :class:`~isaaclab.assets.DeformableObjectData` from ``isaaclab.assets``.
 
 .. note::
 
@@ -712,7 +713,7 @@ Here's a complete example showing how to update your code:
 
 .. code-block:: python
 
-   from isaaclab_physx.assets import DeformableObject, DeformableObjectCfg
+   from isaaclab.assets import DeformableObject, DeformableObjectCfg
    from isaaclab_physx.assets import SurfaceGripper, SurfaceGripperCfg
    from isaaclab.assets import RigidObjectCollection  # unchanged
 
@@ -1054,7 +1055,7 @@ All ``.data.*`` properties on asset and sensor classes now return
 the underlying ``wp.array`` and exposes explicit ``.torch`` and ``.warp`` accessors. This
 change applies to all asset classes (:class:`~isaaclab.assets.Articulation`,
 :class:`~isaaclab.assets.RigidObject`, :class:`~isaaclab.assets.RigidObjectCollection`,
-:class:`~isaaclab_physx.assets.DeformableObject`) and all sensor classes
+:class:`~isaaclab.assets.DeformableObject`) and all sensor classes
 (:class:`~isaaclab_physx.sensors.ContactSensor`, :class:`~isaaclab_physx.sensors.Imu`,
 :class:`~isaaclab_physx.sensors.Pva`, :class:`~isaaclab_physx.sensors.FrameTransformer`).
 
@@ -1111,8 +1112,8 @@ Common patterns that need updating:
      - ``isaaclab`` / ``isaaclab_physx``
    * - :class:`~isaaclab.assets.RigidObjectCollection`
      - ``isaaclab`` / ``isaaclab_physx``
-   * - :class:`~isaaclab_physx.assets.DeformableObject`
-     - ``isaaclab_physx``
+   * - :class:`~isaaclab.assets.DeformableObject`
+     - ``isaaclab`` / ``isaaclab_physx`` / ``isaaclab_newton``
    * - :class:`~isaaclab_physx.sensors.ContactSensor`
      - ``isaaclab_physx``
    * - :class:`~isaaclab_physx.sensors.Imu`

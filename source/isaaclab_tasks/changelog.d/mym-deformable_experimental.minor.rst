@@ -1,6 +1,6 @@
 Added
 ^^^^^
 
-* Added manager-based Franka deformable lifting environments for volume and
-  cloth assets: ``Isaac-Lift-Soft-Franka-v0`` and
-  ``Isaac-Lift-Cloth-Franka-v0``.
+* Added manager-based Franka soft-body lifting environment
+  ``Isaac-Lift-Soft-Franka-v0`` as the documented rigid-deformable coupling
+  task.

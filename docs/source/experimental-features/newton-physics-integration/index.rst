@@ -19,11 +19,12 @@ a good lens through which to understand how Newton integration works in Isaac La
 We have validated Newton simulation against PhysX by transferring learned policies from Newton to PhysX and vice versa
 Furthermore, we have also successfully deployed a Newton-trained locomotion policy to a G1 robot.
 
-Newton can support `multiple solvers <https://newton-physics.github.io/newton/latest/api/newton_solvers.html>`_ for handling different types of physics simulation, but for the moment, the Isaac
-Lab integration focuses primarily on the MuJoCo-Warp solver.
+Newton can support `multiple solvers <https://newton-physics.github.io/newton/latest/api/newton_solvers.html>`_ for handling different types of physics simulation. Isaac Lab exposes these solvers through small
+solver-specific Newton manager subclasses, which makes adding a new solver or a coupled solver a focused extension
+point. See :doc:`newton-manager-abstraction` for the developer-facing guide.
 
 Future updates of Isaac Lab and Newton should include both ongoing improvements in performance as well as integration
-with additional solvers.
+with additional solvers and coupled solver workflows.
 
 During the development phase of both Newton and this Isaac Lab integration, you are likely to encounter breaking
 changes as well as limited documentation. We do not expect to be able to provide official support or debugging assistance
@@ -40,3 +41,4 @@ For an overview of how the multi-backend architecture works, including how to ad
   installation
   limitations-and-known-bugs
   solver-transitioning
+  newton-manager-abstraction

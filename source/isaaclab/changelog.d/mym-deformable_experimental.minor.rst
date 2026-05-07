@@ -14,6 +14,8 @@ Added
   :class:`~isaaclab.sim.SurfaceDeformableBodyMaterialCfg`, and
   :func:`~isaaclab.sim.spawn_deformable_body_material`.
 * Added ``pytetwild`` as a package dependency for tetrahedral mesh generation.
+* Added deformable API, migration, and tutorial documentation for
+  backend-neutral imports and Newton backend selection.
 
 Changed
 ^^^^^^^
