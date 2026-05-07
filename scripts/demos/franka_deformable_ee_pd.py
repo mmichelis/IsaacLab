@@ -43,18 +43,18 @@ parser.add_argument("--task", type=str, default=TASK, help="Task name.")
 parser.add_argument(
     "--max_steps",
     type=int,
-    default=360,
+    default=450,
     help="Maximum number of environment steps. Defaults to one episode without a visualizer.",
 )
 parser.add_argument("--episode_length_s", type=float, default=12.0, help="Episode length [s].")
-parser.add_argument("--cycle_steps", type=int, default=360, help="Controller phase cycle length [env steps].")
-parser.add_argument("--kp", type=float, default=0.7, help="End-effector position proportional gain [1/s].")
+parser.add_argument("--cycle_steps", type=int, default=450, help="Controller phase cycle length [env steps].")
+parser.add_argument("--kp", type=float, default=0.9, help="End-effector position proportional gain [1/s].")
 parser.add_argument("--kd", type=float, default=0.3, help="End-effector position derivative gain.")
-parser.add_argument("--damping", type=float, default=0.05, help="Damped least-squares Jacobian damping.")
+parser.add_argument("--damping", type=float, default=0.02, help="Damped least-squares Jacobian damping.")
 parser.add_argument("--max_joint_step", type=float, default=0.04, help="Maximum joint command step [rad/env step].")
 parser.add_argument("--approach_steps", type=int, default=90, help="Steps used to blend from the reset pose to hover.")
 parser.add_argument("--hover_height", type=float, default=0.22, help="Hover target above the deformable COM [m].")
-parser.add_argument("--grasp_height", type=float, default=-0.02, help="Grasp target above the deformable COM [m].")
+parser.add_argument("--grasp_height", type=float, default=-0.03, help="Grasp target above the deformable COM [m].")
 parser.add_argument("--print_interval", type=int, default=30, help="Print tracking error every N env steps.")
 parser.add_argument("--record_video", action="store_true", default=False, help="Record Kit camera frames.")
 parser.add_argument(
@@ -67,7 +67,7 @@ parser.add_argument("--record_name", type=str, default="franka_deformable_ee_pd.
 parser.add_argument("--record_fps", type=int, default=60, help="Frame rate for the ffmpeg output.")
 parser.add_argument("--record_width", type=int, default=1920, help="Recording width in pixels.")
 parser.add_argument("--record_height", type=int, default=1080, help="Recording height in pixels.")
-parser.add_argument("--record_every", type=int, default=1, help="Save one frame every N environment steps.")
+parser.add_argument("--record_every", type=int, default=1, help="Save one framae every N environment steps.")
 parser.add_argument("--record_warmup", type=int, default=2, help="Warmup frames to render before saving.")
 parser.add_argument(
     "--record_camera_prim_path",
@@ -330,18 +330,18 @@ def _target_ee_pos_w(env, step_count: int) -> tuple[torch.Tensor, torch.Tensor]:
     lift_pos_w = goal_pos_w
 
     phase = (step_count % max(args_cli.cycle_steps, 1)) / max(args_cli.cycle_steps, 1)
-    if phase < 0.25:
+    if phase < 0.2:
         ee_target_pos_w = hover_pos_w
         gripper_action = torch.ones(env.num_envs, 1, device=device)
     elif phase < 0.55:
-        alpha = torch.tensor((phase - 0.25) / 0.20, device=device)
+        alpha = torch.tensor((phase - 0.2) / 0.35, device=device)
         ee_target_pos_w = torch.lerp(hover_pos_w, grasp_pos_w, _smoothstep(alpha))
         gripper_action = torch.ones(env.num_envs, 1, device=device)
     elif phase < 0.65:
         ee_target_pos_w = grasp_pos_w
         gripper_action = -torch.ones(env.num_envs, 1, device=device)
     elif phase < 0.85:
-        alpha = torch.tensor((phase - 0.58) / 0.27, device=device)
+        alpha = torch.tensor((phase - 0.65) / 0.2, device=device)
         ee_target_pos_w = torch.lerp(grasp_pos_w, lift_pos_w, _smoothstep(alpha))
         gripper_action = -torch.ones(env.num_envs, 1, device=device)
     else:

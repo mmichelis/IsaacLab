@@ -119,7 +119,7 @@ class FrankaSoftSceneCfg(InteractiveSceneCfg):
                 density=1000.0,
                 youngs_modulus=8e4,
                 poissons_ratio=0.25,
-                # particle_radius=0.01
+                particle_radius=0.01
             ),
         ),
     )
@@ -348,7 +348,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self) -> None:
         # general settings
-        self.decimation = 2
+        self.decimation = 1
         self.episode_length_s = 5.0
 
         # simulation settings
@@ -385,11 +385,11 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
                 coupling_mode="two_way",
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=5e3,
-                soft_contact_kd=1e-6,
+                soft_contact_ke=1e4,
+                soft_contact_kd=1e-5,
                 soft_contact_mu=5.0,
-                shape_material_ke=5e3,
-                shape_material_kd=1e-6,
+                shape_material_ke=4e4,
+                shape_material_kd=1e-5,
                 shape_material_mu=5.0,
             ),
             num_substeps=10,
@@ -397,6 +397,6 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         )
 
         # increase franka gripper stiffness
-        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 100.0
-        self.scene.robot.actuators["panda_hand"].stiffness = 500.0
-        self.scene.robot.actuators["panda_hand"].damping = 50.0
+        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
+        self.scene.robot.actuators["panda_hand"].stiffness = 1000.0
+        self.scene.robot.actuators["panda_hand"].damping = 100.0
