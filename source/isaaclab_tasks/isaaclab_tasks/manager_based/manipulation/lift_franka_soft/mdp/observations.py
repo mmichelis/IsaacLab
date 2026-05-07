@@ -69,9 +69,9 @@ class DeformableSampledPointsInRobotRootFrame(ManagerTermBase):
             num_envs = len(env_ids)
 
         if self.num_points <= self.num_nodes:
-            self.node_ids[env_ids] = torch.rand((num_envs, self.num_nodes), device=self.device).topk(
-                self.num_points, dim=1
-            ).indices
+            self.node_ids[env_ids] = (
+                torch.rand((num_envs, self.num_nodes), device=self.device).topk(self.num_points, dim=1).indices
+            )
         else:
             self.node_ids[env_ids] = torch.randint(self.num_nodes, (num_envs, self.num_points), device=self.device)
 

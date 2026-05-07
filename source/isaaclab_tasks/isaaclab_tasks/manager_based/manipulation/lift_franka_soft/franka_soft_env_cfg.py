@@ -13,9 +13,8 @@ position sampled in the robot's root frame.
 
 from __future__ import annotations
 
-import os
-
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from isaaclab_physx.physics import PhysxCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -34,12 +33,10 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
-from isaaclab_tasks.utils import PresetCfg
-from isaaclab_physx.physics import PhysxCfg
-
 
 from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
 
+from isaaclab_tasks.utils import PresetCfg
 
 from . import mdp
 
@@ -47,7 +44,7 @@ from . import mdp
 # Pre-defined configs
 ##
 
-from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
 
 
 ##
@@ -62,7 +59,8 @@ class DeformableNewtonCfg(NewtonCfg):
     Uses a distinct class name so that ``_is_kitless_physics`` does not
     match it, ensuring Kit is launched for USD deformable spawning.
     """
-    # TODO: 
+
+    # TODO:
 
     model_cfg: NewtonModelCfg | None = None
     """Global Newton model parameters applied after builder finalization."""
@@ -147,6 +145,7 @@ class PhysicsCfg(PresetCfg):
     physx: PhysxCfg = PhysxCfg()
 
     default = newton
+
 
 ##
 # Scene definition

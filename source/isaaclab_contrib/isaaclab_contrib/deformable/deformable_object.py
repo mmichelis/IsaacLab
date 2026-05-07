@@ -25,9 +25,9 @@ from .deformable_object_data import DeformableObjectData
 from .kernels import (
     compute_nodal_state_w,
     enforce_kinematic_targets,
+    scatter_particles_state_vec6f_mask,
     scatter_particles_vec3f_index,
     scatter_particles_vec3f_mask,
-    scatter_particles_state_vec6f_mask,
     set_kinematic_flags_to_one,
     vec6f,
     write_nodal_kinematic_target_index,
@@ -406,9 +406,7 @@ class DeformableObject(BaseDeformableObject):
         env_mask = self._resolve_mask(env_mask, self._ALL_ENV_MASK)
         if isinstance(nodal_state, ProxyArray):
             nodal_state = nodal_state.warp
-        self.assert_shape_and_dtype(
-            nodal_state, (env_mask.shape[0], self._particles_per_body), vec6f, "nodal_state"
-        )
+        self.assert_shape_and_dtype(nodal_state, (env_mask.shape[0], self._particles_per_body), vec6f, "nodal_state")
         if isinstance(nodal_state, torch.Tensor):
             nodal_state = wp.from_torch(nodal_state.contiguous(), dtype=vec6f)
 

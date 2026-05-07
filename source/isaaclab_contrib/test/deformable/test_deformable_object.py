@@ -29,7 +29,6 @@ from isaaclab.sim import SimulationCfg, build_simulation_context
 
 from isaaclab_contrib.deformable.newton_manager_cfg import VBDSolverCfg
 
-
 NEWTON_VBD_CFG = SimulationCfg(
     physics=NewtonCfg(
         solver_cfg=VBDSolverCfg(iterations=3),

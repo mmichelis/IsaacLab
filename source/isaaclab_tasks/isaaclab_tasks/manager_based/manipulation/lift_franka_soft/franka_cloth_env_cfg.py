@@ -3,12 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Configuration for the Franka surface deformable lifting environment.
-"""
+"""Configuration for the Franka surface deformable lifting environment."""
 
 from __future__ import annotations
-
-import os
 
 from isaaclab_newton.physics import MJWarpSolverCfg
 
@@ -17,18 +14,19 @@ from isaaclab.assets import AssetBaseCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
-from isaaclab_tasks.utils import PresetCfg
 
 from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
 
+from isaaclab_tasks.utils import PresetCfg
+
 from . import mdp
-from .franka_soft_env_cfg import DeformableNewtonCfg, FrankaSoftSceneCfg, FrankaSoftEnvCfg
+from .franka_soft_env_cfg import DeformableNewtonCfg, FrankaSoftEnvCfg, FrankaSoftSceneCfg
 
 ##
 # Scene definition
 ##
+
 
 @configclass
 class PhysicsCfg(PresetCfg):
