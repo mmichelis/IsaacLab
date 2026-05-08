@@ -151,7 +151,7 @@ class PhysicsCfg(PresetCfg):
 
 
 @configclass
-class FrankaSoftSceneCfg(InteractiveSceneCfg):
+class _FrankaSoftSceneCfg(InteractiveSceneCfg):
     """Scene for the Franka deformable environment."""
 
     robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
@@ -377,13 +377,22 @@ class TerminationsCfg:
 # Environment configuration
 ##
 
+@configclass
+class FrankaSoftSceneCfg(PresetCfg):
+    newton: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
+
+    # PhysX does not support replicating physics for deformable objects
+    physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=False)
+
+    default = newton
+
 
 @configclass
 class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
     """Manager-based RL environment: Franka Panda lifting a volume deformable."""
 
     # Scene settings
-    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
+    scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg()
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
