@@ -143,11 +143,21 @@ class DifferentialInverseKinematicsAction(ActionTerm):
 
     @property
     def jacobian_w(self) -> torch.Tensor:
-        return wp.to_torch(self._asset.root_view.get_jacobians())[:, self._jacobi_body_idx, :, self._jacobi_joint_ids]
+        if hasattr(self._asset.root_view, "get_jacobians"):
+            return wp.to_torch(self._asset.root_view.get_jacobians())[
+                :, self._jacobi_body_idx, :, self._jacobi_joint_ids
+            ]
+        if hasattr(self._asset.root_view, "eval_jacobian"):
+            from isaaclab_newton.physics import NewtonManager as SimulationManager
+
+            jacobian = wp.to_torch(self._asset.root_view.eval_jacobian(SimulationManager.get_state_0()))
+            jacobian = jacobian.reshape(jacobian.shape[0], jacobian.shape[1] // 6, 6, jacobian.shape[2])
+            return jacobian[:, self._body_idx, :, self._joint_ids]
+        raise AttributeError("Articulation root view does not provide a supported Jacobian API.")
 
     @property
     def jacobian_b(self) -> torch.Tensor:
-        jacobian = self.jacobian_w
+        jacobian = self.jacobian_w.clone()
         base_rot = self._asset.data.root_quat_w.torch
         base_rot_matrix = math_utils.matrix_from_quat(math_utils.quat_inv(base_rot))
         jacobian[:, :3, :] = torch.bmm(base_rot_matrix, jacobian[:, :3, :])

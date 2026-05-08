@@ -33,7 +33,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
-from isaaclab.utils import configclass
+from isaaclab.utils import configclass, modifiers
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
@@ -45,6 +45,9 @@ from . import mdp
 ##
 
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
+
+
+FINITE_OBS_MODIFIERS = [modifiers.ModifierCfg(func=mdp.finite_tensor, params={"kwargs": {}})]
 
 
 ##
@@ -110,14 +113,14 @@ class FrankaSoftSceneCfg(InteractiveSceneCfg):
     # )
     deformable: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/Deformable",
-        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
+        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.07)),
         spawn=sim_utils.MeshCuboidCfg(
-            size=(0.3, 0.05, 0.05),
+            size=(0.1, 0.075, 0.14),
             deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
             physics_material=sim_utils.DeformableBodyMaterialCfg(
-                density=1000.0,
-                youngs_modulus=8e4,
+                density=50.0,
+                youngs_modulus=2e5,
                 poissons_ratio=0.25,
                 # particle_radius=0.01
             ),
@@ -166,12 +169,12 @@ class CommandsCfg:
     deformable_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
         body_name="panda_hand",
-        resampling_time_range=(5.0, 5.0),
+        resampling_time_range=(10.0, 10.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.4, 0.6),
-            pos_y=(-0.25, 0.25),
-            pos_z=(0.25, 0.5),
+            pos_x=(0.48, 0.52),
+            pos_y=(-0.05, 0.05),
+            pos_z=(0.12, 0.14),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -194,16 +197,27 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    """7-dim arm joint position + 1-dim binary gripper."""
+    """7-dim arm joint residual + 1-dim binary gripper residual."""
 
     arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
+        class_type=(
+            "isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.actions:"
+            "ScriptedResidualJointPositionAction"
+        ),
+        asset_name="robot",
+        joint_names=["panda_joint.*"],
+        scale=0.1,
+        use_default_offset=True,
     )
     gripper_action = mdp.BinaryJointPositionActionCfg(
+        class_type=(
+            "isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.actions:"
+            "ScriptedResidualBinaryJointPositionAction"
+        ),
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.02},
+        close_command_expr={"panda_finger_.*": 0.025},
     )
 
 
@@ -213,18 +227,54 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        # deformable_com = ObsTerm(
-        #     func=mdp.deformable_com_in_robot_root_frame,
-        #     params={"asset_cfg": SceneEntityCfg("deformable")},
-        # )
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, modifiers=FINITE_OBS_MODIFIERS)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, modifiers=FINITE_OBS_MODIFIERS)
+        deformable_com = ObsTerm(
+            func=mdp.deformable_com_in_robot_root_frame,
+            params={"asset_cfg": SceneEntityCfg("deformable")},
+            modifiers=FINITE_OBS_MODIFIERS,
+        )
+        end_effector_position = ObsTerm(
+            func=mdp.end_effector_position_in_robot_root_frame,
+            modifiers=FINITE_OBS_MODIFIERS,
+        )
+        end_effector_to_deformable = ObsTerm(
+            func=mdp.end_effector_to_deformable_com,
+            params={"asset_cfg": SceneEntityCfg("deformable")},
+            modifiers=FINITE_OBS_MODIFIERS,
+        )
+        deformable_to_goal = ObsTerm(
+            func=mdp.deformable_com_to_goal,
+            params={"command_name": "deformable_pose", "asset_cfg": SceneEntityCfg("deformable")},
+            modifiers=FINITE_OBS_MODIFIERS,
+        )
+        scripted_action_target = ObsTerm(
+            func=mdp.scripted_grasp_action_target,
+            params={
+                "command_name": "deformable_pose",
+                "action_scale": (0.03, 0.03, 0.008),
+                "grasp_height_offset": 0.02,
+                "hover_height_offset": 0.12,
+                "xy_close_distance": 0.08,
+                "close_distance": 0.09,
+                "closed_finger_position": 0.035,
+                "lift_height": 0.065,
+                "vertical_action_limit": 0.35,
+                "asset_cfg": SceneEntityCfg("deformable"),
+            },
+            modifiers=FINITE_OBS_MODIFIERS,
+        )
         deformable_sampled_points = ObsTerm(
             func=mdp.DeformableSampledPointsInRobotRootFrame,
             params={"asset_cfg": SceneEntityCfg("deformable"), "num_points": 20},
+            modifiers=FINITE_OBS_MODIFIERS,
         )
-        target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "deformable_pose"})
-        actions = ObsTerm(func=mdp.last_action)
+        target_position = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "deformable_pose"},
+            modifiers=FINITE_OBS_MODIFIERS,
+        )
+        actions = ObsTerm(func=mdp.last_action, modifiers=FINITE_OBS_MODIFIERS)
 
         def __post_init__(self) -> None:
             self.enable_corruption = True
@@ -237,17 +287,22 @@ class ObservationsCfg:
 class EventCfg:
     """Reset events: robot to default joint config, deformable with small position randomization."""
 
+    disable_table_ground_rigid_collision = EventTerm(
+        func=mdp.disable_table_ground_rigid_collision,
+        mode="startup",
+    )
+
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
-        params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
+        params={"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)},
     )
 
     reset_deformable = EventTerm(
         func=mdp.reset_nodal_state_uniform,
         mode="reset",
         params={
-            "position_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (0.0, 0.0)},
+            "position_range": {"x": (-0.01, 0.01), "y": (-0.01, 0.01), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("deformable"),
         },
@@ -260,44 +315,151 @@ class RewardsCfg:
 
     reaching_deformable = RewTerm(
         func=mdp.deformable_ee_distance,
-        params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
-        weight=5.0,
+        params={"std": 0.25, "grasp_height_offset": 0.02, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=12.0,
+    )
+    reaching_deformable_fine_grained = RewTerm(
+        func=mdp.deformable_ee_distance,
+        params={"std": 0.08, "grasp_height_offset": 0.02, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=25.0,
+    )
+    reaching_deformable_surface = RewTerm(
+        func=mdp.deformable_nearest_ee_distance,
+        params={"std": 0.08, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=15.0,
+    )
+    end_effector_action_to_deformable = RewTerm(
+        func=mdp.end_effector_action_to_deformable,
+        params={"std": 0.15, "grasp_height_offset": 0.02, "action_name": "arm_action"},
+        weight=0.0,
+    )
+    end_effector_grasp_command_tracking = RewTerm(
+        func=mdp.end_effector_grasp_command_tracking,
+        params={
+            "std": 0.08,
+            "action_scale": (0.03, 0.03, 0.008),
+            "fade_std": 0.06,
+            "grasp_height_offset": 0.02,
+            "action_name": "arm_action",
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=0.0,
+    )
+    scripted_grasp_action_tracking = RewTerm(
+        func=mdp.scripted_grasp_action_tracking,
+        params={
+            "std": 1.0,
+            "gripper_std": 1.0,
+            "command_name": "deformable_pose",
+            "action_scale": (0.03, 0.03, 0.008),
+            "grasp_height_offset": 0.02,
+            "hover_height_offset": 0.12,
+            "xy_close_distance": 0.08,
+            "close_distance": 0.09,
+            "closed_finger_position": 0.035,
+            "lift_height": 0.065,
+            "vertical_action_limit": 0.35,
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=0.0,
+    )
+    end_effector_grasp_height = RewTerm(
+        func=mdp.end_effector_grasp_height,
+        params={"std": 0.08, "grasp_height_offset": 0.02, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=0.0,
+    )
+    gripper_close = RewTerm(
+        func=mdp.gripper_close_action,
+        params={"action_name": "gripper_action"},
+        weight=0.0,
+    )
+    gripper_close_near_deformable = RewTerm(
+        func=mdp.gripper_close_near_deformable,
+        params={
+            "std": 0.08,
+            "far_penalty_scale": 0.0,
+            "grasp_height_offset": 0.02,
+            "action_name": "gripper_action",
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=0.0,
+    )
+    gripper_lift_near_deformable = RewTerm(
+        func=mdp.gripper_lift_near_deformable,
+        params={
+            "std": 0.08,
+            "minimal_height": 0.065,
+            "height_scale": 0.22,
+            "grasp_height_offset": 0.02,
+            "action_name": "gripper_action",
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=0.0,
+    )
+    end_effector_lift_action_near_deformable = RewTerm(
+        func=mdp.end_effector_lift_action_near_deformable,
+        params={
+            "std": 0.08,
+            "action_scale_z": 0.008,
+            "grasp_height_offset": 0.02,
+            "action_name": "arm_action",
+            "gripper_action_name": "gripper_action",
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=0.0,
+    )
+    gripper_goal_near_deformable = RewTerm(
+        func=mdp.gripper_goal_near_deformable,
+        params={
+            "std": 0.08,
+            "command_name": "deformable_pose",
+            "grasp_height_offset": 0.02,
+            "action_name": "gripper_action",
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=3.0,
     )
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
-        weight=5.0,
+        params={"minimal_height": 0.065, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=50.0,
+    )
+    deformable_lift_height = RewTerm(
+        func=mdp.deformable_lift_height,
+        params={"minimal_height": 0.055, "height_scale": 0.2, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=40.0,
     )
     deformable_goal_tracking = RewTerm(
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.3,
-            "minimal_height": 0.04,
+            "minimal_height": 0.065,
             "command_name": "deformable_pose",
             "asset_cfg": SceneEntityCfg("deformable"),
         },
-        weight=16.0,
+        weight=20.0,
     )
     deformable_goal_tracking_fine_grained = RewTerm(
         func=mdp.deformable_com_goal_distance,
         params={
             "std": 0.05,
-            "minimal_height": 0.04,
+            "minimal_height": 0.065,
             "command_name": "deformable_pose",
             "asset_cfg": SceneEntityCfg("deformable"),
         },
-        weight=5.0,
+        weight=8.0,
+    )
+    end_effector_low_height_penalty = RewTerm(
+        func=mdp.end_effector_low_height_penalty,
+        params={"minimum_height": -0.03, "margin": 0.04, "ee_frame_cfg": SceneEntityCfg("ee_frame")},
+        weight=-5.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-5e-2)
-    gripper_close = RewTerm(
-        func=mdp.gripper_close_action,
-        params={"action_name": "gripper_action"},
-        weight=-1.0,
-    )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-5e-2)
-    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-2e-3)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-5e-3)
+    action = RewTerm(func=mdp.action_l2, weight=-0.02)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=0.0)
+    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=0.0)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=0.0)
 
 
 @configclass
@@ -320,10 +482,24 @@ class TerminationsCfg:
         params={"minimum_height": -0.1, "asset_cfg": SceneEntityCfg("deformable")},
     )
 
+    deformable_goal_reached = DoneTerm(
+        func=mdp.deformable_goal_reached,
+        params={
+            "command_name": "deformable_pose",
+            "distance_threshold": 0.08,
+            "minimal_height": 0.085,
+            "minimum_steps": 180,
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+    )
+
+    deformable_nonfinite = DoneTerm(func=mdp.deformable_state_nonfinite)
+
     ee_below_table = DoneTerm(
         func=mdp.ee_below_minimum,
-        params={"minimum_height": 0.0, "ee_frame_cfg": SceneEntityCfg("ee_frame")},
+        params={"minimum_height": -0.1, "ee_frame_cfg": SceneEntityCfg("ee_frame")},
     )
+    robot_nonfinite = DoneTerm(func=mdp.robot_state_nonfinite)
 
 
 ##
@@ -349,7 +525,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         # general settings
         self.decimation = 2
-        self.episode_length_s = 5.0
+        self.episode_length_s = 10.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
@@ -362,13 +538,13 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = (4.0, 5.0, 1.0)
         self.viewer.resolution = (1920, 1080)
 
-        # Newton physics: MJWarp rigid + VBD soft, one-way coupled
+        # Newton physics: MJWarp rigid + VBD soft, two-way coupled
         # (matches newton/examples/softbody/example_softbody_franka.py)
         self.sim.physics = DeformableNewtonCfg(
             solver_cfg=CoupledMJWarpVBDSolverCfg(
                 rigid_solver_cfg=MJWarpSolverCfg(
-                    njmax=40,
-                    nconmax=20,
+                    njmax=100,
+                    nconmax=80,
                     ls_iterations=20,
                     cone="pyramidal",
                     impratio=1,
@@ -377,7 +553,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
                     ccd_iterations=100,
                 ),
                 soft_solver_cfg=VBDSolverCfg(
-                    iterations=5,
+                    iterations=8,
                     integrate_with_external_rigid_solver=True,
                     particle_enable_self_contact=False,
                     particle_collision_detection_interval=-1,
@@ -385,12 +561,12 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
                 coupling_mode="one_way",
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e6,
-                soft_contact_kd=1e-3,
-                soft_contact_mu=5.0,
-                shape_material_ke=1e6,
-                shape_material_kd=1e-3,
-                shape_material_mu=5.0,
+                soft_contact_ke=2e5,
+                soft_contact_kd=1e-1,
+                soft_contact_mu=10.0,
+                shape_material_ke=2e5,
+                shape_material_kd=1e-1,
+                shape_material_mu=10.0,
             ),
             num_substeps=10,
             use_cuda_graph=True,
