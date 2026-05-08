@@ -117,7 +117,7 @@ for the lift-cube environment:
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |lift-cube|             | |lift-cube-link|             | Pick a cube and bring it to a sampled target position with the Franka robot |                              |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
-    | |lift-soft-franka|      | |lift-soft-franka-link|      | Pick a deformable soft body and bring it to a sampled target position with  | ``newton``, ``physx``        |
+    | |lift-soft-franka|      | |lift-soft-franka-link|      | Pick a deformable soft body and bring it to a sampled target position with  | ``newton_mjwarp_vdb``, ``physx``        |
     |                         |                              | the Franka robot                                                            |                              |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |stack-cube|            | |stack-cube-link|            | Stack three cubes (bottom to top: blue, red, green) with the Franka robot.  |                              |
@@ -1007,12 +1007,12 @@ inferencing, including reading from an already trained checkpoint and disabling 
       -
       - Manager Based
       - **rsl_rl** (PPO)
-      - ``newton``, ``physx``
+      - ``newton_mjwarp_vdb``, ``physx``
     * - Isaac-Lift-Cloth-Franka-v0
       -
       - Manager Based
       - **rsl_rl** (PPO)
-      - ``newton``
+      - ``newton_mjwarp_vdb``
     * - Isaac-Lift-Teddy-Bear-Franka-IK-Abs-v0
       -
       - Manager Based

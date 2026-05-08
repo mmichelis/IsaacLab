@@ -34,7 +34,7 @@ from .franka_soft_env_cfg import DeformableNewtonCfg, FrankaSoftEnvCfg, FrankaSo
 class PhysicsCfg(PresetCfg):
     # Newton physics: MJWarp rigid + VBD soft, one-way coupled
     # (matches newton/examples/softbody/example_softbody_franka.py)
-    newton: DeformableNewtonCfg = DeformableNewtonCfg(
+    newton_mjwarp_vdb: DeformableNewtonCfg = DeformableNewtonCfg(
         solver_cfg=CoupledMJWarpVBDSolverCfg(
             rigid_solver_cfg=MJWarpSolverCfg(
                 njmax=40,
@@ -66,14 +66,14 @@ class PhysicsCfg(PresetCfg):
         use_cuda_graph=True,
     )
 
-    default = newton
+    default = newton_mjwarp_vdb
 
 
 @configclass
 class DeformableCfg(PresetCfg):
     """Preset config for the deformable object, matching the Newton example."""
 
-    newton: DeformableObjectCfg = DeformableObjectCfg(
+    newton_mjwarp_vdb: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/Deformable",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.2)),
         spawn=sim_utils.MeshSquareCfg(
@@ -93,7 +93,7 @@ class DeformableCfg(PresetCfg):
         ),
     )
 
-    default = newton
+    default = newton_mjwarp_vdb
 
 
 @configclass

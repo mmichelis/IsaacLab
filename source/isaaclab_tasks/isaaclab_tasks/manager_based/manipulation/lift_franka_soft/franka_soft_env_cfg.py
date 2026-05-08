@@ -77,7 +77,7 @@ class DeformableNewtonCfg(NewtonCfg):
 class DeformableCfg(PresetCfg):
     """Preset config for the deformable object, matching the Newton example."""
 
-    newton: DeformableObjectCfg = DeformableObjectCfg(
+    newton_mjwarp_vdb: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/Deformable",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
@@ -110,14 +110,14 @@ class DeformableCfg(PresetCfg):
         ),
     )
 
-    default = newton
+    default = newton_mjwarp_vdb
 
 
 @configclass
 class PhysicsCfg(PresetCfg):
     # Newton physics: MJWarp rigid + VBD soft, one-way coupled
     # (matches newton/examples/softbody/example_softbody_franka.py)
-    newton: DeformableNewtonCfg = DeformableNewtonCfg(
+    newton_mjwarp_vdb: DeformableNewtonCfg = DeformableNewtonCfg(
         solver_cfg=CoupledMJWarpVBDSolverCfg(
             rigid_solver_cfg=MJWarpSolverCfg(
                 njmax=40,
@@ -151,7 +151,7 @@ class PhysicsCfg(PresetCfg):
 
     physx: PhysxCfg = PhysxCfg()
 
-    default = newton
+    default = newton_mjwarp_vdb
 
 
 ##
@@ -395,12 +395,12 @@ class TerminationsCfg:
 
 @configclass
 class FrankaSoftSceneCfg(PresetCfg):
-    newton: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
+    newton_mjwarp_vdb: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
 
     # PhysX does not support replicating physics for deformable objects
     physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=False)
 
-    default = newton
+    default = newton_mjwarp_vdb
 
 
 @configclass
