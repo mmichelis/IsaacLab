@@ -11,6 +11,7 @@ import inspect
 
 from newton import Model
 from newton.solvers import SolverFeatherstone
+
 from .featherstone_manager_cfg import FeatherstoneSolverCfg
 from .newton_manager import NewtonManager
 
