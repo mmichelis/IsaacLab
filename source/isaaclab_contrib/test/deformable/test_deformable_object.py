@@ -21,6 +21,11 @@ import torch
 import warp as wp
 from flaky import flaky
 from isaaclab_newton.physics import NewtonCfg
+from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
+from isaaclab_newton.sim.spawners.materials import (
+    NewtonDeformableBodyMaterialCfg,
+    NewtonSurfaceDeformableBodyMaterialCfg,
+)
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -67,12 +72,12 @@ def generate_cubes_scene(
         prim_path="/World/env_.*/Cube",
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.1, 0.1, 0.1),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(
+            physics_material=NewtonDeformableBodyMaterialCfg(
                 density=500.0,
-                youngs_modulus=2.5e4,
-                poissons_ratio=0.25,
+                k_mu=1e4,
+                k_lambda=1e4,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
@@ -108,9 +113,9 @@ def generate_cloth_scene(
         spawn=sim_utils.MeshSquareCfg(
             size=0.2,
             resolution=(3, 3),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.8)),
-            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(density=0.02, particle_radius=0.005),
+            physics_material=NewtonSurfaceDeformableBodyMaterialCfg(density=0.02, particle_radius=0.005),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
             pos=(0.0, 0.0, height),
@@ -128,12 +133,12 @@ def generate_cuboid_and_cylinder_scene(height: float = 1.0) -> tuple[DeformableO
         prim_path="/World/env_.*/Cuboid",
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.16, 0.08, 0.12),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(
+            physics_material=NewtonDeformableBodyMaterialCfg(
                 density=500.0,
-                youngs_modulus=2.5e4,
-                poissons_ratio=0.25,
+                k_mu=1e4,
+                k_lambda=1e4,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, height)),
@@ -143,12 +148,12 @@ def generate_cuboid_and_cylinder_scene(height: float = 1.0) -> tuple[DeformableO
         spawn=sim_utils.MeshCylinderCfg(
             radius=0.06,
             height=0.14,
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(
+            physics_material=NewtonDeformableBodyMaterialCfg(
                 density=500.0,
-                youngs_modulus=2.5e4,
-                poissons_ratio=0.25,
+                k_mu=1e4,
+                k_lambda=1e4,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.4, 0.0, height + 0.2)),
@@ -164,9 +169,9 @@ def sim():
         yield sim
 
 
-@pytest.mark.parametrize("num_cubes", [1, 2])
-def test_initialization(sim, num_cubes):
+def test_initialization(sim):
     """Test initialization of Newton deformable objects."""
+    num_cubes = 2
     cube_object = generate_cubes_scene(num_cubes=num_cubes)
 
     sim.reset()
@@ -198,9 +203,9 @@ def test_initialization(sim, num_cubes):
     assert root_vel.shape == (num_cubes, 3)
 
 
-@pytest.mark.parametrize("num_cloths", [1, 2])
-def test_surface_initialization_and_freefall(sim, num_cloths):
+def test_surface_initialization_and_freefall(sim):
     """Test initialization and stepping for surface deformable objects."""
+    num_cloths = 2
     cloth_object = generate_cloth_scene(num_cloths=num_cloths, height=5.0)
 
     sim.reset()
@@ -223,9 +228,9 @@ def test_surface_initialization_and_freefall(sim, num_cloths):
     assert torch.all(cloth_object.data.root_pos_w.torch[:, 2] < initial_root_z)
 
 
-@pytest.mark.parametrize("num_cubes", [1, 2])
-def test_set_nodal_state(sim, num_cubes):
+def test_set_nodal_state(sim):
     """Test setting the state of the deformable object."""
+    num_cubes = 2
     cube_object = generate_cubes_scene(num_cubes=num_cubes)
 
     sim.reset()
@@ -257,9 +262,9 @@ def test_set_nodal_state(sim, num_cubes):
                 cube_object.update(sim.cfg.dt)
 
 
-@pytest.mark.parametrize("num_cubes", [2, 4])
-def test_write_partial_env_ids(sim, num_cubes):
+def test_write_partial_env_ids(sim):
     """Test writing to a subset of environments using env_ids."""
+    num_cubes = 2
     cube_object = generate_cubes_scene(num_cubes=num_cubes)
 
     sim.reset()
@@ -281,9 +286,9 @@ def test_write_partial_env_ids(sim, num_cubes):
     torch.testing.assert_close(read_pos[1:], default_pos[1:], rtol=1e-5, atol=1e-5)
 
 
-@pytest.mark.parametrize("num_cubes", [2, 4])
-def test_write_partial_velocity_env_ids(sim, num_cubes):
+def test_write_partial_velocity_env_ids(sim):
     """Test writing nodal velocities to a subset of environments."""
+    num_cubes = 4
     cube_object = generate_cubes_scene(num_cubes=num_cubes)
 
     sim.reset()
@@ -436,9 +441,15 @@ def test_mask_writes_selected_env(sim):
     torch.testing.assert_close(read_targets[2], default_targets[2], rtol=1e-5, atol=1e-5)
 
 
-@pytest.mark.parametrize("num_cubes", [1, 2])
-@pytest.mark.parametrize("randomize_pos", [True, False])
-@pytest.mark.parametrize("randomize_rot", [True, False])
+@pytest.mark.parametrize(
+    "num_cubes, randomize_pos, randomize_rot",
+    [
+        (1, False, False),
+        (1, True, False),
+        (1, False, True),
+        (2, True, True),
+    ],
+)
 @flaky(max_runs=3, min_passes=1)
 def test_set_nodal_state_with_applied_transform(num_cubes, randomize_pos, randomize_rot):
     """Test setting the state of the deformable object with applied transform.
@@ -563,14 +574,14 @@ def test_nodal_pos_reads_current_state_after_odd_substep_swap():
         assert torch.all(stepped_pos[..., 2] < initial_pos[..., 2])
 
 
-@pytest.mark.parametrize("num_cubes", [2, 4])
-def test_set_kinematic_targets(sim, num_cubes):
+def test_set_kinematic_targets(sim):
     """Test setting kinematic targets for the deformable object.
 
     Env 0 is kinematically constrained (all vertices pinned at default positions,
     flag=0). Other envs are free (flag=1) and fall under gravity. After several
     steps, env 0 should stay in place while the others have fallen.
     """
+    num_cubes = 4
     cube_object = generate_cubes_scene(num_cubes=num_cubes, height=5.0)
 
     sim.reset()

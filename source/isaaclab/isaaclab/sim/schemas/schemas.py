@@ -1107,7 +1107,7 @@ def _fix_tet_winding_kernel(
 
 def define_deformable_body_properties(
     prim_path: str,
-    cfg: schemas_cfg.DeformableBodyPropertiesCfg,
+    cfg: schemas_cfg.DeformableBodyPropertiesBaseCfg,
     stage: Usd.Stage | None = None,
     deformable_type: str = "volume",
     sim_mesh_prim_path: str | None = None,
@@ -1353,7 +1353,7 @@ def define_deformable_body_properties(
 
 @apply_nested
 def modify_deformable_body_properties(
-    prim_path: str, cfg: schemas_cfg.DeformableBodyPropertiesCfg, stage: Usd.Stage | None = None
+    prim_path: str, cfg: schemas_cfg.DeformableBodyPropertiesBaseCfg, stage: Usd.Stage | None = None
 ):
     """Modify deformable body parameters for a deformable body prim.
 
@@ -1408,28 +1408,16 @@ def modify_deformable_body_properties(
     if "OmniPhysicsDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
         return False
 
-    # apply customization to deformable API
-    if "PhysxBaseDeformableBodyAPI" not in deformable_body_prim.GetAppliedSchemas():
-        deformable_body_prim.AddAppliedSchema("PhysxBaseDeformableBodyAPI")
+    # build cfg dict from dataclass fields only; USD routing is driven by the
+    # declaring classes' ``_usd_namespace`` / ``_usd_applied_schema`` metadata.
+    cfg_dict = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
 
-    # ensure PhysX collision API is applied on the collision mesh
-    if "PhysxCollisionAPI" not in deformable_body_prim.GetAppliedSchemas():
-        deformable_body_prim.AddAppliedSchema("PhysxCollisionAPI")
-
-    # convert to dict
-    cfg = cfg.to_dict()
-    # set into PhysX API
-    if cfg["kinematic_enabled"]:
+    if cfg_dict.get("kinematic_enabled"):
         logger.warning(
             "Kinematic deformable bodies are not fully supported in the current version of Omni Physics. "
             "Setting kinematic_enabled to True may lead to unexpected behavior."
         )
-    # prefixes for each attribute (collision attributes: physxCollision:*, and physxDeformable:* for rest)
-    property_prefixes = cfg["_property_prefix"]
-    for prefix, attr_list in property_prefixes.items():
-        for attr_name in attr_list:
-            safe_set_attribute_on_usd_prim(
-                deformable_body_prim, f"{prefix}:{to_camel_case(attr_name, 'cC')}", cfg[attr_name], camel_case=False
-            )
+
+    _apply_namespaced_schemas(deformable_body_prim, cfg, cfg_dict)
     # success
     return True

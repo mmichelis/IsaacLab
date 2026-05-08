@@ -120,5 +120,5 @@ class DeformableObjectSpawnerCfg(SpawnerCfg):
     mass_props: schemas.MassPropertiesCfg | None = None
     """Mass properties."""
 
-    deformable_props: schemas.DeformableBodyPropertiesCfg | None = None
-    """Deformable body properties. Only supported on PhysX backend for now."""
+    deformable_props: schemas.DeformableBodyPropertiesBaseCfg | None = None
+    """Deformable body properties."""

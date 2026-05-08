@@ -1,16 +1,47 @@
-:orphan:
-
-.. This page is kept as a migration stub for older links.
-
 isaaclab_physx.sim.spawners
 ===========================
 
-The deformable object spawner and deformable material APIs are now
-backend-neutral and live in :mod:`isaaclab.sim.spawners`.
+.. automodule:: isaaclab_physx.sim.spawners.materials
 
-Use :class:`isaaclab.sim.spawners.DeformableObjectSpawnerCfg`,
-:class:`isaaclab.sim.spawners.materials.DeformableBodyMaterialCfg`,
-:class:`isaaclab.sim.spawners.materials.SurfaceDeformableBodyMaterialCfg`, and
-:func:`isaaclab.sim.spawners.materials.spawn_deformable_body_material` instead.
+  .. rubric:: Classes
 
-For migration details, see :ref:`migrating-deformables`.
+  .. autosummary::
+
+    PhysxDeformableBodyMaterialCfg
+    PhysxSurfaceDeformableBodyMaterialCfg
+    PhysXDeformableMaterialCfg
+    DeformableBodyMaterialCfg
+    SurfaceDeformableBodyMaterialCfg
+
+Deformable Materials
+--------------------
+
+.. autofunction:: spawn_deformable_body_material
+
+.. autoclass:: PhysxDeformableBodyMaterialCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__, func
+
+.. autoclass:: PhysxSurfaceDeformableBodyMaterialCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__, func
+
+.. autoclass:: PhysXDeformableMaterialCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__, func
+
+Deprecated Aliases
+------------------
+
+.. autoclass:: DeformableBodyMaterialCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__, func
+
+.. autoclass:: SurfaceDeformableBodyMaterialCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__, func

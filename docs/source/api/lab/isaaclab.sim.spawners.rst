@@ -268,6 +268,8 @@ Materials
     GlassMdlCfg
     PhysicsMaterialCfg
     RigidBodyMaterialCfg
+    DeformableBodyMaterialBaseCfg
+    SurfaceDeformableBodyMaterialBaseCfg
     DeformableBodyMaterialCfg
     SurfaceDeformableBodyMaterialCfg
 
@@ -309,12 +311,31 @@ Physical Materials
 
 .. autofunction:: spawn_deformable_body_material
 
+.. autoclass:: DeformableBodyMaterialBaseCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__, func
+
+.. autoclass:: SurfaceDeformableBodyMaterialBaseCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__, func
+
+.. note::
+
+    Backend-specific deformable material cfgs live in
+    :mod:`isaaclab_physx.sim.spawners.materials` and
+    :mod:`isaaclab_newton.sim.spawners.materials`. The legacy default names below
+    are forwarded to the deprecated PhysX aliases for compatibility.
+
 .. autoclass:: DeformableBodyMaterialCfg
+    :no-index:
     :members:
     :show-inheritance:
     :exclude-members: __init__, func
 
 .. autoclass:: SurfaceDeformableBodyMaterialCfg
+    :no-index:
     :members:
     :show-inheritance:
     :exclude-members: __init__, func

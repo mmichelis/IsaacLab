@@ -11,8 +11,10 @@ Isaac Lab represents deformable objects as either surface or volume deformables.
 deform under external forces and collisions. In this tutorial, we focus on volume deformable bodies. For an example of
 surface deformables (cloth), see the deformable demo at ``scripts/demos/deformables.py``.
 
-The public deformable API is backend-neutral. PhysX simulates soft bodies using the Finite Element Method (FEM);
-the Newton experimental backend uses VBD-based deformable support from :mod:`isaaclab_contrib.deformable`.
+The deformable object API and schema define/modify functions are shared across backends, while deformable
+property and material configuration classes are backend-specific. PhysX simulates soft bodies using the Finite
+Element Method (FEM); the Newton experimental backend uses VBD-based deformable support from
+:mod:`isaaclab_contrib.deformable`.
 The volume deformable comprises of two tetrahedral meshes -- a simulation mesh and a collision mesh. The simulation
 mesh is used to simulate the deformations of the soft body, while the collision mesh is used to detect collisions
 with other objects in the scene. For PhysX-specific details, please check the `PhysX documentation`_.
@@ -32,7 +34,7 @@ The tutorial corresponds to the ``run_deformable_object.py`` script in the ``scr
 
    .. literalinclude:: ../../../../scripts/tutorials/01_assets/run_deformable_object.py
       :language: python
-      :emphasize-lines: 68-82, 110-126, 131-139, 141-149
+      :emphasize-lines: 65-98, 119-124, 126-135, 140-148, 150-158
       :linenos:
 
 
@@ -55,7 +57,8 @@ the :class:`assets.DeformableObject` class, it spawns the object and initializes
 when the simulation is played.
 
 .. note::
-    Deformable objects require a mesh object to be spawned with deformable body physics properties on it.
+    Deformable objects require a mesh object to be spawned with backend-specific deformable body physics
+    properties and a matching deformable physics material.
     Use ``--backend physx`` for the PhysX implementation or ``--backend newton`` for the experimental Newton
     implementation.
 

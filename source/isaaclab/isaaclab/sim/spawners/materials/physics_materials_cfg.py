@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Callable
 from dataclasses import MISSING
 from typing import ClassVar
@@ -16,7 +15,16 @@ from isaaclab.utils import configclass
 # Resolved lazily so callers using ``from isaaclab.sim.spawners.materials.physics_materials_cfg
 # import RigidBodyMaterialCfg`` continue to work without importing ``isaaclab_physx`` at module
 # load time.
-_PHYSX_FORWARDS = frozenset({"RigidBodyMaterialCfg", "PhysxRigidBodyMaterialCfg"})
+_PHYSX_FORWARDS = frozenset(
+    {
+        "DeformableBodyMaterialCfg",
+        "RigidBodyMaterialCfg",
+        "SurfaceDeformableBodyMaterialCfg",
+        "PhysxRigidBodyMaterialCfg",
+        "PhysxDeformableBodyMaterialCfg",
+        "PhysxSurfaceDeformableBodyMaterialCfg",
+    }
+)
 
 
 def __getattr__(name):
@@ -82,132 +90,16 @@ class RigidBodyMaterialBaseCfg(PhysicsMaterialCfg):
 
 
 @configclass
-class OmniPhysicsDeformableMaterialCfg:
-    """OmniPhysics material properties for a deformable body.
+class DeformableBodyMaterialBaseCfg(PhysicsMaterialCfg):
+    """Base physics material parameters for volume deformable bodies.
 
-    These properties are set with the prefix ``omniphysics:<property_name>``. For example, to set the density of the
-    deformable body, you would set the property ``omniphysics:density``.
-
-    See the OmniPhysics documentation for more information on the available properties.
+    Backend-specific subclasses provide the material fields and spawning function
+    through :attr:`func`.
     """
 
-    density: float = 1000.0
-    """The material density [kg/m^3]. Defaults to 1000.0 kg/m^3, which is the density of water."""
-
-    static_friction: float = 0.25
-    """The static friction coefficient. Defaults to 0.25."""
-
-    dynamic_friction: float = 0.25
-    """The dynamic friction coefficient. Defaults to 0.25."""
-
-    youngs_modulus: float = 1000000.0
-    """The Young's modulus, which defines the body's stiffness [Pa]. Defaults to 1 MPa."""
-
-    poissons_ratio: float = 0.45
-    """The Poisson's ratio which defines the body's volume preservation."""
+    func: Callable | str | None = None
 
 
 @configclass
-class OmniPhysicsSurfaceDeformableMaterialCfg(OmniPhysicsDeformableMaterialCfg):
-    """OmniPhysics material properties for a surface deformable body.
-
-    These properties are set with the prefix ``omniphysics:<property_name>``.
-    """
-
-    surface_thickness: float = 0.01
-    """The thickness of the deformable body's surface [m]. Defaults to 0.01."""
-
-    surface_stretch_stiffness: float = 0.0
-    """The stretch stiffness of the deformable body's surface. Defaults to 0.0."""
-
-    surface_shear_stiffness: float = 0.0
-    """The shear stiffness of the deformable body's surface. Defaults to 0.0."""
-
-    surface_bend_stiffness: float = 0.0
-    """The bend stiffness of the deformable body's surface. Defaults to 0.0."""
-
-    bend_damping: float = 0.0
-    """The bend damping for the deformable body's surface. Defaults to 0.0."""
-
-
-@configclass
-class PhysXDeformableMaterialCfg:
-    """PhysX-specific material properties for a deformable body.
-
-    These properties are set with the prefix ``physxDeformableBody:<property_name>``.
-    """
-
-    elasticity_damping: float = 0.005
-    """The elasticity damping for the deformable material. Defaults to 0.005."""
-
-
-@configclass
-class NewtonDeformableMaterialCfg:
-    """Newton-specific material properties for a deformable body.
-
-    These properties are set with the prefix ``newton:<property_name>``.
-    """
-
-    particle_radius: float = 0.008
-    """Particle radius [m] used by the Newton backend."""
-
-    # -- Cloth (triangle surface mesh) parameters
-
-    tri_ke: float = 1e4
-    """Triangle area-preserving stiffness [Pa]. Used by Newton backend for cloth meshes."""
-
-    tri_ka: float = 1e4
-    """Triangle area stiffness [Pa]. Used by Newton backend for cloth meshes."""
-
-    tri_kd: float = 1.5e-6
-    """Triangle area damping. Used by Newton backend for cloth meshes."""
-
-    edge_ke: float = 5.0
-    """Bending stiffness. Used by Newton backend for cloth meshes."""
-
-    edge_kd: float = 1e-2
-    """Bending damping. Used by Newton backend for cloth meshes."""
-
-    # -- Volumetric (tetrahedral FEM) parameters
-
-    k_damp: float = 0.0
-    """Damping stiffness for tetrahedral elements. Defaults to 0.0."""
-
-
-@configclass
-class DeformableBodyMaterialCfg(
-    PhysicsMaterialCfg,
-    OmniPhysicsDeformableMaterialCfg,
-    PhysXDeformableMaterialCfg,
-    NewtonDeformableMaterialCfg,
-):
-    """Physics material parameters for deformable bodies.
-
-    See :meth:`spawn_deformable_body_material` for more information.
-    """
-
-    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
-
-    _property_prefix: dict[str, list[str]] = {
-        "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsDeformableMaterialCfg)],
-        "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableMaterialCfg)],
-        "newton": [field.name for field in dataclasses.fields(NewtonDeformableMaterialCfg)],
-    }
-    """Mapping between the property prefixes and the properties that fall under each prefix."""
-
-
-@configclass
-class SurfaceDeformableBodyMaterialCfg(DeformableBodyMaterialCfg, OmniPhysicsSurfaceDeformableMaterialCfg):
-    """Physics material parameters for surface deformable bodies.
-
-    See :meth:`spawn_deformable_body_material` for more information.
-    """
-
-    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
-
-    _property_prefix: dict[str, list[str]] = {
-        "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsSurfaceDeformableMaterialCfg)],
-        "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableMaterialCfg)],
-        "newton": [field.name for field in dataclasses.fields(NewtonDeformableMaterialCfg)],
-    }
-    """Extend DeformableBodyMaterialCfg properties under each prefix."""
+class SurfaceDeformableBodyMaterialBaseCfg(DeformableBodyMaterialBaseCfg):
+    """Base physics material parameters for surface deformable bodies."""

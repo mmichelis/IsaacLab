@@ -16,7 +16,7 @@ from pxr import Usd, UsdPhysics
 from isaaclab.sim import schemas
 from isaaclab.sim.utils import bind_physics_material, bind_visual_material, clone, create_prim, get_current_stage
 
-from ..materials import DeformableBodyMaterialCfg, RigidBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
+from ..materials import DeformableBodyMaterialBaseCfg, RigidBodyMaterialCfg, SurfaceDeformableBodyMaterialBaseCfg
 
 if TYPE_CHECKING:
     from . import meshes_cfg
@@ -363,7 +363,7 @@ def _spawn_mesh_geom_from_mesh(
         raise ValueError("Cannot use both deformable and collision properties at the same time.")
     # check material types are correct
     if cfg.deformable_props is not None and cfg.physics_material is not None:
-        if not isinstance(cfg.physics_material, DeformableBodyMaterialCfg):
+        if not isinstance(cfg.physics_material, DeformableBodyMaterialBaseCfg):
             raise ValueError("Deformable properties require a deformable physics material.")
     if cfg.rigid_props is not None and cfg.physics_material is not None:
         if not isinstance(cfg.physics_material, RigidBodyMaterialCfg):
@@ -389,14 +389,16 @@ def _spawn_mesh_geom_from_mesh(
 
     if cfg.deformable_props is not None:
         # apply deformable body properties
-        deformable_type = "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume"
+        deformable_type = (
+            "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialBaseCfg) else "volume"
+        )
         schemas.define_deformable_body_properties(
             prim_path, cfg.deformable_props, stage=stage, deformable_type=deformable_type
         )
         if cfg.mass_props is not None:
             raise ValueError(
                 """MassPropertiesCfg are not supported for deformable bodies
-                and should be set through DeformableBodyPropertiesCfg(mass=<value>)."""
+                and should be set through deformable_props with mass=<value>."""
             )
     elif cfg.collision_props is not None:
         # decide on type of collision approximation based on the mesh

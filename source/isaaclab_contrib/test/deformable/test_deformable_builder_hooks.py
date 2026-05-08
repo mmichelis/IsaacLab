@@ -7,6 +7,7 @@ import math
 
 import pytest
 import warp as wp
+from isaaclab_newton.sim.spawners.materials import NewtonDeformableMaterialCfg
 
 from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg
 from isaaclab_contrib.deformable.deformable_object import DeformableRegistryEntry, add_deformable_entry_to_builder
@@ -48,6 +49,14 @@ def test_deformable_package_exports_public_symbols():
     """Test that deformable symbols are exported from the package root."""
     assert DeformableObject.__name__ == "DeformableObject"
     assert VBDSolverCfg.__name__ == "VBDSolverCfg"
+
+
+def test_newton_material_defaults_match_registry_defaults():
+    """Test that Newton material cfg defaults match the deformable registry defaults."""
+    material_cfg = NewtonDeformableMaterialCfg()
+
+    assert material_cfg.density == DeformableRegistryEntry.density
+    assert material_cfg.particle_radius == DeformableRegistryEntry.particle_radius
 
 
 def test_builder_hook_applies_env_quaternion_to_deformable_entry():

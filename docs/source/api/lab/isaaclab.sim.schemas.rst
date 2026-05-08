@@ -13,7 +13,7 @@
     MassPropertiesCfg
     JointDrivePropertiesCfg
     FixedTendonPropertiesCfg
-    DeformableBodyPropertiesCfg
+    DeformableBodyPropertiesBaseCfg
 
   .. rubric:: Functions
 
@@ -95,7 +95,7 @@ Fixed Tendon
 Deformable Body
 ---------------
 
-.. autoclass:: DeformableBodyPropertiesCfg
+.. autoclass:: DeformableBodyPropertiesBaseCfg
     :members:
     :show-inheritance:
     :exclude-members: __init__

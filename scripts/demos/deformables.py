@@ -44,6 +44,23 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
+if args_cli.backend == "newton":
+    from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg as DeformableBodyPropertiesCfg
+    from isaaclab_newton.sim.spawners.materials import (
+        NewtonDeformableBodyMaterialCfg as VolumeDeformableMaterialCfg,
+    )
+    from isaaclab_newton.sim.spawners.materials import (
+        NewtonSurfaceDeformableBodyMaterialCfg as SurfaceDeformableMaterialCfg,
+    )
+else:
+    from isaaclab_physx.sim.schemas import PhysxDeformableBodyPropertiesCfg as DeformableBodyPropertiesCfg
+    from isaaclab_physx.sim.spawners.materials import (
+        PhysxDeformableBodyMaterialCfg as VolumeDeformableMaterialCfg,
+    )
+    from isaaclab_physx.sim.spawners.materials import (
+        PhysxSurfaceDeformableBodyMaterialCfg as SurfaceDeformableMaterialCfg,
+    )
+
 
 def define_origins(num_origins: int, radius: float = 2.0, center_height: float = 3.0) -> list[list[float]]:
     """Defines origins distributed on the surface of a sphere, sampled according to a Fibonacci lattice.
@@ -80,49 +97,49 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     # spawn a red cone
     cfg_sphere = sim_utils.MeshSphereCfg(
         radius=0.4,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(),
     )
     cfg_cuboid = sim_utils.MeshCuboidCfg(
         size=(0.6, 0.6, 0.6),
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(),
     )
     cfg_cylinder = sim_utils.MeshCylinderCfg(
         radius=0.25,
         height=0.5,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
         radius=0.35,
         height=0.5,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(),
     )
     cfg_cone = sim_utils.MeshConeCfg(
         radius=0.35,
         height=0.75,
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(),
     )
     cfg_cloth = sim_utils.MeshSquareCfg(
         size=1.5,
         resolution=(21, 21),
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(),
+        physics_material=SurfaceDeformableMaterialCfg(),
     )
     cfg_usd = sim_utils.UsdFileCfg(
         usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
-        deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+        deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=sim_utils.DeformableBodyMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(),
         scale=[0.05, 0.05, 0.05],
     )
     # create a dictionary of all the objects to be spawned
@@ -147,10 +164,21 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         # randomly select an object to spawn
         obj_name = random.choice(list(objects_cfg.keys()))
         obj_cfg = objects_cfg[obj_name]
-        # randomize the young modulus
-        obj_cfg.physics_material.youngs_modulus = random.uniform(5e5, 1e8)
-        # randomize the poisson's ratio
-        obj_cfg.physics_material.poissons_ratio = random.uniform(0.25, 0.45)
+        # randomize the deformable material stiffness
+        if args_cli.backend == "newton" and obj_name == "cloth":
+            obj_cfg.physics_material.tri_ke = random.uniform(5e3, 5e4)
+            obj_cfg.physics_material.tri_ka = random.uniform(5e3, 5e4)
+        else:
+            youngs_modulus = random.uniform(5e5, 1e8)
+            poissons_ratio = random.uniform(0.25, 0.45)
+            if args_cli.backend == "newton":
+                obj_cfg.physics_material.k_mu = youngs_modulus / (2.0 * (1.0 + poissons_ratio))
+                obj_cfg.physics_material.k_lambda = (
+                    youngs_modulus * poissons_ratio / ((1.0 + poissons_ratio) * (1.0 - 2.0 * poissons_ratio))
+                )
+            else:
+                obj_cfg.physics_material.youngs_modulus = youngs_modulus
+                obj_cfg.physics_material.poissons_ratio = poissons_ratio
         # randomize the color
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
         # spawn the object, separate groups for surface and volume deformables

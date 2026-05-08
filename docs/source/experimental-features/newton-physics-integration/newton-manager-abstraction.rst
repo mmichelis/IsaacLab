@@ -178,6 +178,8 @@ You can exercise this coupling path with the Franka soft-body lifting task:
 
    ./isaaclab.sh -p scripts/environments/zero_agent.py --task Isaac-Lift-Soft-Franka-v0 --num_envs 1 --visualizer kit
 
+For the surface-deformable cloth variant, use ``--task Isaac-Lift-Cloth-Franka-v0``.
+
 
 This environment configures
 :class:`~isaaclab_contrib.deformable.CoupledMJWarpVBDSolverCfg` with

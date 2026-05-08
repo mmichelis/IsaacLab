@@ -5,7 +5,8 @@
 
 """Compatibility wrappers for deformable schema writers.
 
-The deformable schema writers now live in :mod:`isaaclab.sim.schemas`.
+The deformable schema writers are backend-aware but remain unified in
+:mod:`isaaclab.sim.schemas`.
 """
 
 from isaaclab.sim.schemas.schemas import define_deformable_body_properties, modify_deformable_body_properties

@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 from isaaclab_newton.physics import MJWarpSolverCfg
+from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
+from isaaclab_newton.sim.spawners.materials import NewtonSurfaceDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
@@ -77,9 +79,9 @@ class DeformableCfg(PresetCfg):
         spawn=sim_utils.MeshSquareCfg(
             size=0.3,
             resolution=(30, 30),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
-            physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(
+            physics_material=NewtonSurfaceDeformableBodyMaterialCfg(
                 density=100.0,
                 particle_radius=0.005,
                 tri_ke=1e2,

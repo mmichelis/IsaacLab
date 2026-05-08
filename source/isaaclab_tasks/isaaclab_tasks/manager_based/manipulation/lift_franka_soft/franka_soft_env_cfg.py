@@ -14,7 +14,11 @@ position sampled in the robot's root frame.
 from __future__ import annotations
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
+from isaaclab_newton.sim.spawners.materials import NewtonDeformableBodyMaterialCfg
 from isaaclab_physx.physics import PhysxCfg
+from isaaclab_physx.sim.schemas import PhysxDeformableBodyPropertiesCfg
+from isaaclab_physx.sim.spawners.materials import PhysxDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -52,6 +56,11 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
 ##
 
 
+# Shared volume material parameters. The Newton config below uses the equivalent Lame parameters.
+YOUNGS_MODULUS = 8e4
+POISSONS_RATIO = 0.25
+
+
 @configclass
 class DeformableNewtonCfg(NewtonCfg):
     """NewtonCfg extended with model-level contact parameters for deformable objects.
@@ -73,12 +82,12 @@ class DeformableCfg(PresetCfg):
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.05, 0.05),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(
+            physics_material=NewtonDeformableBodyMaterialCfg(
                 density=300.0,
-                youngs_modulus=8e4,
-                poissons_ratio=0.25,
+                k_mu=YOUNGS_MODULUS / (2.0 * (1.0 + POISSONS_RATIO)),
+                k_lambda=(YOUNGS_MODULUS * POISSONS_RATIO / ((1.0 + POISSONS_RATIO) * (1.0 - 2.0 * POISSONS_RATIO))),
                 particle_radius=0.01,
             ),
         ),
@@ -89,12 +98,12 @@ class DeformableCfg(PresetCfg):
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.05, 0.05),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+            deformable_props=PhysxDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(
+            physics_material=PhysxDeformableBodyMaterialCfg(
                 density=300.0,
-                youngs_modulus=8e4,
-                poissons_ratio=0.25,
+                youngs_modulus=YOUNGS_MODULUS,
+                poissons_ratio=POISSONS_RATIO,
                 static_friction=10.0,
                 dynamic_friction=5.0,
             ),
@@ -382,6 +391,7 @@ class TerminationsCfg:
 ##
 # Environment configuration
 ##
+
 
 @configclass
 class FrankaSoftSceneCfg(PresetCfg):

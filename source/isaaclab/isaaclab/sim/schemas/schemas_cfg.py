@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import warnings
 from typing import ClassVar, Literal
 
@@ -23,8 +22,9 @@ _PHYSX_FORWARDS = frozenset(
         "PhysxJointDrivePropertiesCfg",
         "CollisionPropertiesCfg",
         "PhysxCollisionPropertiesCfg",
-        "PhysXCollisionPropertiesCfg",
+        "DeformableBodyPropertiesCfg",
         "PhysxDeformableCollisionPropertiesCfg",
+        "PhysxDeformableBodyPropertiesCfg",
         "ArticulationRootPropertiesCfg",
         "PhysxArticulationRootPropertiesCfg",
         "MeshCollisionPropertiesCfg",
@@ -523,126 +523,11 @@ class BoundingSpherePropertiesCfg(MeshCollisionBaseCfg):
 
 
 @configclass
-class OmniPhysicsPropertiesCfg:
-    """OmniPhysics properties for a deformable body.
+class DeformableBodyPropertiesBaseCfg:
+    """Base deformable body properties for backend-specific extensions.
 
-    These properties are set with the prefix ``omniphysics:<property_name>``. For example, to set the mass of the
-    deformable body, you would set the property ``omniphysics:mass``.
-
-    See the OmniPhysics documentation for more information on the available properties.
+    This class is currently empty. It will be populated once the USD deformable
+    schemas can be unified more cleanly between physics backends.
     """
 
-    deformable_body_enabled: bool | None = None
-    """Enables deformable body."""
-
-    kinematic_enabled: bool = False
-    """Enables kinematic body. Defaults to False, which means that the body is not kinematic."""
-
-    mass: float | None = None
-    """The material mass [kg]. Defaults to None, in which case the material density is used to compute the mass."""
-
-
-@configclass
-class PhysXDeformableBodyPropertiesCfg:
-    """PhysX-specific properties for a deformable body.
-
-    These properties are set with the prefix ``physxDeformableBody:<property_name>``.
-
-    For more information on the available properties, please refer to the
-    `documentation <https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/dev_guide/deformables/physx_deformable_schema.html#physxbasedeformablebodyapi>`_.
-    """
-
-    solver_position_iteration_count: int = 16
-    """Number of the solver positional iterations per step. Range is [1,255], default to 16."""
-
-    linear_damping: float | None = None
-    """Linear damping coefficient [1/s], constrained to the range [0, inf)."""
-
-    max_linear_velocity: float | None = None
-    """Maximum allowable linear velocity for the deformable body [m/s], constrained to the range [0, inf)."""
-
-    settling_damping: float | None = None
-    """Additional damping applied when a vertex's velocity falls below :attr:`settling_threshold` [1/s]."""
-
-    settling_threshold: float | None = None
-    """Velocity threshold below which :attr:`settling_damping` is applied [m/s]."""
-
-    sleep_threshold: float | None = None
-    """Velocity threshold below which a vertex becomes a candidate for sleeping [m/s]."""
-
-    max_depenetration_velocity: float | None = None
-    """Maximum velocity that the solver may apply to resolve intersections [m/s]."""
-
-    self_collision: bool | None = None
-    """Enables self-collisions for the deformable body, preventing self-intersections."""
-
-    self_collision_filter_distance: float | None = None
-    r"""Distance below which self-collision is disabled [m].
-
-    The default value of -inf indicates that the simulation selects a suitable value.
-    Constrained to range [:attr:`rest_offset` \* 2, inf].
-    """
-
-    enable_speculative_c_c_d: bool | None = None
-    """Enables dynamic adjustment of contact offset based on velocity (speculative continuous collision detection)."""
-
-    disable_gravity: bool | None = None
-    """Disables gravity for the deformable body."""
-
-    # specific to surface deformables
-    collision_pair_update_frequency: int | None = None
-    """Determines how often surface-to-surface collision pairs are updated during each time step.
-
-    For example, a value of 2 means collision pairs are updated twice per time step:
-    once at the beginning and once in the middle of the time step. If set to 0,
-    the solver adaptively determines when to update the contact pairs.
-
-    Valid range: [1, :attr:`solver_position_iteration_count`].
-    """
-
-    collision_iteration_multiplier: float | None = None
-    """Determines how many collision subiterations are used in each solver iteration.
-
-    Valid range: [1, :attr:`solver_position_iteration_count` / 2].
-    """
-
-
-@configclass
-class _PhysXCollisionPropertiesCfg:
-    """PhysX-specific collision properties for a deformable body.
-
-    These properties are set with the prefix ``physxCollision:<property_name>``.
-
-    See the PhysX documentation for more information on the available properties.
-    """
-
-    contact_offset: float | None = None
-    """Contact offset for the collision shape [m]."""
-
-    rest_offset: float | None = None
-    """Rest offset for the collision shape [m]."""
-
-
-@configclass
-class DeformableBodyPropertiesCfg(
-    OmniPhysicsPropertiesCfg, PhysXDeformableBodyPropertiesCfg, _PhysXCollisionPropertiesCfg
-):
-    """Properties to apply to a deformable body.
-
-    A deformable body is a body that can deform under forces, both surface and volume deformables.
-    The configuration allows users to specify the properties of the deformable body,
-    such as the solver iteration counts, damping, and self-collision.
-
-    See :meth:`modify_deformable_body_properties` for more information.
-
-    .. note::
-        If the values are :obj:`None`, they are not modified. This is useful when you want to set only a subset of
-        the properties and leave the rest as-is.
-    """
-
-    _property_prefix: dict[str, list[str]] = {
-        "omniphysics": [field.name for field in dataclasses.fields(OmniPhysicsPropertiesCfg)],
-        "physxDeformableBody": [field.name for field in dataclasses.fields(PhysXDeformableBodyPropertiesCfg)],
-        "physxCollision": [field.name for field in dataclasses.fields(_PhysXCollisionPropertiesCfg)],
-    }
-    """Mapping between the property prefixes and the properties that fall under each prefix."""
+    pass

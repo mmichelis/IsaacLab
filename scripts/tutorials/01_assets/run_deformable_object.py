@@ -62,22 +62,36 @@ def design_scene():
     for i, origin in enumerate(origins):
         sim_utils.create_prim(f"/World/env_{i}", "Xform", translation=origin)
 
+    youngs_modulus = 1e5
+    poissons_ratio = 0.4
+    density = 500.0
+    if args_cli.backend == "newton":
+        from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
+        from isaaclab_newton.sim.spawners.materials import NewtonDeformableBodyMaterialCfg
+
+        deformable_props = NewtonDeformableBodyPropertiesCfg()
+        physics_material = NewtonDeformableBodyMaterialCfg(
+            k_mu=youngs_modulus / (2.0 * (1.0 + poissons_ratio)),
+            k_lambda=youngs_modulus * poissons_ratio / ((1.0 + poissons_ratio) * (1.0 - 2.0 * poissons_ratio)),
+            density=density,
+        )
+    else:
+        from isaaclab_physx.sim.schemas import PhysxDeformableBodyPropertiesCfg
+        from isaaclab_physx.sim.spawners.materials import PhysxDeformableBodyMaterialCfg
+
+        deformable_props = PhysxDeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001)
+        physics_material = PhysxDeformableBodyMaterialCfg(
+            poissons_ratio=poissons_ratio, youngs_modulus=youngs_modulus, density=density
+        )
+
     # 3D Deformable Object
     cfg = DeformableObjectCfg(
         prim_path="/World/env_.*/Cube",
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.2, 0.2, 0.2),
-            deformable_props=sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0, contact_offset=0.001),
+            deformable_props=deformable_props,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.1, 0.0)),
-            physics_material=sim_utils.DeformableBodyMaterialCfg(poissons_ratio=0.4, youngs_modulus=1e5, density=500.0),
-            # physics_material=sim_utils.SurfaceDeformableBodyMaterialCfg(
-            #     poissons_ratio=0.4,
-            #     youngs_modulus=1e4,
-            #     surface_thickness=0.001,
-            #     surface_bend_stiffness=1e0,
-            #     surface_shear_stiffness=1e0,
-            #     surface_stretch_stiffness=1e0
-            # ),
+            physics_material=physics_material,
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
         debug_vis=True,

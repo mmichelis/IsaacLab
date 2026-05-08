@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from isaaclab.sim import converters, schemas
-from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg, SurfaceDeformableBodyMaterialCfg
+from isaaclab.sim.spawners.materials import RigidBodyMaterialCfg, SurfaceDeformableBodyMaterialBaseCfg
 from isaaclab.sim.utils import (
     add_labels,
     bind_physics_material,
@@ -366,7 +366,9 @@ def _spawn_from_usd_file(
     # define deformable body properties, or modify if deformable body API is present (PhysX only)
     if cfg.deformable_props is not None:
         prim = stage.GetPrimAtPath(prim_path)
-        deformable_type = "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialCfg) else "volume"
+        deformable_type = (
+            "surface" if isinstance(cfg.physics_material, SurfaceDeformableBodyMaterialBaseCfg) else "volume"
+        )
         if "OmniPhysicsDeformableBodyAPI" in prim.GetAppliedSchemas():
             schemas.modify_deformable_body_properties(prim_path, cfg.deformable_props, stage)
         else:
@@ -374,7 +376,7 @@ def _spawn_from_usd_file(
         if cfg.mass_props is not None:
             raise ValueError(
                 """MassPropertiesCfg are not supported for deformable bodies
-                and should be set through DeformableBodyPropertiesCfg(mass=<value>)."""
+                and should be set through deformable_props with mass=<value>."""
             )
 
     # apply visual material

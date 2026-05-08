@@ -1008,6 +1008,11 @@ inferencing, including reading from an already trained checkpoint and disabling 
       - Manager Based
       - **rsl_rl** (PPO)
       - ``newton``, ``physx``
+    * - Isaac-Lift-Cloth-Franka-v0
+      -
+      - Manager Based
+      - **rsl_rl** (PPO)
+      - ``newton``
     * - Isaac-Lift-Teddy-Bear-Franka-IK-Abs-v0
       -
       - Manager Based

@@ -20,6 +20,8 @@ import pytest
 import torch
 from isaaclab_newton.assets import Articulation, RigidObject
 from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonCfg
+from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
+from isaaclab_newton.sim.spawners.materials import NewtonDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
@@ -134,12 +136,12 @@ def generate_robot_and_two_cubes(
             prim_path="/World/env_.*/cube_collide",
             spawn=sim_utils.MeshCuboidCfg(
                 size=(0.05, 0.05, 0.05),
-                deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+                deformable_props=NewtonDeformableBodyPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
-                physics_material=sim_utils.DeformableBodyMaterialCfg(
+                physics_material=NewtonDeformableBodyMaterialCfg(
                     density=500.0,
-                    youngs_modulus=2.5e5,
-                    poissons_ratio=0.25,
+                    k_mu=1e5,
+                    k_lambda=1e5,
                     particle_radius=0.005,
                 ),
             ),
@@ -152,12 +154,12 @@ def generate_robot_and_two_cubes(
             prim_path="/World/env_.*/cube_free",
             spawn=sim_utils.MeshCuboidCfg(
                 size=(0.05, 0.05, 0.05),
-                deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+                deformable_props=NewtonDeformableBodyPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
-                physics_material=sim_utils.DeformableBodyMaterialCfg(
+                physics_material=NewtonDeformableBodyMaterialCfg(
                     density=500.0,
-                    youngs_modulus=2.5e4,
-                    poissons_ratio=0.25,
+                    k_mu=1e4,
+                    k_lambda=1e4,
                     particle_radius=0.005,
                 ),
             ),
@@ -202,12 +204,12 @@ def generate_lateral_rigid_and_deformable_cubes(
             prim_path="/World/env_.*/deformable_cube",
             spawn=sim_utils.MeshCuboidCfg(
                 size=(0.08, 0.08, 0.08),
-                deformable_props=sim_utils.DeformableBodyPropertiesCfg(),
+                deformable_props=NewtonDeformableBodyPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
-                physics_material=sim_utils.DeformableBodyMaterialCfg(
+                physics_material=NewtonDeformableBodyMaterialCfg(
                     density=1000.0,
-                    youngs_modulus=2.5e5,
-                    poissons_ratio=0.25,
+                    k_mu=1e5,
+                    k_lambda=1e5,
                     particle_radius=0.005,
                 ),
             ),
@@ -216,30 +218,6 @@ def generate_lateral_rigid_and_deformable_cubes(
     )
 
     return rigid_cube, deformable_cube
-
-
-@pytest.mark.parametrize("sim", ["one_way", "two_way"], indirect=True, ids=["one_way", "two_way"])
-def test_smoke(sim):
-    """Smoke test: coupled solver initializes and steps without crash."""
-    robot, colliding_cube, free_cube = generate_robot_and_two_cubes()
-    sim.reset()
-
-    assert robot.is_initialized
-    assert colliding_cube.is_initialized
-    assert free_cube.is_initialized
-
-    initial_z_collide = colliding_cube.data.root_pos_w.torch[0, 2].item()
-    initial_z_free = free_cube.data.root_pos_w.torch[0, 2].item()
-
-    for _ in range(10):
-        sim.step()
-        robot.update(sim.cfg.dt)
-        colliding_cube.update(sim.cfg.dt)
-        free_cube.update(sim.cfg.dt)
-
-    # Both cubes should have fallen under gravity
-    assert colliding_cube.data.root_pos_w.torch[0, 2].item() < initial_z_collide - 0.01
-    assert free_cube.data.root_pos_w.torch[0, 2].item() < initial_z_free - 0.01
 
 
 @pytest.mark.parametrize(

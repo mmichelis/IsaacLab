@@ -1,15 +1,39 @@
-:orphan:
-
-.. This page is kept as a migration stub for older links.
-
 isaaclab_physx.sim.schemas
 ==========================
 
-The deformable body schema APIs are now backend-neutral and live in
+.. automodule:: isaaclab_physx.sim.schemas
+
+  .. rubric:: Classes
+
+  .. autosummary::
+
+    OmniPhysicsDeformableBodyPropertiesCfg
+    PhysxDeformableCollisionPropertiesCfg
+    PhysxDeformableBodyPropertiesCfg
+    DeformableBodyPropertiesCfg
+
+Deformable Body
+---------------
+
+.. autoclass:: OmniPhysicsDeformableBodyPropertiesCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__
+
+.. autoclass:: PhysxDeformableCollisionPropertiesCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__
+
+.. autoclass:: PhysxDeformableBodyPropertiesCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__
+
+.. autoclass:: DeformableBodyPropertiesCfg
+    :members:
+    :show-inheritance:
+    :exclude-members: __init__
+
+Schema define and modify functions remain unified in
 :mod:`isaaclab.sim.schemas`.
-
-Use :class:`isaaclab.sim.schemas.DeformableBodyPropertiesCfg`,
-:func:`isaaclab.sim.schemas.define_deformable_body_properties`, and
-:func:`isaaclab.sim.schemas.modify_deformable_body_properties` instead.
-
-For migration details, see :ref:`migrating-deformables`.
