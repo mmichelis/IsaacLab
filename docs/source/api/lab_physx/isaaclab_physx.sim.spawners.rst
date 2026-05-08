@@ -16,7 +16,8 @@ isaaclab_physx.sim.spawners
 Deformable Materials
 --------------------
 
-.. autofunction:: spawn_deformable_body_material
+PhysX provides the backend-specific deformable material cfgs. Deformable material spawning is unified in
+:func:`isaaclab.sim.spawners.materials.spawn_deformable_body_material`.
 
 .. autoclass:: PhysxDeformableBodyMaterialCfg
     :members:

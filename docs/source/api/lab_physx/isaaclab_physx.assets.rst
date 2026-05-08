@@ -79,9 +79,11 @@ Deformable Object
 
 .. note::
 
-    :class:`isaaclab.assets.DeformableObjectCfg` is the backend-neutral
-    configuration class for deformable objects. The PhysX extension provides
-    the PhysX implementation of :class:`isaaclab.assets.DeformableObject`.
+    :class:`isaaclab.assets.DeformableObjectCfg` is the shared configuration
+    class for deformable objects. The PhysX extension provides the PhysX
+    implementation of :class:`isaaclab.assets.DeformableObject`, while
+    deformable schema and material cfgs referenced by ``spawn`` remain
+    backend-specific.
 
 Surface Gripper
 ---------------

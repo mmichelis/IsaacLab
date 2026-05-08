@@ -14,7 +14,8 @@ isaaclab_newton.sim.spawners
 Deformable Materials
 --------------------
 
-.. autofunction:: spawn_deformable_body_material
+Newton provides the backend-specific deformable material cfgs. Deformable material spawning is unified in
+:func:`isaaclab.sim.spawners.materials.spawn_deformable_body_material`.
 
 .. autoclass:: NewtonDeformableBodyMaterialCfg
     :members:
