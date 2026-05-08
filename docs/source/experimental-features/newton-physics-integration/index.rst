@@ -23,7 +23,7 @@ Newton can support `multiple solvers <https://newton-physics.github.io/newton/la
 solver-specific Newton manager subclasses, which makes adding a new solver or a coupled solver a focused extension
 point. See :doc:`newton-manager-abstraction` for the developer-facing guide.
 
-Future updates of Isaac Lab and Newton should include both ongoing improvements in performance as well as integration
+Future updates of Isaac Lab and Newton will include both ongoing improvements in performance as well as integration
 with additional solvers and coupled solver workflows.
 
 During the development phase of both Newton and this Isaac Lab integration, you are likely to encounter breaking
