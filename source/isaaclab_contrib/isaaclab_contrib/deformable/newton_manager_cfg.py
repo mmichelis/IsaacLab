@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaaclab_newton.physics.newton_manager_cfg import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonSolverCfg
+from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonSolverCfg
 
 from isaaclab.utils import configclass
 
