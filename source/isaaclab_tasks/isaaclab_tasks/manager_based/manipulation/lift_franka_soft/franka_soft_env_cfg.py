@@ -60,8 +60,6 @@ class DeformableNewtonCfg(NewtonCfg):
     match it, ensuring Kit is launched for USD deformable spawning.
     """
 
-    # TODO:
-
     model_cfg: NewtonModelCfg | None = None
     """Global Newton model parameters applied after builder finalization."""
 
