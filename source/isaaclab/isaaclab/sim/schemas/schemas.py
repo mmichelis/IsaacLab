@@ -1152,6 +1152,7 @@ def define_deformable_body_properties(
     if not root_prim.IsValid():
         raise ValueError(f"Prim path '{prim_path}' is not valid.")
 
+    sim_mesh_prim = None
     # for volume deformables, we check if a pre-tetrahedralized TetMesh exists for the sim_mesh
     if deformable_type == "volume":
         matching_prims = get_all_matching_child_prims(prim_path, lambda p: p.GetTypeName() == "TetMesh")
@@ -1246,7 +1247,14 @@ def define_deformable_body_properties(
 
     elif deformable_type == "volume":
         if sim_mesh_prim is None:
-            from pytetwild import tetrahedralize
+            try:
+                from pytetwild import tetrahedralize
+            except ImportError as exc:
+                raise ImportError(
+                    "Automatic tetrahedralization of volume deformables requires the optional 'pytetwild' "
+                    "package. Install pytetwild or provide a pre-tetrahedralized UsdGeom.TetMesh under the "
+                    f"deformable prim '{prim_path}'."
+                ) from exc
 
             tet_mesh_points, tet_mesh_indices = tetrahedralize(
                 vertices,

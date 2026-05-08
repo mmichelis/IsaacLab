@@ -13,8 +13,6 @@ __all__ = [
     "PhysxJointDrivePropertiesCfg",
     "PhysxRigidBodyPropertiesCfg",
     "RigidBodyPropertiesCfg",
-    "DeformableObjectSpawnerCfg",
-    "spawn_deformable_body_material",
     "DeformableBodyMaterialCfg",
     "PhysxDeformableBodyMaterialCfg",
     "PhysxSurfaceDeformableBodyMaterialCfg",
@@ -34,8 +32,6 @@ from .schemas import (
     RigidBodyPropertiesCfg,
 )
 from .spawners import (
-    DeformableObjectSpawnerCfg,
-    spawn_deformable_body_material,
     DeformableBodyMaterialCfg,
     PhysxDeformableBodyMaterialCfg,
     PhysxSurfaceDeformableBodyMaterialCfg,

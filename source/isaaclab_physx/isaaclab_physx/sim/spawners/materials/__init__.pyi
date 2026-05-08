@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 __all__ = [
-    "spawn_deformable_body_material",
     "DeformableBodyMaterialCfg",
     "PhysXDeformableMaterialCfg",
     "PhysxDeformableBodyMaterialCfg",
@@ -14,7 +13,6 @@ __all__ = [
     "SurfaceDeformableBodyMaterialCfg",
 ]
 
-from .physics_materials import spawn_deformable_body_material
 from .physics_materials_cfg import (
     DeformableBodyMaterialCfg,
     PhysXDeformableMaterialCfg,
