@@ -129,7 +129,7 @@ def _build_newton_builder_from_mapping(
         # Run per-world builder hooks (e.g. deformable body registration).
         if hasattr(NewtonManager, "_per_world_builder_hooks"):
             for hook in NewtonManager._per_world_builder_hooks:
-                hook(builder, col, positions[col].tolist())
+                hook(builder, col, positions[col].tolist(), quaternions[col].tolist())
 
         # end the world context
         builder.end_world()

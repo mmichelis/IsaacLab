@@ -81,6 +81,7 @@ def add_deformable_entry_to_builder(
     entry: DeformableRegistryEntry,
     env_idx: int,
     env_position: list[float],
+    env_rotation: list[float] | tuple[float, float, float, float],
 ) -> None:
     """Add a deformable registry entry to a Newton ``ModelBuilder`` for one environment.
 
@@ -96,15 +97,30 @@ def add_deformable_entry_to_builder(
         entry: A :class:`DeformableRegistryEntry` with mesh data and config.
         env_idx: The environment index.
         env_position: World position [x, y, z] [m] for this environment.
+        env_rotation: World orientation as quaternion ``(x, y, z, w)`` for this environment.
     """
+    if env_idx == 0:
+        entry.particle_offsets.clear()
+        entry.particles_per_body = 0
+
     before_count = getattr(builder, "particle_count", 0)
 
-    body_pos = wp.vec3(
-        entry.init_pos[0] + env_position[0],
-        entry.init_pos[1] + env_position[1],
-        entry.init_pos[2] + env_position[2],
+    env_pos = wp.vec3(float(env_position[0]), float(env_position[1]), float(env_position[2]))
+    env_rot = wp.quat(
+        float(env_rotation[0]),
+        float(env_rotation[1]),
+        float(env_rotation[2]),
+        float(env_rotation[3]),
     )
-    body_rot = wp.quat(entry.init_rot[0], entry.init_rot[1], entry.init_rot[2], entry.init_rot[3])
+    init_pos = wp.vec3(float(entry.init_pos[0]), float(entry.init_pos[1]), float(entry.init_pos[2]))
+    init_rot = wp.quat(
+        float(entry.init_rot[0]),
+        float(entry.init_rot[1]),
+        float(entry.init_rot[2]),
+        float(entry.init_rot[3]),
+    )
+    body_pos = env_pos + wp.quat_rotate(env_rot, init_pos)
+    body_rot = env_rot * init_rot
 
     if entry.deformable_type == "volume":
         builder.add_soft_mesh(
@@ -147,6 +163,56 @@ def add_deformable_entry_to_builder(
     entry.particle_offsets.append(before_count)
     if env_idx == 0:
         entry.particles_per_body = delta
+    elif entry.particles_per_body != delta:
+        raise RuntimeError(
+            f"Deformable body '{entry.prim_path}' produced {delta} particles in env {env_idx}, "
+            f"but env 0 produced {entry.particles_per_body}."
+        )
+
+
+def add_registered_deformables_to_builder(
+    builder,
+    world_idx: int,
+    env_position: list[float],
+    env_rotation: list[float] | tuple[float, float, float, float],
+) -> None:
+    """Add all registered deformable entries to one Newton builder world."""
+    for entry in SimulationManager._deformable_registry:
+        add_deformable_entry_to_builder(builder, entry, world_idx, env_position, env_rotation)
+
+
+def color_registered_deformables(builder) -> None:
+    """Color the Newton builder when deformables were registered."""
+    if SimulationManager._deformable_registry:
+        builder.color()
+
+
+def install_deformable_builder_hooks() -> None:
+    """Install deformable builder hooks without removing hooks owned by other extensions."""
+    SimulationManager._deformable_registry = []
+    if not hasattr(SimulationManager, "_per_world_builder_hooks"):
+        SimulationManager._per_world_builder_hooks = []
+    if not hasattr(SimulationManager, "_post_replicate_hooks"):
+        SimulationManager._post_replicate_hooks = []
+    if add_registered_deformables_to_builder not in SimulationManager._per_world_builder_hooks:
+        SimulationManager._per_world_builder_hooks.append(add_registered_deformables_to_builder)
+    if color_registered_deformables not in SimulationManager._post_replicate_hooks:
+        SimulationManager._post_replicate_hooks.append(color_registered_deformables)
+
+
+def clear_deformable_builder_hooks() -> None:
+    """Clear deformable registry state and remove only deformable-owned builder hooks."""
+    SimulationManager._deformable_registry = []
+    if hasattr(SimulationManager, "_per_world_builder_hooks"):
+        SimulationManager._per_world_builder_hooks = [
+            hook
+            for hook in SimulationManager._per_world_builder_hooks
+            if hook is not add_registered_deformables_to_builder
+        ]
+    if hasattr(SimulationManager, "_post_replicate_hooks"):
+        SimulationManager._post_replicate_hooks = [
+            hook for hook in SimulationManager._post_replicate_hooks if hook is not color_registered_deformables
+        ]
 
 
 class DeformableObject(BaseDeformableObject):
@@ -237,7 +303,11 @@ class DeformableObject(BaseDeformableObject):
         Writes to both ``state_0`` and ``state_1`` so kinematic positions survive
         the state swaps that happen between substeps.
         """
-        if self._data.nodal_kinematic_target is None or self._default_particle_inv_mass is None:
+        if (
+            self._data.nodal_kinematic_target is None
+            or self._default_particle_inv_mass is None
+            or self._default_particle_flags is None
+        ):
             return
 
         model = SimulationManager.get_model()
@@ -252,6 +322,7 @@ class DeformableObject(BaseDeformableObject):
                     self._data.nodal_kinematic_target.warp,
                     self._particle_offsets,
                     self._default_particle_inv_mass,
+                    self._default_particle_flags,
                 ],
                 outputs=[
                     state.particle_q,
@@ -676,7 +747,7 @@ class DeformableObject(BaseDeformableObject):
             indices = list(usd_mesh.GetFaceVertexIndicesAttr().Get())
             logger.info("Registered UsdGeom.Mesh: %d vertices.", len(pts))
 
-        # BUG FIX: init_pos/init_rot are already baked into the vertices by the Xform
+        # init_pos/init_rot are already baked into the vertices by the Xform
         # transform above. Setting them to identity prevents add_cloth_mesh/add_soft_mesh
         # from applying them a second time.
         # Note: add_deformable_entry_to_builder passes init_rot directly to
@@ -829,6 +900,10 @@ class DeformableObject(BaseDeformableObject):
             self._default_particle_inv_mass = wp.clone(model.particle_inv_mass)
         else:
             self._default_particle_inv_mass = None
+        if model is not None and hasattr(model, "particle_flags") and model.particle_flags is not None:
+            self._default_particle_flags = wp.clone(model.particle_flags)
+        else:
+            self._default_particle_flags = None
 
         # Kinematic targets -- allocate and initialize with free flags
         nodal_kinematic_target = wp.zeros(

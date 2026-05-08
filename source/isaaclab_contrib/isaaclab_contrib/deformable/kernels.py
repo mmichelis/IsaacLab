@@ -245,6 +245,7 @@ def enforce_kinematic_targets(
     targets: wp.array2d(dtype=wp.vec4f),
     offsets: wp.array(dtype=wp.int32),
     default_inv_mass: wp.array(dtype=wp.float32),
+    default_flags: wp.array(dtype=wp.int32),
     particle_q: wp.array(dtype=wp.vec3f),
     particle_qd: wp.array(dtype=wp.vec3f),
     particle_inv_mass: wp.array(dtype=wp.float32),
@@ -261,6 +262,7 @@ def enforce_kinematic_targets(
             Each vec4f contains (target_x, target_y, target_z, flag).
         offsets: Per-instance start offset into the flat particle array.
         default_inv_mass: Saved default inverse masses. Shape is (total_particles,).
+        default_flags: Saved default particle flags. Shape is (total_particles,).
         particle_q: Flat particle positions to write. Shape is (total_particles,).
         particle_qd: Flat particle velocities to write. Shape is (total_particles,).
         particle_inv_mass: Flat particle inverse masses to write. Shape is (total_particles,).
@@ -278,7 +280,7 @@ def enforce_kinematic_targets(
         particle_qd[flat_idx] = wp.vec3f(0.0, 0.0, 0.0)
     else:
         particle_inv_mass[flat_idx] = default_inv_mass[flat_idx]
-        particle_flags[flat_idx] = 1
+        particle_flags[flat_idx] = default_flags[flat_idx]
 
 
 @wp.kernel

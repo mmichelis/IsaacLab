@@ -19,7 +19,11 @@ from newton.solvers import SolverVBD
 
 from isaaclab.sim.utils.stage import get_current_stage
 
-from .deformable_object import add_deformable_entry_to_builder
+from .deformable_object import (
+    add_deformable_entry_to_builder,
+    clear_deformable_builder_hooks,
+    install_deformable_builder_hooks,
+)
 from .newton_manager_cfg import VBDSolverCfg
 
 if TYPE_CHECKING:
@@ -46,38 +50,17 @@ class NewtonVBDManager(NewtonManager):
         implementation.
         """
 
-        # Newton cloner (newton_replicate) needs these hooks for now.
-        def per_world_deformable_hook(builder: ModelBuilder, world_idx: int, env_position: list[float]):
-            from isaaclab_newton.physics import NewtonManager
-
-            for entry in NewtonManager._deformable_registry:
-                add_deformable_entry_to_builder(builder, entry, world_idx, env_position)
-
-        def post_replicate_deformable_hook(builder: ModelBuilder):
-            from isaaclab_newton.physics import NewtonManager
-
-            if NewtonManager._deformable_registry:
-                builder.color()
-
         # Deformable body registry and extension hooks.
         # Experimental deformable support registers callbacks here so the manager
         # and cloner can invoke them without hard-coding deformable logic.
-        NewtonManager._deformable_registry = []
-        NewtonManager._per_world_builder_hooks = []
-        NewtonManager._post_replicate_hooks = []
-        if per_world_deformable_hook not in NewtonManager._per_world_builder_hooks:
-            NewtonManager._per_world_builder_hooks.append(per_world_deformable_hook)
-        if post_replicate_deformable_hook not in NewtonManager._post_replicate_hooks:
-            NewtonManager._post_replicate_hooks.append(post_replicate_deformable_hook)
+        install_deformable_builder_hooks()
 
         super().initialize(sim_context)
 
     @classmethod
     def _solver_specific_clear(cls):
         """Clear VBD-specific state."""
-        NewtonManager._deformable_registry = []
-        NewtonManager._per_world_builder_hooks = []
-        NewtonManager._post_replicate_hooks = []
+        clear_deformable_builder_hooks()
 
     @classmethod
     def _get_deformable_ignore_paths(cls) -> list[str]:
@@ -218,7 +201,7 @@ class NewtonVBDManager(NewtonManager):
 
             # Add deformable bodies from the registry (single world at origin).
             for entry in cls._deformable_registry:
-                add_deformable_entry_to_builder(builder, entry, 0, [0.0, 0.0, 0.0])
+                add_deformable_entry_to_builder(builder, entry, 0, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0])
         else:
             # Load everything except the env subtrees (ground plane, lights, etc.)
             ignore_paths = [path for _, path in env_paths] + deformable_ignore_paths
@@ -265,7 +248,7 @@ class NewtonVBDManager(NewtonManager):
 
                 # Add deformable bodies from the registry into this world.
                 for entry in cls._deformable_registry:
-                    add_deformable_entry_to_builder(builder, entry, col, list(pos))
+                    add_deformable_entry_to_builder(builder, entry, col, list(pos), quat)
 
                 builder.end_world()
 
