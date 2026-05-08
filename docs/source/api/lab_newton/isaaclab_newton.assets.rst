@@ -63,6 +63,14 @@ Rigid Object Collection
 Deformable Object
 -----------------
 
+.. note::
+
+  :class:`isaaclab.assets.DeformableObjectCfg` is the shared configuration
+  class for deformable objects. The Newton extension exposes the Newton
+  implementation of :class:`isaaclab.assets.DeformableObject`, while
+  deformable schema and material cfgs referenced by ``spawn`` remain
+  backend-specific.
+
 .. autoclass:: DeformableObject
   :members:
   :inherited-members:
