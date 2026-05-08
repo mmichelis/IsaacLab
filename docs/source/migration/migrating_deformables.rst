@@ -1,7 +1,7 @@
 .. _migrating-deformables:
 
-Migration of Deformables
-========================
+Migration of PhysX Deformables
+==============================
 
 .. currentmodule:: isaaclab
 
