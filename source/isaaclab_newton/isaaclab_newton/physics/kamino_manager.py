@@ -16,8 +16,8 @@ from newton.solvers import SolverKamino
 from isaaclab.physics import PhysicsManager
 from isaaclab.utils.timer import Timer
 
+from .kamino_manager_cfg import KaminoSolverCfg
 from .newton_manager import NewtonManager
-from .newton_manager_cfg import KaminoSolverCfg
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class NewtonKaminoManager(NewtonManager):
                 Shape ``(num_worlds,)``, dtype ``wp.int32``. If None, resets all worlds.
         """
         cls._solver.reset(
-            state_out=NewtonManager._state_0,
+            state_out=cls._state_0,
             joint_q=cls._state_0.joint_q,
             joint_u=cls._state_0.joint_qd,
             world_mask=world_mask,
@@ -82,8 +82,7 @@ class NewtonKaminoManager(NewtonManager):
                 # joint_q_prev, and joint_lambdas via wp.clone/wp.zeros during the
                 # first step() inside graph capture. Replay once to pin those
                 # memory-pool addresses before any eager solver.reset() call.
-                if isinstance(cls._solver, SolverKamino):
-                    wp.capture_launch(cls._graph)
+                wp.capture_launch(cls._graph)
                 logger.info("Newton CUDA graph captured (deferred relaxed mode, RTX-compatible)")
             else:
                 logger.warning("Newton deferred CUDA graph capture failed; using eager execution")
