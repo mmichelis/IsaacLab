@@ -200,6 +200,12 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         ),
     )
 
+    def __post_init__(self) -> None:
+        # increase franka gripper stiffness
+        self.robot.actuators["panda_hand"].effort_limit_sim = 500.0
+        self.robot.actuators["panda_hand"].stiffness = 1000.0
+        self.robot.actuators["panda_hand"].damping = 100.0
+
 
 ##
 # MDP settings
@@ -418,8 +424,3 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.env_index = 0
         self.viewer.eye = (1.25, -1.5, 0.75)
         self.viewer.resolution = (1920, 1080)
-
-        # increase franka gripper stiffness
-        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
-        self.scene.robot.actuators["panda_hand"].stiffness = 1000.0
-        self.scene.robot.actuators["panda_hand"].damping = 100.0
