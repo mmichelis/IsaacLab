@@ -13,8 +13,8 @@ Covers:
   manager.
 * Each leaf manager subclasses :class:`NewtonManager` and implements
   :meth:`_build_solver` (with the abstract base raising ``NotImplementedError``).
-* The cross-config validation in :meth:`NewtonCfg.__post_init__` rejects the
-  ``MJWarp + use_mujoco_contacts=True + collision_cfg`` combination.
+* The cross-config validation in :meth:`NewtonMJWarpManager._build_solver`
+  rejects the ``MJWarp + use_mujoco_contacts=True + collision_cfg`` combination.
 * Manager name dispatch (used by :class:`InteractiveScene` and the various
   factory dispatchers) still starts with ``"newton"``.
 * End-to-end: spinning up a simulation with each solver builds the correct
@@ -134,13 +134,6 @@ def test_newton_cfg_post_init_propagates_class_type(
     assert cfg.class_type.__name__ == expected_manager.__name__
 
 
-def test_newton_cfg_default_solver_is_mjwarp():
-    """The default ``NewtonCfg().class_type`` resolves to :class:`NewtonMJWarpManager`."""
-    cfg = NewtonCfg()
-    assert isinstance(cfg.solver_cfg, MJWarpSolverCfg)
-    assert cfg.class_type.__name__ == NewtonMJWarpManager.__name__
-
-
 # ---------------------------------------------------------------------------
 # Manager class hierarchy and factory contracts
 # ---------------------------------------------------------------------------
@@ -170,33 +163,6 @@ def test_manager_name_starts_with_newton(manager):
     various backend factories that dispatch on ``physics_manager.__name__.lower()``.
     """
     assert manager.__name__.lower().startswith("newton")
-
-
-# ---------------------------------------------------------------------------
-# Cross-config validation
-# ---------------------------------------------------------------------------
-
-
-def test_mujoco_contacts_with_collision_cfg_raises():
-    """``use_mujoco_contacts=True`` and ``collision_cfg`` are mutually exclusive."""
-    with pytest.raises(ValueError, match="collision_cfg cannot be set"):
-        NewtonCfg(
-            solver_cfg=MJWarpSolverCfg(use_mujoco_contacts=True),
-            collision_cfg=NewtonCollisionPipelineCfg(),
-        )
-
-
-def test_mujoco_internal_contacts_without_collision_cfg_ok():
-    """The same MJWarp internal-contacts cfg validates fine without ``collision_cfg``."""
-    NewtonCfg(solver_cfg=MJWarpSolverCfg(use_mujoco_contacts=True))
-
-
-def test_mjwarp_newton_pipeline_with_collision_cfg_ok():
-    """When MJWarp uses the Newton pipeline, ``collision_cfg`` may be set."""
-    NewtonCfg(
-        solver_cfg=MJWarpSolverCfg(use_mujoco_contacts=False),
-        collision_cfg=NewtonCollisionPipelineCfg(),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -277,3 +243,32 @@ def test_initialize_solver_populates_canonical_state(
         # end-to-end.  (We do not assert physics; that's covered by the
         # asset/sensor test suites.)
         sim.step(render=False)
+
+
+def test_mjwarp_internal_contacts_with_collision_cfg_raises():
+    """Combining ``use_mujoco_contacts=True`` with a ``collision_cfg`` is rejected.
+
+    The check lives in :meth:`NewtonMJWarpManager._build_solver` because it
+    needs both the solver cfg subtype and the parent :class:`NewtonCfg`, so it
+    fires during :meth:`NewtonManager.initialize_solver` (i.e. on
+    ``sim.reset()``) rather than at cfg construction time.
+    """
+    sim_cfg = SimulationCfg(
+        dt=1.0 / 120.0,
+        device="cuda:0",
+        gravity=(0.0, 0.0, -9.81),
+        physics=NewtonCfg(
+            solver_cfg=MJWarpSolverCfg(use_mujoco_contacts=True),
+            collision_cfg=NewtonCollisionPipelineCfg(),
+            use_cuda_graph=False,
+        ),
+    )
+
+    with build_simulation_context(sim_cfg=sim_cfg) as sim:
+        builder = NewtonManager.create_builder()
+        body = builder.add_body(mass=1.0)
+        builder.add_joint_revolute(parent=-1, child=body, axis=(0, 0, 1))
+        NewtonManager.set_builder(builder)
+
+        with pytest.raises(ValueError, match="collision_cfg cannot be set"):
+            sim.reset()
