@@ -117,8 +117,8 @@ for the lift-cube environment:
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |lift-cube|             | |lift-cube-link|             | Pick a cube and bring it to a sampled target position with the Franka robot |                              |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
-    | |lift-soft-franka|      | |lift-soft-franka-link|      | Pick a deformable soft body and bring it to a sampled target position with  | ``newton_mjwarp_vdb``, ``physx``        |
-    |                         |                              | the Franka robot                                                            |                              |
+    | |lift-soft-franka|      | |lift-soft-franka-link|      | Pick a deformable soft body and bring it to a sampled target position with  | ``newton_mjwarp_vdb``,       |
+    |                         |                              | the Franka robot                                                            | ``physx``                    |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |stack-cube|            | |stack-cube-link|            | Stack three cubes (bottom to top: blue, red, green) with the Franka robot.  |                              |
     |                         |                              | Blueprint env used for the NVIDIA Isaac GR00T blueprint for synthetic       |                              |
