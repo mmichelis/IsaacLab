@@ -23,7 +23,7 @@ from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolve
 from isaaclab_tasks.utils import PresetCfg
 
 from . import mdp
-from .franka_soft_env_cfg import DeformableNewtonCfg, FrankaSoftEnvCfg, FrankaSoftSceneCfg
+from .franka_soft_env_cfg import DeformableNewtonCfg, FrankaSoftEnvCfg, _FrankaSoftSceneCfg
 
 ##
 # Scene definition
@@ -97,7 +97,7 @@ class DeformableCfg(PresetCfg):
 
 
 @configclass
-class FrankaClothSceneCfg(FrankaSoftSceneCfg):
+class FrankaClothSceneCfg(_FrankaSoftSceneCfg):
     """Scene for the Franka surface deformable environment."""
 
     deformable: DeformableCfg = DeformableCfg()
@@ -136,7 +136,7 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.015},
+        close_command_expr={"panda_finger_.*": 0.0},
     )
 
 
