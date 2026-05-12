@@ -14,6 +14,7 @@ from isaaclab_newton.sim.spawners.materials import NewtonSurfaceDeformableBodyMa
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
@@ -24,10 +25,17 @@ from isaaclab_tasks.utils import PresetCfg
 
 from . import mdp
 from .franka_soft_env_cfg import DeformableNewtonCfg, FrankaSoftEnvCfg, _FrankaSoftSceneCfg
+from .franka_soft_env_cfg import EventCfg as FrankaSoftEventCfg
 
 ##
 # Scene definition
 ##
+
+ROBOT_SHAPE_MATERIAL_MU = 100.0
+"""Franka collision-shape friction coefficient [dimensionless] used for Newton cloth contact."""
+
+ROBOT_SHAPE_MATERIAL_BODY_NAMES = ".*"
+"""Franka body-name regex receiving :data:`ROBOT_SHAPE_MATERIAL_MU`."""
 
 
 @configclass
@@ -57,10 +65,10 @@ class PhysicsCfg(PresetCfg):
         model_cfg=NewtonModelCfg(
             soft_contact_ke=1e3,
             soft_contact_kd=1e-5,
-            soft_contact_mu=10.0,
+            soft_contact_mu=0.5,
             shape_material_ke=1e3,
             shape_material_kd=1e-5,
-            shape_material_mu=10.0,
+            shape_material_mu=1e-4,
         ),
         num_substeps=10,
         use_cuda_graph=True,
@@ -75,17 +83,17 @@ class DeformableCfg(PresetCfg):
 
     newton_mjwarp_vdb: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/Deformable",
-        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.2)),
+        init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.4, 0.0, 0.2)),
         spawn=sim_utils.MeshSquareCfg(
-            size=0.3,
+            size=0.2,
             resolution=(30, 30),
             deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
             physics_material=NewtonSurfaceDeformableBodyMaterialCfg(
-                density=100.0,
+                density=50.0,
                 particle_radius=0.005,
-                tri_ke=1e2,
-                tri_ka=1e2,
+                tri_ke=5e2,
+                tri_ka=5e2,
                 tri_kd=1e-3,
                 edge_ke=2.0,
                 edge_kd=1e-3,
@@ -105,20 +113,11 @@ class FrankaClothSceneCfg(_FrankaSoftSceneCfg):
     # static collidable cubes the cloth drops onto (sits on the table top at z = 0).
     # Modeled as a static asset (no rigid body / no DOFs) so adding it does not
     # extend the Newton model's joint state.
-    cube1: AssetBaseCfg = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Cube1",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.45, 0.0, 0.05)),
+    cube: AssetBaseCfg = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/Cube",
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.45, 0.0, 0.04)),
         spawn=sim_utils.CuboidCfg(
-            size=(0.02, 0.02, 0.1),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.25)),
-        ),
-    )
-    cube2: AssetBaseCfg = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Cube2",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.55, 0.0, 0.05)),
-        spawn=sim_utils.CuboidCfg(
-            size=(0.02, 0.02, 0.1),
+            size=(0.03, 0.01, 0.08),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.25)),
         ),
@@ -186,6 +185,23 @@ class RewardsCfg:
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
 
 
+@configclass
+class EventCfg(FrankaSoftEventCfg):
+    """Reset and startup events for the Franka cloth environment."""
+
+    robot_physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=ROBOT_SHAPE_MATERIAL_BODY_NAMES),
+            "static_friction_range": (ROBOT_SHAPE_MATERIAL_MU, ROBOT_SHAPE_MATERIAL_MU),
+            "dynamic_friction_range": (ROBOT_SHAPE_MATERIAL_MU, ROBOT_SHAPE_MATERIAL_MU),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 1,
+        },
+    )
+
+
 ##
 # Environment configuration
 ##
@@ -201,6 +217,7 @@ class FrankaClothEnvCfg(FrankaSoftEnvCfg):
     actions: ActionsCfg = ActionsCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
+    events: EventCfg = EventCfg()
 
     def __post_init__(self) -> None:
         # general settings
