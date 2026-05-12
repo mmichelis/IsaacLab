@@ -38,6 +38,9 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+
 from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
 
 from isaaclab_tasks.utils import PresetCfg
@@ -110,7 +113,7 @@ class DeformableCfg(PresetCfg):
         ),
     )
 
-    default = newton_mjwarp_vdb
+    default = physx
 
 
 @configclass
@@ -151,7 +154,7 @@ class PhysicsCfg(PresetCfg):
 
     physx: PhysxCfg = PhysxCfg()
 
-    default = newton_mjwarp_vdb
+    default = physx
 
 
 ##
@@ -164,7 +167,7 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
     """Scene for the Franka deformable environment."""
 
     robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-
+    
     # end-effector frame for reward shaping
     ee_frame: FrameTransformerCfg = FrameTransformerCfg(
         prim_path="/World/envs/env_.*/Robot/panda_link0",
@@ -210,6 +213,10 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
     )
 
     def __post_init__(self) -> None:
+        # disable gravity on the arm so the low-PD actuators do not need to fight gravity sag,
+        # which is the dominant source of steady-state IK tracking error.
+        self.robot.spawn.rigid_props.disable_gravity = True
+
         # increase franka gripper stiffness
         self.robot.actuators["panda_hand"].effort_limit_sim = 500.0
         self.robot.actuators["panda_hand"].stiffness = 1000.0
@@ -256,10 +263,19 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    """7-dim arm joint position + 1-dim binary gripper."""
+    """7-dim absolute end-effector pose (xyz + quaternion) via differential IK + 1-dim binary gripper."""
 
-    arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
+    arm_action = DifferentialInverseKinematicsActionCfg(
+        asset_name="robot",
+        joint_names=["panda_joint.*"],
+        body_name="panda_hand",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.4},
+        ),
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
     )
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
@@ -277,10 +293,6 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        # deformable_com = ObsTerm(
-        #     func=mdp.deformable_com_in_robot_root_frame,
-        #     params={"asset_cfg": SceneEntityCfg("deformable")},
-        # )
         deformable_sampled_points = ObsTerm(
             func=mdp.DeformableSampledPointsInRobotRootFrame,
             params={"asset_cfg": SceneEntityCfg("deformable"), "num_points": 20},
@@ -400,7 +412,7 @@ class FrankaSoftSceneCfg(PresetCfg):
     # PhysX does not support replicating physics for deformable objects
     physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=False)
 
-    default = newton_mjwarp_vdb
+    default = physx
 
 
 @configclass
