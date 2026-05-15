@@ -67,10 +67,116 @@ from isaaclab_tasks.manager_based.manipulation.lift_franka_soft.franka_cloth_env
 from isaaclab_tasks.manager_based.manipulation.lift_franka_soft.franka_soft_env_cfg import FrankaSoftEnvCfg
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
-from .lift_teddy_bear import infer_state_machine
-
 # initialize warp
 wp.init()
+
+
+class GripperState:
+    """States for the gripper."""
+
+    OPEN = wp.constant(1.0)
+    CLOSE = wp.constant(-1.0)
+
+
+class PickSmState:
+    """States for the pick state machine."""
+
+    REST = wp.constant(0)
+    APPROACH_ABOVE_OBJECT = wp.constant(1)
+    APPROACH_OBJECT = wp.constant(2)
+    GRASP_OBJECT = wp.constant(3)
+    LIFT_OBJECT = wp.constant(4)
+    OPEN_GRIPPER = wp.constant(5)
+
+
+@wp.func
+def distance_below_threshold(current_pos: wp.vec3, desired_pos: wp.vec3, threshold: float) -> bool:
+    return wp.length(current_pos - desired_pos) < threshold
+
+
+@wp.kernel
+def infer_state_machine(
+    dt: wp.array(dtype=float),
+    sm_state: wp.array(dtype=int),
+    sm_wait_time: wp.array(dtype=float),
+    ee_pose: wp.array(dtype=wp.transform),
+    object_pose: wp.array(dtype=wp.transform),
+    des_object_pose: wp.array(dtype=wp.transform),
+    des_ee_pose: wp.array(dtype=wp.transform),
+    gripper_state: wp.array(dtype=float),
+    offset: wp.array(dtype=wp.transform),
+    position_threshold: float,
+):
+    # retrieve thread id
+    tid = wp.tid()
+    # retrieve state machine state
+    state = sm_state[tid]
+    # decide next state
+    if state == PickSmState.REST:
+        des_ee_pose[tid] = ee_pose[tid]
+        gripper_state[tid] = GripperState.OPEN
+        # wait for a while
+        if sm_wait_time[tid] >= PickSmWaitTime.REST:
+            # move to next state and reset wait time
+            sm_state[tid] = PickSmState.APPROACH_ABOVE_OBJECT
+            sm_wait_time[tid] = 0.0
+    elif state == PickSmState.APPROACH_ABOVE_OBJECT:
+        des_ee_pose[tid] = wp.transform_multiply(offset[tid], object_pose[tid])
+        gripper_state[tid] = GripperState.OPEN
+        if distance_below_threshold(
+            wp.transform_get_translation(ee_pose[tid]),
+            wp.transform_get_translation(des_ee_pose[tid]),
+            position_threshold,
+        ):
+            # wait for a while
+            if sm_wait_time[tid] >= PickSmWaitTime.APPROACH_OBJECT:
+                # move to next state and reset wait time
+                sm_state[tid] = PickSmState.APPROACH_OBJECT
+                sm_wait_time[tid] = 0.0
+    elif state == PickSmState.APPROACH_OBJECT:
+        des_ee_pose[tid] = object_pose[tid]
+        gripper_state[tid] = GripperState.OPEN
+        if distance_below_threshold(
+            wp.transform_get_translation(ee_pose[tid]),
+            wp.transform_get_translation(des_ee_pose[tid]),
+            position_threshold,
+        ):
+            # wait for a while
+            if sm_wait_time[tid] >= PickSmWaitTime.APPROACH_OBJECT:
+                # move to next state and reset wait time
+                sm_state[tid] = PickSmState.GRASP_OBJECT
+                sm_wait_time[tid] = 0.0
+    elif state == PickSmState.GRASP_OBJECT:
+        des_ee_pose[tid] = object_pose[tid]
+        gripper_state[tid] = GripperState.CLOSE
+        # wait for a while
+        if sm_wait_time[tid] >= PickSmWaitTime.GRASP_OBJECT:
+            # move to next state and reset wait time
+            sm_state[tid] = PickSmState.LIFT_OBJECT
+            sm_wait_time[tid] = 0.0
+    elif state == PickSmState.LIFT_OBJECT:
+        des_ee_pose[tid] = des_object_pose[tid]
+        gripper_state[tid] = GripperState.CLOSE
+        if distance_below_threshold(
+            wp.transform_get_translation(ee_pose[tid]),
+            wp.transform_get_translation(des_ee_pose[tid]),
+            position_threshold,
+        ):
+            # wait for a while
+            if sm_wait_time[tid] >= PickSmWaitTime.LIFT_OBJECT:
+                # move to next state and reset wait time
+                sm_state[tid] = PickSmState.OPEN_GRIPPER
+                sm_wait_time[tid] = 0.0
+    elif state == PickSmState.OPEN_GRIPPER:
+        # des_ee_pose[tid] = object_pose[tid]
+        gripper_state[tid] = GripperState.OPEN
+        # wait for a while
+        if sm_wait_time[tid] >= PickSmWaitTime.OPEN_GRIPPER:
+            # move to next state and reset wait time
+            sm_state[tid] = PickSmState.OPEN_GRIPPER
+            sm_wait_time[tid] = 0.0
+    # increment wait time
+    sm_wait_time[tid] = sm_wait_time[tid] + dt[tid]
 
 
 class PickSmWaitTime:

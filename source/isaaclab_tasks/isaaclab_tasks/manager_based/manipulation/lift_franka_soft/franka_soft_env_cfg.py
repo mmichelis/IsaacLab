@@ -272,7 +272,7 @@ class ActionsCfg:
             command_type="pose",
             use_relative_mode=False,
             ik_method="dls",
-            ik_params={"lambda_val": 0.4},
+            ik_params={"lambda_val": 0.6},
         ),
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
     )
@@ -437,6 +437,7 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
+        self.sim.gravity = (0.0, 0.0, 0.0)
         self.sim.physics = PhysicsCfg()
 
         # viewer settings
