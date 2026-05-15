@@ -32,6 +32,8 @@ class VBDSolverCfg(NewtonSolverCfg):
 
     requires_graph_coloring: bool = True
 
+    requires_graph_coloring: bool = True
+
     iterations: int = 10
     """Number of VBD iterations per substep."""
 
@@ -92,6 +94,8 @@ class CoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
     class_type: type[NewtonManager] | str = "{DIR}.coupled_mjwarp_vbd_manager:NewtonCoupledMJWarpVBDManager"
     """Manager class for the coupled MJWarp + VBD solver."""
 
+    requires_graph_coloring: bool = True
+
     rigid_solver_cfg: MJWarpSolverCfg = MJWarpSolverCfg()
     """Rigid-body sub-solver configuration."""
 
@@ -116,6 +120,8 @@ class CoupledFeatherstoneVBDSolverCfg(NewtonSolverCfg):
 
     class_type: type[NewtonManager] | str = "{DIR}.coupled_featherstone_vbd_manager:NewtonCoupledFeatherstoneVBDManager"
     """Manager class for the coupled Featherstone + VBD solver."""
+
+    requires_graph_coloring: bool = True
 
     rigid_solver_cfg: FeatherstoneSolverCfg = FeatherstoneSolverCfg()
     """Rigid-body sub-solver configuration."""
