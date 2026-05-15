@@ -143,15 +143,15 @@ class MeshConeCfg(MeshCfg):
 
 
 @configclass
-class MeshSquareCfg(MeshCfg):
-    """Configuration parameters for a 2D square mesh prim.
+class MeshRectangleCfg(MeshCfg):
+    """Configuration parameters for a 2D rectangle mesh prim.
 
-    See :meth:`spawn_mesh_square` for more information.
+    See :meth:`spawn_mesh_rectangle` for more information.
     """
 
-    func: Callable | str = "{DIR}.meshes:spawn_mesh_square"
+    func: Callable | str = "{DIR}.meshes:spawn_mesh_rectangle"
 
-    size: float = MISSING
-    """Edge length of the square (in m)."""
+    size: tuple[float, float] = MISSING
+    """Edge lengths of the rectangle along the X and Y axes [m]."""
     resolution: tuple[int, int] = (5, 5)
-    """Resolution of the square (in elements/edges per side)."""
+    """Resolution of the rectangle (in elements/edges per side)."""

@@ -257,14 +257,14 @@ def spawn_mesh_cone(
 
 
 @clone
-def spawn_mesh_square(
+def spawn_mesh_rectangle(
     prim_path: str,
-    cfg: meshes_cfg.MeshSquareCfg,
+    cfg: meshes_cfg.MeshRectangleCfg,
     translation: tuple[float, float, float] | None = None,
     orientation: tuple[float, float, float, float] | None = None,
     **kwargs,
 ) -> Usd.Prim:
-    """Create a USD-Mesh 2D square prim with the given attributes.
+    """Create a USD-Mesh 2D rectangle prim with the given attributes.
 
     .. note::
         This function is decorated with :func:`clone` that resolves prim path into list of paths
@@ -290,12 +290,13 @@ def spawn_mesh_square(
     # create a 2D triangle mesh grid
     from omni.physx.scripts import deformableUtils
 
-    vertices, faces = deformableUtils.create_triangle_mesh_square(cfg.resolution[0], cfg.resolution[1], scale=cfg.size)
+    vertices, faces = deformableUtils.create_triangle_mesh_square(cfg.resolution[0], cfg.resolution[1], scale=1.0)
+    vertices = np.array([(v[0] * cfg.size[0], v[1] * cfg.size[1], v[2]) for v in vertices], dtype=np.float32)
     grid = trimesh.Trimesh(vertices=vertices, faces=np.array(faces).reshape(-1, 3), process=False)
 
     # obtain stage handle
     stage = get_current_stage()
-    # spawn the square as a mesh
+    # spawn the rectangle as a mesh
     _spawn_mesh_geom_from_mesh(prim_path, cfg, grid, translation, orientation, None, stage=stage)
     # return the prim
     return stage.GetPrimAtPath(prim_path)

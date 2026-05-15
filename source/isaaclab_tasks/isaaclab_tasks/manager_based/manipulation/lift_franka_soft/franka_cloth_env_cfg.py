@@ -84,8 +84,8 @@ class DeformableCfg(PresetCfg):
     newton_mjwarp_vdb: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="/World/envs/env_.*/Deformable",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.4, 0.0, 0.2)),
-        spawn=sim_utils.MeshSquareCfg(
-            size=0.2,
+        spawn=sim_utils.MeshRectangleCfg(
+            size=(0.2, 0.2),
             resolution=(30, 30),
             deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),

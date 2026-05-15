@@ -110,8 +110,8 @@ def generate_cloth_scene(
 
     cloth_object_cfg = DeformableObjectCfg(
         prim_path="/World/env_.*/Cloth",
-        spawn=sim_utils.MeshSquareCfg(
-            size=0.2,
+        spawn=sim_utils.MeshRectangleCfg(
+            size=(0.2, 0.2),
             resolution=(3, 3),
             deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.8)),
