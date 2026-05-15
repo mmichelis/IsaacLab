@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""This script demonstrates different rigid and (physx) deformable meshes in the scene.
+"""This script demonstrates different rigid and deformable meshes in the scene.
 
 It randomly spawns different types of meshes in the scene. The meshes can be rigid or deformable
 based on the probability of 0.5. The rigid meshes are spawned with rigid body and collision properties,
@@ -40,7 +40,6 @@ import random
 import numpy as np
 import torch
 import tqdm
-from isaaclab_physx.sim.schemas import PhysxDeformableBodyPropertiesCfg
 
 import isaaclab.sim as sim_utils
 
@@ -128,7 +127,7 @@ def design_scene():
         if random.random() < 0.5:
             obj_cfg.rigid_props = None
             obj_cfg.collision_props = None
-            obj_cfg.deformable_props = PhysxDeformableBodyPropertiesCfg(rest_offset=0.0)
+            obj_cfg.deformable_props = sim_utils.DeformableBodyPropertiesCfg(rest_offset=0.0)
         else:
             obj_cfg.deformable_props = None
             obj_cfg.rigid_props = sim_utils.RigidBodyPropertiesCfg()
