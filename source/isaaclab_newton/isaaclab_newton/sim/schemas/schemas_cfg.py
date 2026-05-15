@@ -57,6 +57,7 @@ class NewtonDeformableBodyPropertiesCfg(DeformableBodyPropertiesBaseCfg):
     _usd_applied_schema: ClassVar[str | None] = None
     _usd_field_exceptions: ClassVar[dict] = {}
 
+
 @configclass
 class MujocoRigidBodyPropertiesCfg(NewtonRigidBodyPropertiesCfg):
     """MuJoCo-solver-specific rigid body properties.
