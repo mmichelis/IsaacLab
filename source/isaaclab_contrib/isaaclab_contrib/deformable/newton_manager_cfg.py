@@ -82,6 +82,15 @@ class VBDSolverCfg(NewtonSolverCfg):
     rigid_contact_k_start: float = 1.0e2
     """Initial stiffness seed for all rigid body contacts [N/m]."""
 
+    rigid_body_contact_buffer_size: int = 64
+    """Per-body body-body contact list capacity.
+
+    Newton emits a ``Per-body rigid contact buffer overflowed N > M`` warning when
+    a single body sees more contacts than this in one step. Increase for dense
+    rigid-body pile-ups (e.g. many cable segments stacking on each other);
+    Newton's ``example_cable_pile.py`` uses 256.
+    """
+
 
 @configclass
 class CoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
