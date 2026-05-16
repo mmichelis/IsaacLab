@@ -55,7 +55,7 @@ normal Newton fields:
 
 .. code-block:: python
 
-    from isaaclab.utils import configclass
+    from isaaclab.utils.configclass import configclass
     from isaaclab_newton.physics import NewtonCfg
 
     from isaaclab_contrib.deformable import NewtonModelCfg
