@@ -31,8 +31,6 @@ class VBDSolverCfg(NewtonSolverCfg):
     class_type: type[NewtonManager] | str = "{DIR}.vbd_manager:NewtonVBDManager"
     """Manager class for the VBD solver."""
 
-    solver_type: str = "vbd"
-
     requires_graph_coloring: bool = True
 
     iterations: int = 10
@@ -109,9 +107,7 @@ class CoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
     """
 
     class_type: type[NewtonManager] | str = "{DIR}.coupled_mjwarp_vbd_manager:NewtonCoupledMJWarpVBDManager"
-    """Manager class for the VBD solver."""
-
-    solver_type: str = "coupledmjwarpvbd"
+    """Manager class for the coupled MJWarp + VBD solver."""
 
     requires_graph_coloring: bool = True
 
@@ -147,8 +143,6 @@ class ProxyCoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
 
     class_type: type[NewtonManager] | str = "{DIR}.proxy_coupled_mjwarp_vbd_manager:NewtonProxyCoupledMJWarpVBDManager"
     """Manager class for the proxy-coupled MJWarp + VBD solver."""
-
-    solver_type: str = "proxycoupledmjwarpvbd"
 
     requires_graph_coloring: bool = True
 
@@ -209,9 +203,7 @@ class CoupledFeatherstoneVBDSolverCfg(NewtonSolverCfg):
     """
 
     class_type: type[NewtonManager] | str = "{DIR}.coupled_featherstone_vbd_manager:NewtonCoupledFeatherstoneVBDManager"
-    """Manager class for the VBD solver."""
-
-    solver_type: str = "coupledfeatherstonevbd"
+    """Manager class for the coupled Featherstone + VBD solver."""
 
     requires_graph_coloring: bool = True
 
@@ -224,9 +216,8 @@ class CoupledFeatherstoneVBDSolverCfg(NewtonSolverCfg):
     coupling_mode: str = "kinematic"
     """Coupling direction between the rigid and VBD solvers.
 
-    - ``"kinematic"``: Rigid -> soft only, rigid bodies are kinematically updated.
-    - ``"one_way"``: Rigid -> soft only.
-    - ``"two_way"``: Same-substep two-way coupling with normal + Coulomb friction.
+    Accepts the same values as :attr:`CoupledMJWarpVBDSolverCfg.coupling_mode`,
+    plus ``"kinematic"`` (rigid -> soft only, rigid bodies kinematically updated).
     """
 
 
