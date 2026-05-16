@@ -186,7 +186,7 @@ Volume Deformable (Before and After)
 Surface Deformable (New)
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Surface deformables use :class:`~isaaclab.sim.spawners.meshes.MeshSquareCfg` for 2D meshes, combined with
+Surface deformables use :class:`~isaaclab.sim.spawners.meshes.MeshRectangleCfg` for 2D meshes, combined with
 :class:`~isaaclab_physx.sim.PhysxSurfaceDeformableBodyMaterialCfg`:
 
 .. code-block:: python
@@ -197,8 +197,8 @@ Surface deformables use :class:`~isaaclab.sim.spawners.meshes.MeshSquareCfg` for
 
    cfg = DeformableObjectCfg(
        prim_path="/World/Origin.*/Cloth",
-       spawn=sim_utils.MeshSquareCfg(
-           size=1.5,
+       spawn=sim_utils.MeshRectangleCfg(
+           size=(1.5, 1.5),
            resolution=(21, 21),
            deformable_props=PhysxDeformableBodyPropertiesCfg(),
            visual_material=sim_utils.PreviewSurfaceCfg(),

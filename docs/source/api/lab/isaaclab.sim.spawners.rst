@@ -109,8 +109,8 @@ Meshes
     MeshConeCfg
     MeshCuboidCfg
     MeshCylinderCfg
+    MeshRectangleCfg
     MeshSphereCfg
-    MeshSquareCfg
 
 .. autoclass:: MeshCfg
     :members:
@@ -144,16 +144,16 @@ Meshes
     :show-inheritance:
     :exclude-members: __init__, func
 
-.. autofunction:: spawn_mesh_sphere
+.. autofunction:: spawn_mesh_rectangle
 
-.. autoclass:: MeshSphereCfg
+.. autoclass:: MeshRectangleCfg
     :members:
     :show-inheritance:
     :exclude-members: __init__, func
 
-.. autofunction:: spawn_mesh_square
+.. autofunction:: spawn_mesh_sphere
 
-.. autoclass:: MeshSquareCfg
+.. autoclass:: MeshSphereCfg
     :members:
     :show-inheritance:
     :exclude-members: __init__, func
