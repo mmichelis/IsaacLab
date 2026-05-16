@@ -82,6 +82,7 @@ The following modules are available in the ``isaaclab_contrib`` extension:
 
    actuators
    assets
+   cable
    controllers
    deformable
    mdp
