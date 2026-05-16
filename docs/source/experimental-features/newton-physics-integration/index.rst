@@ -43,4 +43,5 @@ For an overview of how the multi-backend architecture works, including how to ad
   solver-transitioning
   using-kamino
   using-vbd-solver
+  using-cables
   newton-manager-abstraction
