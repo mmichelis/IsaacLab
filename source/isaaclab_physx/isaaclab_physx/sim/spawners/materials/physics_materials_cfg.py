@@ -14,17 +14,7 @@ from isaaclab.sim.spawners.materials.physics_materials_cfg import (
     RigidBodyMaterialBaseCfg,
     SurfaceDeformableBodyMaterialBaseCfg,
 )
-from isaaclab.utils import configclass
-
-__all__ = [
-    "DeformableBodyMaterialCfg",
-    "PhysXDeformableMaterialCfg",
-    "PhysxDeformableBodyMaterialCfg",
-    "PhysxRigidBodyMaterialCfg",
-    "PhysxSurfaceDeformableBodyMaterialCfg",
-    "RigidBodyMaterialCfg",
-    "SurfaceDeformableBodyMaterialCfg",
-]
+from isaaclab.utils.configclass import configclass
 
 
 @configclass
