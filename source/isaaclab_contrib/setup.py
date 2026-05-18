@@ -17,9 +17,6 @@ EXTENSION_TOML_DATA = toml.load(os.path.join(EXTENSION_PATH, "config", "extensio
 
 # Extra dependencies for contributed extensions
 EXTRAS_REQUIRE = {
-    "all": [
-        "pytetwild",
-    ],
     "rlinf": [
         # GR00T (Isaac-GR00T) must be installed separately:
         #   git clone https://github.com/NVIDIA/Isaac-GR00T.git

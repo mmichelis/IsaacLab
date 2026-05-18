@@ -30,6 +30,8 @@ INSTALL_REQUIRES = [
     # procedural-generation
     "trimesh",
     "pyglet>=2.1.6,<3",
+    # tetrahedralization for volume deformables (used by isaaclab.sim.schemas)
+    "pytetwild",
     # image processing
     "transformers==4.57.6",
     "einops",  # needed for transformers, doesn't always auto-install
