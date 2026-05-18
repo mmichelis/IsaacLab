@@ -114,8 +114,8 @@ def test_newton_deformable_cfgs_use_core_schema_and_material_functions():
 
     assert not hasattr(props, "define_func")
     assert not hasattr(props, "modify_func")
-    assert not hasattr(type(props), "_usd_namespace")
-    assert not hasattr(type(props), "_usd_applied_schema")
+    assert NewtonDeformableBodyPropertiesCfg._usd_namespace == "newton"
+    assert NewtonDeformableBodyPropertiesCfg._usd_applied_schema is None
     assert str(material.func) == "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
     assert str(surface_material.func) == str(material.func)
     _assert_no_property_prefix_field(type(props))

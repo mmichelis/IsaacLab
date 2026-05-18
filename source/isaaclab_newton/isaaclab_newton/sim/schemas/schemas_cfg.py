@@ -48,7 +48,7 @@ class NewtonDeformableBodyPropertiesCfg(DeformableBodyPropertiesBaseCfg):
     a registered deformable body property schema.
 
     The ``newton:`` namespace is reserved here so future Newton-native
-    rigid-body fields can be added without an API change.
+    deformable-body fields can be added without an API change.
 
     See :meth:`~isaaclab.sim.schemas.modify_deformable_body_properties` for more information.
     """
