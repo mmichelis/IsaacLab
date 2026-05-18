@@ -11,6 +11,8 @@ from isaaclab.actuators import ActuatorBaseCfg
 from isaaclab.assets.articulation.articulation_cfg import ArticulationCfg
 from isaaclab.utils.configclass import configclass
 
+from .attachment_cfg import CableAttachmentCfg
+
 
 @configclass
 class CableObjectCfg(ArticulationCfg):
@@ -19,19 +21,24 @@ class CableObjectCfg(ArticulationCfg):
     Inherits all of :class:`ArticulationCfg` and overrides two defaults so the
     base :meth:`Articulation._initialize_impl` runs unchanged on cables:
 
-    - ``articulation_root_prim_path = "/cable_articulation"`` — the sub-label
+    - ``articulation_root_prim_path = "/cable_articulation"`` -- the sub-label
       that :meth:`newton.ModelBuilder.add_rod_graph` produces under the cable's
       source prim path (``f"{label}_articulation"`` where ``label`` is
       ``"{prim_path}/cable"``). The base method composes this with
       ``cfg.prim_path`` and uses the result as the label pattern for
       :class:`newton.selection.ArticulationView`.
-    - ``actuators = {}`` — cables have no user-defined actuators (cable joint
+    - ``actuators = {}`` -- cables have no user-defined actuators (cable joint
       stiffness is material-like, applied internally by the solver). The
       inherited ``_process_actuators_cfg`` iterates an empty dict safely and
       emits a harmless ``logger.warning("Not all actuators are configured!")``
-      — expected and not suppressed in Phase 1.
+      -- expected and not suppressed in Phase 1.
+
+    The ``attachments`` field carries zero or more
+    :class:`CableAttachmentCfg` entries; each produces one Newton fixed joint
+    between the named cable endpoint and a separately spawned rigid body.
     """
 
     class_type: type = "{DIR}.cable_object:CableObject"
     articulation_root_prim_path: str | None = "/cable_articulation"
     actuators: dict[str, ActuatorBaseCfg] = {}
+    attachments: list[CableAttachmentCfg] = []
