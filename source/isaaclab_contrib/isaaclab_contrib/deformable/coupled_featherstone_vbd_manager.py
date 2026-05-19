@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import warp as wp
 from isaaclab_newton.physics.newton_manager import NewtonManager
-from newton import Control, Model, ModelBuilder, State
+from newton import Contacts, Control, Model, ModelBuilder, State
 from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from newton.solvers import SolverBase, SolverFeatherstone, SolverVBD
 
@@ -323,7 +323,7 @@ class NewtonCoupledFeatherstoneVBDManager(NewtonManager):
             cls._kd_zero = wp.zeros_like(model.joint_target_kd)
 
     @classmethod
-    def _step_solver(cls, state_in: State, state_out: State, control: Control, substep_dt: float) -> None:
+    def _step_solver(cls, state_in: State, state_out: State, control: Control, contacts: Contacts | None, substep_dt: float) -> None:
         """One coupled substep.
 
         Args:

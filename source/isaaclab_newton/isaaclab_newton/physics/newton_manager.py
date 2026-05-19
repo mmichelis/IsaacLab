@@ -1166,15 +1166,12 @@ class NewtonManager(PhysicsManager):
         raise NotImplementedError("NewtonManager subclasses must implement _build_solver()")
 
     @classmethod
-    def _step_solver(cls, state_0: State, state_1: State, control: Control, substep_dt: float) -> None:
+    def _step_solver(cls, state_0: State, state_1: State, control: Control, contacts: Contacts | None, substep_dt: float) -> None:
         """Run one solver substep.
 
         Default invokes :attr:`_solver` once.  Subclasses can override to
         batch multiple solvers within a single substep.
         """
-        # By default one collision per timestep, not recomputed during substeps. None if manager does not own the
-        # collision pipeline (e.g. MuJoCo with ``use_mujoco_contacts=True``, which handles contacts internally).
-        contacts = cls._contacts if cls._needs_collision_pipeline else None
         cls._solver.step(state_0, state_1, control, contacts, substep_dt)
 
     @classmethod
@@ -1441,17 +1438,17 @@ class NewtonManager(PhysicsManager):
         """Run ``num_substeps`` solver iterations, handling double-buffered state swap."""
         if cls._use_single_state:
             for _ in range(cls._num_substeps):
-                cls._solver.step(cls._state_0, cls._state_0, cls._control, contacts, cls._solver_dt)
+                cls._step_solver(cls._state_0, cls._state_0, cls._control, contacts, cls._solver_dt)
                 cls._state_0.clear_forces()
         else:
             cfg = PhysicsManager._cfg
             need_copy_on_last = (cfg is not None and cfg.use_cuda_graph) and cls._num_substeps % 2 == 1  # type: ignore[union-attr]
             for i in range(cls._num_substeps):
-                cls._solver.step(cls._state_0, cls._state_1, cls._control, contacts, cls._solver_dt)
+                cls._step_solver(cls._state_0, cls._state_1, cls._control, contacts, cls._solver_dt)
                 if need_copy_on_last and i == cls._num_substeps - 1:
                     cls._state_0.assign(cls._state_1)
                 else:
-                    cls._state_0, cls._state_1 = cls._state_1, cls._state_0
+                    NewtonManager._state_0, NewtonManager._state_1 = cls._state_1, cls._state_0
                 cls._state_0.clear_forces()
 
     @classmethod
@@ -1610,8 +1607,8 @@ class NewtonManager(PhysicsManager):
 
         device = PhysicsManager._device or "cpu"
         try:
-            cls._model = builder.finalize(device=device)
-            cls._state_0 = cls._model.state()
+            NewtonManager._model = builder.finalize(device=device)
+            NewtonManager._state_0 = cls._model.state()
             cls._model.num_envs = cls._num_envs
             replace_newton_shape_colors(cls._model)
 
@@ -1620,8 +1617,8 @@ class NewtonManager(PhysicsManager):
                 "[NewtonManager] Failed to finalize the shadow Newton ModelBuilder for "
                 "visualization (sim backend is PhysX)."
             )
-            cls._model = None
-            cls._state_0 = None
+            NewtonManager._model = None
+            NewtonManager._state_0 = None
 
     @classmethod
     def _build_visualization_model_from_stage(cls, stage) -> ModelBuilder | None:
