@@ -163,7 +163,7 @@ This keeps the custom part focused on the coupling policy. The manager does not
 need to reimplement scene loading, asset buffers, reset handling, or the outer
 simulation loop.
 
-.. figure:: ../../_static/newton/franka-mjwarp-vbd-coupling.png
+.. figure:: ../../../../_static/newton/franka-mjwarp-vbd-coupling.png
    :align: center
    :figwidth: 480px
    :class: square-crop-figure

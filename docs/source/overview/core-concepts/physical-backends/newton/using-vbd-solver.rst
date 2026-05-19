@@ -69,7 +69,7 @@ normal Newton fields:
 The Franka soft-body task defines a ``newton_mjwarp_vbd`` preset that couples
 MJWarp and VBD:
 
-.. literalinclude:: ../../../../source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/lift_franka_soft/franka_soft_env_cfg.py
+.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/lift_franka_soft/franka_soft_env_cfg.py
     :language: python
     :start-at: class PhysicsCfg
     :end-at: default = newton_mjwarp_vbd
@@ -204,7 +204,7 @@ VBD should advance deformables:
 The rigid solver parameters still matter. For example, MJWarp's ``nconmax`` and
 ``njmax`` must be large enough for the rigid contacts in the scene, and
 ``ccd_iterations`` can affect fast rigid contacts near deformables. See
-:doc:`solver-transitioning` for the MJWarp-side parameters.
+:doc:`mjwarp-solver` for the MJWarp-side parameters.
 
 
 Contact and Material Parameters
