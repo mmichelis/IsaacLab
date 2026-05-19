@@ -1166,7 +1166,9 @@ class NewtonManager(PhysicsManager):
         raise NotImplementedError("NewtonManager subclasses must implement _build_solver()")
 
     @classmethod
-    def _step_solver(cls, state_0: State, state_1: State, control: Control, contacts: Contacts | None, substep_dt: float) -> None:
+    def _step_solver(
+        cls, state_0: State, state_1: State, control: Control, contacts: Contacts | None, substep_dt: float
+    ) -> None:
         """Run one solver substep.
 
         Default invokes :attr:`_solver` once.  Subclasses can override to

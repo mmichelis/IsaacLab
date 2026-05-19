@@ -314,7 +314,9 @@ class NewtonCoupledMJWarpVBDManager(NewtonManager):
         NewtonManager._needs_collision_pipeline = True
 
     @classmethod
-    def _step_solver(cls, state_in: State, state_out: State, control: Control, contacts: Contacts | None, substep_dt: float) -> None:
+    def _step_solver(
+        cls, state_in: State, state_out: State, control: Control, contacts: Contacts | None, substep_dt: float
+    ) -> None:
         """One coupled substep.
 
         Args:
