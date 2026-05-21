@@ -29,7 +29,6 @@ from types import SimpleNamespace
 
 import pytest
 import warp as wp
-from isaaclab.managers import SceneEntityCfg
 from isaaclab_newton.physics import (
     AdmmContactPairCfg,
     AdmmCouplingCfg,
@@ -54,6 +53,8 @@ from isaaclab_newton.physics import (
     XPBDSolverCfg,
 )
 from newton.solvers import SolverFeatherstone, SolverImplicitMPM, SolverKamino, SolverMuJoCo, SolverXPBD
+
+from isaaclab.managers import SceneEntityCfg
 
 try:
     from newton.solvers.coupled_experimental import SolverAdmmCoupled, SolverCoupled, SolverProxyCoupled
@@ -315,9 +316,7 @@ def test_coupled_entry_threads_generic_entry_options():
 
 def test_coupled_proxy_int_mode_is_normalized():
     """Integer proxy modes are normalized before constructing Newton proxy configs."""
-    proxy = NewtonCoupledManager._build_proxy(
-        CoupledProxyCfg(source="src", destination="dst", particles=[0], mode=1)
-    )
+    proxy = NewtonCoupledManager._build_proxy(CoupledProxyCfg(source="src", destination="dst", particles=[0], mode=1))
     assert proxy.mode == "staggered"
 
 
