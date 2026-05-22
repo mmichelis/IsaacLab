@@ -30,7 +30,9 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
     VBDSolverCfg,
 )
 
-from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
+from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
+from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 
 from . import mdp
 from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
@@ -248,6 +250,9 @@ class FrankaCableEnvCfg(FrankaSoftEnvCfg):
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, -9.81)
+
+        view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
+        self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
 
         # Proxy-coupled MJWarp + VBD: rigid arm in MJWarp, cable particles in VBD, and the gripper
         # fingers exposed as virtual proxies so VBD detects them as contacts on the cable.

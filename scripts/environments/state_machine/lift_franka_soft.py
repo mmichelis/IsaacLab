@@ -153,24 +153,6 @@ def infer_state_machine(
     elif state == PickSmState.LIFT_OBJECT:
         des_ee_pose[tid] = des_object_pose[tid]
         gripper_state[tid] = GripperState.CLOSE
-        if distance_below_threshold(
-            wp.transform_get_translation(ee_pose[tid]),
-            wp.transform_get_translation(des_ee_pose[tid]),
-            position_threshold,
-        ):
-            # wait for a while
-            if sm_wait_time[tid] >= PickSmWaitTime.LIFT_OBJECT:
-                # move to next state and reset wait time
-                sm_state[tid] = PickSmState.OPEN_GRIPPER
-                sm_wait_time[tid] = 0.0
-    elif state == PickSmState.OPEN_GRIPPER:
-        # des_ee_pose[tid] = object_pose[tid]
-        gripper_state[tid] = GripperState.OPEN
-        # wait for a while
-        if sm_wait_time[tid] >= PickSmWaitTime.OPEN_GRIPPER:
-            # move to next state and reset wait time
-            sm_state[tid] = PickSmState.OPEN_GRIPPER
-            sm_wait_time[tid] = 0.0
     # increment wait time
     sm_wait_time[tid] = sm_wait_time[tid] + dt[tid]
 
@@ -186,7 +168,6 @@ class PickSmWaitTime:
     APPROACH_OBJECT = wp.constant(1.0)
     GRASP_OBJECT = wp.constant(1.0)
     LIFT_OBJECT = wp.constant(1.5)
-    OPEN_GRIPPER = wp.constant(0.0)
 
 
 class PickAndLiftSm:
@@ -228,10 +209,10 @@ class PickAndLiftSm:
 
         # approach above object offset
         self.offset = torch.zeros((self.num_envs, 7), device=self.device)
-        if task == "Isaac-Lift-CablePendulum-Franka-v0":
-            self.offset[:, 0] = -0.1
-        else:
-            self.offset[:, 2] = 0.1
+        # if task == "Isaac-Lift-CablePendulum-Franka-v0":
+        #     self.offset[:, 0] = -0.1
+        # else:
+        self.offset[:, 2] = 0.1
         self.offset[:, -1] = 1.0  # warp expects quaternion as (x, y, z, w)
 
         # convert to warp
@@ -289,7 +270,11 @@ def main():
         device=args_cli.device,
         num_envs=args_cli.num_envs,
     )
-    env_cfg.viewer.eye = (2.1, 1.0, 1.3)
+    env_cfg.viewer.eye = (1.5, 0.8, 1.3)
+    # Capture the rgb_array stream at 1600x1600 for --video runs.
+    if args_cli.video:
+        env_cfg.video_recorder.window_width = 1600
+        env_cfg.video_recorder.window_height = 1600
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode=render_mode)
 
     # wrap for video recording
@@ -319,17 +304,9 @@ def main():
     # giving the canonical top-down grasp pose. The bar lies along world-X, so the gripper
     # closes across its short side without any wrist twist.
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
-    if args_cli.task == "Isaac-Lift-CablePendulum-Franka-v0":
-        # Horizontal grasp from +X: rotate identity by +π/2 about world Y so panda_hand's
-        # grasping axis points along world -X. Quaternion (wxyz) = (cos(π/4), 0, sin(π/4), 0).
-        sqrt2_over_2 = 0.7071067811865476
-        object_grasp_orientation[:, 0] = sqrt2_over_2  # w
-        object_grasp_orientation[:, 2] = sqrt2_over_2  # y
-
-    else:
-        object_grasp_orientation[:, 0] = 1.0
+    object_grasp_orientation[:, 0] = 1.0
     # Grasp at the deformable's centre of mass.
-    object_local_grasp_position = torch.tensor([0.0, 0.0, -0.002], device=env.unwrapped.device)
+    object_local_grasp_position = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device)
 
     # create state machine
     pick_sm = PickAndLiftSm(env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device, task=args_cli.task)
@@ -354,7 +331,8 @@ def main():
                 object_position = object_data.body_com_pos_w.torch[:, 3] - env.unwrapped.scene.env_origins
             elif args_cli.task == "Isaac-Lift-CablePendulum-Franka-v0":
                 # Grab the rigid plug
-                object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
+                object_data = env.unwrapped.scene["cable"].data
+                object_position = object_data.body_com_pos_w.torch[:, -1] - env.unwrapped.scene.env_origins
             else:
                 object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
             object_position += object_local_grasp_position

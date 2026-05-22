@@ -50,7 +50,7 @@ from .franka_cable_env_cfg import FrankaCableEnvCfg, _FrankaCableSceneCfg
 ##
 
 # Number of cable segments. Matches the parent cable env so the same physics tuning applies.
-_NUM_POINTS = 20
+_NUM_POINTS = 28
 
 # Per-segment length [m]. Matches the parent cable env.
 _SEGMENT_LENGTH = 0.02
@@ -59,15 +59,15 @@ _SEGMENT_LENGTH = 0.02
 _CABLE_WIDTH = 0.01
 
 # Anchor pose in the env-local frame [m]. Positioned above the tabletop, in front of the robot.
-_ANCHOR_POS = (0.6, 0.3, 0.6)
+_ANCHOR_POS = (0.2, 0.35, 0.2)
 
 # Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
-_PLUG_RADIUS = 0.04
-_PLUG_HEIGHT = 0.04
-_PLUG_MASS = 0.05
+_PLUG_RADIUS = 0.03
+_PLUG_HEIGHT = 0.03
+_PLUG_MASS = 0.01
 
 # Plug rest pose [m]: directly below the anchor at the cable's natural extent.
-_PLUG_INIT_POS = (_ANCHOR_POS[0], _ANCHOR_POS[1], _ANCHOR_POS[2] - (_NUM_POINTS - 1) * _SEGMENT_LENGTH - _PLUG_RADIUS)
+_PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 1) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
 
 ##
@@ -117,11 +117,11 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         prim_path="/World/envs/env_.*/Cable",
         init_state=CableObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
         spawn=sim_utils.CableCfg(
-            positions=[(0.0, 0.0, -i * _SEGMENT_LENGTH) for i in range(_NUM_POINTS)],
+            positions=[(i * _SEGMENT_LENGTH, 0.0, 0.0) for i in range(_NUM_POINTS)],
             width=_CABLE_WIDTH,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
             physics_material=NewtonCableMaterialCfg(
-                stretch_stiffness=1.0e6,
+                stretch_stiffness=1.0e4,
                 stretch_damping=1.0e-1,
                 bend_stiffness=5.0e-3,
                 bend_damping=2.0e-3,
@@ -137,7 +137,6 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
             CableAttachmentCfg(
                 target_prim_path="/World/envs/env_.*/Plug",
                 cable_anchor=-1,
-                target_local_pos=(0.0, _PLUG_RADIUS, 0.0),
             ),
         ],
     )
@@ -148,9 +147,9 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
         # increase franka gripper stiffness
-        self.robot.actuators["panda_hand"].effort_limit_sim = 300.0
-        self.robot.actuators["panda_hand"].stiffness = 200.0
-        self.robot.actuators["panda_hand"].damping = 20.0
+        self.robot.actuators["panda_hand"].effort_limit_sim = 3000.0
+        self.robot.actuators["panda_hand"].stiffness = 6000.0
+        self.robot.actuators["panda_hand"].damping = 300.0
 
 
 
@@ -174,9 +173,9 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.5, 0.7),
-            pos_y=(-0.3, 0.0),
-            pos_z=(0.3, 0.5),
+            pos_x=(0.2, 0.4),
+            pos_y=(-0.0, 0.2),
+            pos_z=(0.05, 0.2),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -333,6 +332,15 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
 
+        # general settings
+        self.decimation = 1
+        self.episode_length_s = 10.0
+
+        # simulation settings
+        self.sim.dt = 1 / 60.0
+        self.sim.render_interval = self.decimation
+        self.sim.gravity = (0.0, 0.0, -9.81)
+
         # The proxy-coupled solver from FrankaCableEnvCfg is reused. Both the kinematic anchor
         # and the rigid plug are connected to the cable via VBD attachments, so the solver
         # needs to know about them on the VBD side.
@@ -355,12 +363,12 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
-                proxy_collide_interval=5,
+                proxy_collide_interval=2,
             ),
             model_cfg=NewtonModelCfg(
-                shape_material_ke=5e5,
-                shape_material_kd=1e-3,
-                shape_material_mu=10.0,
+                shape_material_ke=1e6,
+                shape_material_kd=1e-4,
+                shape_material_mu=9000.0,
             ),
             num_substeps=10,
         )
