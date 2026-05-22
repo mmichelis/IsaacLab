@@ -3,7 +3,14 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reward and termination functions for the Franka deformable lifting environment."""
+"""Reward and termination functions for the Franka deformable lifting environment.
+
+Reward terms target either a volumetric/surface :class:`~isaaclab.assets.DeformableObject`
+(particle data lives on ``data.nodal_pos_w`` / ``data.root_pos_w``) or a cable that is an
+:class:`~isaaclab.assets.Articulation` whose per-segment positions live on ``data.body_pos_w``.
+Each reward picks the right access path via :func:`_points_w` / :func:`_com_w`; downstream
+math is shared.
+"""
 
 from __future__ import annotations
 
@@ -21,14 +28,26 @@ if TYPE_CHECKING:
     from isaaclab.sensors import FrameTransformer
 
 
-def _points_w(asset: DeformableObject) -> torch.Tensor:
-    """Return deformable nodal positions in world frame, shape ``[num_envs, K, 3]`` [m]."""
-    return wp.to_torch(asset.data.nodal_pos_w)
+def _points_w(asset: DeformableObject | Articulation) -> torch.Tensor:
+    """Return per-asset point cloud positions in world frame, shape ``[num_envs, K, 3]`` [m].
+
+    For a deformable object, ``K`` is the number of FEM nodes. For a cable
+    articulation, ``K`` is the number of segments.
+    """
+    if hasattr(asset.data, "nodal_pos_w"):
+        return wp.to_torch(asset.data.nodal_pos_w)
+    return asset.data.body_pos_w.torch
 
 
-def _com_w(asset: DeformableObject) -> torch.Tensor:
-    """Return the deformable's centre of mass in world frame, shape ``[num_envs, 3]`` [m]."""
-    return wp.to_torch(asset.data.root_pos_w)
+def _com_w(asset: DeformableObject | Articulation) -> torch.Tensor:
+    """Return the asset's centre of mass in world frame, shape ``[num_envs, 3]`` [m].
+
+    For a deformable object this is :attr:`DeformableObject.data.root_pos_w` (already
+    the COM). For a cable articulation it is the mean of the per-segment positions.
+    """
+    if hasattr(asset.data, "nodal_pos_w"):
+        return wp.to_torch(asset.data.root_pos_w)
+    return asset.data.body_pos_w.torch.mean(dim=1)
 
 
 def object_lifted(
@@ -41,7 +60,7 @@ def object_lifted(
     Args:
         env: The environment instance.
         minimal_height: Minimum COM height [m].
-        asset_cfg: The deformable entity.
+        asset_cfg: The deformable or cable entity.
 
     Returns:
         Reward tensor with shape ``(num_envs,)``.
@@ -62,7 +81,7 @@ def object_ee_distance(
     Args:
         env: The environment instance.
         std: The tanh kernel standard deviation [m].
-        asset_cfg: The deformable entity.
+        asset_cfg: The deformable or cable entity.
         ee_frame_cfg: The end-effector frame entity.
 
     Returns:
@@ -142,7 +161,7 @@ def object_outside_table_bounds(
         env: The environment instance.
         x_bounds: Allowed x-position range in the environment frame [m].
         y_bounds: Allowed y-position range in the environment frame [m].
-        asset_cfg: The deformable entity.
+        asset_cfg: The deformable or cable entity.
 
     Returns:
         Boolean tensor with shape ``(num_envs,)``.
