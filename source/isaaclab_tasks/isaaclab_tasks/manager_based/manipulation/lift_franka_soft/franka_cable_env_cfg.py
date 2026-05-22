@@ -12,23 +12,22 @@ from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.utils.configclass import configclass
-from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 
 from isaaclab_contrib.cable.cable_object_cfg import CableObjectCfg
 from isaaclab_contrib.deformable.newton_manager_cfg import (
-    VBDSolverCfg,
     CoupledNewtonCfg,
     NewtonModelCfg,
     ProxyCoupledMJWarpVBDSolverCfg,
+    VBDSolverCfg,
 )
 
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort:skip
@@ -70,7 +69,7 @@ class _FrankaCableSceneCfg(_FrankaSoftSceneCfg):
         super().__post_init__()
         self.robot.spawn.rigid_props.disable_gravity = True
         self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
-        
+
         # increase franka gripper stiffness
         self.robot.actuators["panda_hand"].effort_limit_sim = 1500.0
         self.robot.actuators["panda_hand"].stiffness = 1000.0
@@ -138,6 +137,7 @@ class ActionsCfg:
         open_command_expr={"panda_finger_.*": 0.05},
         close_command_expr={"panda_finger_.*": 0.0},
     )
+
 
 @configclass
 class ObservationsCfg:
@@ -249,7 +249,6 @@ class FrankaCableEnvCfg(FrankaSoftEnvCfg):
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, -9.81)
 
-
         # Proxy-coupled MJWarp + VBD: rigid arm in MJWarp, cable particles in VBD, and the gripper
         # fingers exposed as virtual proxies so VBD detects them as contacts on the cable.
         self.sim.physics = CoupledNewtonCfg(
@@ -261,10 +260,7 @@ class FrankaCableEnvCfg(FrankaSoftEnvCfg):
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                vbd_cfg=VBDSolverCfg(
-                    iterations=20,
-                    rigid_avbd_beta=1e2
-                ),
+                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e2),
                 mjwarp_bodies=[SceneEntityCfg("robot")],
                 vbd_bodies=[SceneEntityCfg("object")],
                 proxy_bodies=[

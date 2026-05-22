@@ -338,7 +338,7 @@ def main():
             tcp_rest_orientation = ee_frame_sensor.data.target_quat_w.torch[..., 0, :].clone()
             # -- object frame
             object_data = env.unwrapped.scene["object"].data
-            if args_cli.task == "Isaac-Lift-Cable-Franka-v0":
+            if args_cli.task == "Isaac-Lift-Cable-Franka-v0" or args_cli.task == "Isaac-Lift-CablePendulum-Franka-v0":
                 # Grab the fourth cable link, matching the proxy-coupling demo target.
                 object_position = object_data.body_com_pos_w.torch[:, 3] - env.unwrapped.scene.env_origins
             else:
