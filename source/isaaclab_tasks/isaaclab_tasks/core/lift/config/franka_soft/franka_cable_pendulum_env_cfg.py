@@ -19,9 +19,13 @@ from __future__ import annotations
 
 import math
 
+import torch
+from isaaclab.utils.math import quat_from_angle_axis
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -30,8 +34,11 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.utils.configclass import configclass
 
+from isaaclab_newton.physics import MJWarpSolverCfg
+
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledNewtonCfg, ProxyCoupledMJWarpVBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import CoupledNewtonCfg, ProxyCoupledMJWarpVBDSolverCfg, VBDSolverCfg, NewtonModelCfg
+
 
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
 
@@ -52,20 +59,15 @@ _SEGMENT_LENGTH = 0.02
 _CABLE_WIDTH = 0.01
 
 # Anchor pose in the env-local frame [m]. Positioned above the tabletop, in front of the robot.
-_ANCHOR_POS = (0.5, 0.0, 0.5)
-
-# Plug rest pose [m]: directly below the anchor at the cable's natural extent.
-_PLUG_INIT_POS = (_ANCHOR_POS[0], _ANCHOR_POS[1], _ANCHOR_POS[2] - (_NUM_POINTS - 1) * _SEGMENT_LENGTH)
+_ANCHOR_POS = (0.6, 0.3, 0.6)
 
 # Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
 _PLUG_RADIUS = 0.04
 _PLUG_HEIGHT = 0.04
-_PLUG_MASS = 0.02
+_PLUG_MASS = 0.05
 
-
-def _y_axis_quat(angle_rad: float) -> tuple[float, float, float, float]:
-    """Quaternion ``(x, y, z, w)`` for a rotation about +Y, matching :attr:`AssetBaseCfg.InitialStateCfg.rot`."""
-    return (0.0, math.sin(0.5 * angle_rad), 0.0, math.cos(0.5 * angle_rad))
+# Plug rest pose [m]: directly below the anchor at the cable's natural extent.
+_PLUG_INIT_POS = (_ANCHOR_POS[0], _ANCHOR_POS[1], _ANCHOR_POS[2] - (_NUM_POINTS - 1) * _SEGMENT_LENGTH - _PLUG_RADIUS)
 
 
 ##
@@ -95,7 +97,7 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
     )
 
-    plug: RigidObjectCfg = RigidObjectCfg(
+    object: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
         spawn=sim_utils.CylinderCfg(
             radius=_PLUG_RADIUS,
@@ -107,11 +109,11 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=_PLUG_INIT_POS,
-            rot=_y_axis_quat(-math.pi / 2.0),
+            rot=quat_from_angle_axis(torch.tensor(torch.pi / 2.0), torch.tensor([1.0, 0.0, 0.0])),
         ),
     )
 
-    object: CableObjectCfg = CableObjectCfg(
+    cable: CableObjectCfg = CableObjectCfg(
         prim_path="/World/envs/env_.*/Cable",
         init_state=CableObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
         spawn=sim_utils.CableCfg(
@@ -135,9 +137,21 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
             CableAttachmentCfg(
                 target_prim_path="/World/envs/env_.*/Plug",
                 cable_anchor=-1,
+                target_local_pos=(0.0, _PLUG_RADIUS, 0.0),
             ),
         ],
     )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.robot.spawn.rigid_props.disable_gravity = True
+        self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
+
+        # increase franka gripper stiffness
+        self.robot.actuators["panda_hand"].effort_limit_sim = 300.0
+        self.robot.actuators["panda_hand"].stiffness = 200.0
+        self.robot.actuators["panda_hand"].damping = 20.0
+
 
 
 ##
@@ -160,9 +174,9 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.3, 0.6),
-            pos_y=(-0.25, 0.25),
-            pos_z=(0.05, 0.4),
+            pos_x=(0.5, 0.7),
+            pos_y=(-0.3, 0.0),
+            pos_z=(0.3, 0.5),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -189,6 +203,30 @@ class CommandsCfg:
 
 
 @configclass
+class ActionsCfg:
+    """7-dim absolute end-effector pose (xyz + quaternion) via differential IK + 1-dim binary gripper."""
+
+    arm_action = DifferentialInverseKinematicsActionCfg(
+        asset_name="robot",
+        joint_names=["panda_joint.*"],
+        body_name="panda_hand",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.05},
+        ),
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+    )
+    gripper_action = mdp.BinaryJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["panda_finger.*"],
+        open_command_expr={"panda_finger_.*": 0.05},
+        close_command_expr={"panda_finger_.*": 0.0},
+    )
+
+
+@configclass
 class ObservationsCfg:
     """Policy observations for the cable pendulum task."""
 
@@ -198,7 +236,7 @@ class ObservationsCfg:
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         plug_position = ObsTerm(
             func=mdp.object_com_in_robot_root_frame,
-            params={"asset_cfg": SceneEntityCfg("plug")},
+            params={"asset_cfg": SceneEntityCfg("object")},
         )
         target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "object_pose"})
         actions = ObsTerm(func=mdp.last_action)
@@ -227,12 +265,12 @@ class RewardsCfg:
 
     reaching_plug = RewTerm(
         func=mdp.object_ee_distance,
-        params={"std": 0.1, "asset_cfg": SceneEntityCfg("plug")},
+        params={"std": 0.1, "asset_cfg": SceneEntityCfg("object")},
         weight=5.0,
     )
     lifting_plug = RewTerm(
         func=mdp.object_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("plug")},
+        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("object")},
         weight=5.0,
     )
     plug_goal_tracking = RewTerm(
@@ -241,7 +279,7 @@ class RewardsCfg:
             "std": 0.3,
             "minimal_height": 0.05,
             "command_name": "object_pose",
-            "asset_cfg": SceneEntityCfg("plug"),
+            "asset_cfg": SceneEntityCfg("object"),
         },
         weight=16.0,
     )
@@ -251,7 +289,7 @@ class RewardsCfg:
             "std": 0.05,
             "minimal_height": 0.05,
             "command_name": "object_pose",
-            "asset_cfg": SceneEntityCfg("plug"),
+            "asset_cfg": SceneEntityCfg("object"),
         },
         weight=5.0,
     )
@@ -298,11 +336,31 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
         # The proxy-coupled solver from FrankaCableEnvCfg is reused. Both the kinematic anchor
         # and the rigid plug are connected to the cable via VBD attachments, so the solver
         # needs to know about them on the VBD side.
-        assert isinstance(self.sim.physics, CoupledNewtonCfg)
-        solver_cfg = self.sim.physics.solver_cfg
-        assert isinstance(solver_cfg, ProxyCoupledMJWarpVBDSolverCfg)
-        solver_cfg.vbd_bodies = [
-            SceneEntityCfg("object"),
-            SceneEntityCfg("anchor"),
-            SceneEntityCfg("plug"),
-        ]
+        self.sim.physics = CoupledNewtonCfg(
+            scene_cfg=self.scene,
+            solver_cfg=ProxyCoupledMJWarpVBDSolverCfg(
+                mjwarp_cfg=MJWarpSolverCfg(
+                    cone="elliptic",
+                    ls_parallel=True,
+                    ls_iterations=20,
+                    integrator="implicitfast",
+                ),
+                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=5e2),
+                mjwarp_bodies=[SceneEntityCfg("robot")],
+                vbd_bodies=[
+                    SceneEntityCfg("object"), 
+                    SceneEntityCfg("anchor"), 
+                    SceneEntityCfg("cable")
+                ],
+                proxy_bodies=[
+                    SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
+                ],
+                proxy_collide_interval=5,
+            ),
+            model_cfg=NewtonModelCfg(
+                shape_material_ke=5e5,
+                shape_material_kd=1e-3,
+                shape_material_mu=10.0,
+            ),
+            num_substeps=10,
+        )

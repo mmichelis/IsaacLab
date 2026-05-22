@@ -204,7 +204,7 @@ class PickAndLiftSm:
     5. LIFT_OBJECT: The robot lifts the object to the desired pose. This is the final state.
     """
 
-    def __init__(self, dt: float, num_envs: int, device: torch.device | str = "cpu", position_threshold=0.03):
+    def __init__(self, dt: float, num_envs: int, device: torch.device | str = "cpu", position_threshold=0.03, task="Isaac-Lift-Soft-Franka-v0"):
         """Initialize the state machine.
 
         Args:
@@ -228,7 +228,10 @@ class PickAndLiftSm:
 
         # approach above object offset
         self.offset = torch.zeros((self.num_envs, 7), device=self.device)
-        self.offset[:, 2] = 0.1
+        if task == "Isaac-Lift-CablePendulum-Franka-v0":
+            self.offset[:, 0] = -0.1
+        else:
+            self.offset[:, 2] = 0.1
         self.offset[:, -1] = 1.0  # warp expects quaternion as (x, y, z, w)
 
         # convert to warp
@@ -316,12 +319,20 @@ def main():
     # giving the canonical top-down grasp pose. The bar lies along world-X, so the gripper
     # closes across its short side without any wrist twist.
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
-    object_grasp_orientation[:, 0] = 1.0
+    if args_cli.task == "Isaac-Lift-CablePendulum-Franka-v0":
+        # Horizontal grasp from +X: rotate identity by +π/2 about world Y so panda_hand's
+        # grasping axis points along world -X. Quaternion (wxyz) = (cos(π/4), 0, sin(π/4), 0).
+        sqrt2_over_2 = 0.7071067811865476
+        object_grasp_orientation[:, 0] = sqrt2_over_2  # w
+        object_grasp_orientation[:, 2] = sqrt2_over_2  # y
+
+    else:
+        object_grasp_orientation[:, 0] = 1.0
     # Grasp at the deformable's centre of mass.
     object_local_grasp_position = torch.tensor([0.0, 0.0, -0.002], device=env.unwrapped.device)
 
     # create state machine
-    pick_sm = PickAndLiftSm(env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device)
+    pick_sm = PickAndLiftSm(env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device, task=args_cli.task)
 
     while simulation_app.is_running():
         # run everything in inference mode
@@ -337,10 +348,14 @@ def main():
             )
             tcp_rest_orientation = ee_frame_sensor.data.target_quat_w.torch[..., 0, :].clone()
             # -- object frame
-            if args_cli.task == "Isaac-Lift-Cable-Franka-v0" or args_cli.task == "Isaac-Lift-CablePendulum-Franka-v0":
+            if args_cli.task == "Isaac-Lift-Cable-Franka-v0":
                 # Grab the fourth cable link, matching the proxy-coupling demo target.
                 object_data = env.unwrapped.scene["object"].data
                 object_position = object_data.body_com_pos_w.torch[:, 3] - env.unwrapped.scene.env_origins
+            elif args_cli.task == "Isaac-Lift-CablePendulum-Franka-v0":
+                # Grab the rigid plug
+                object_data = env.unwrapped.scene["object"].data
+                object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
             else:
                 object_data: DeformableObjectData = env.unwrapped.scene["deformable"].data
                 object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
