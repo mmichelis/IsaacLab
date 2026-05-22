@@ -3,7 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Observation functions for the Franka deformable lifting environment."""
+"""Observation functions for the Franka deformable / cable lifting environments.
+
+Both volumetric/surface deformables and cables expose a per-asset point cloud
+(``nodal_pos_w`` or ``body_pos_w``); :func:`_points_w` and :func:`_com_w` (in
+:mod:`.rewards`) dispatch to the right attribute so downstream observation math
+is shared between the two task families.
+"""
 
 from __future__ import annotations
 
@@ -42,8 +48,10 @@ def object_com_in_robot_root_frame(
 class ObjectSampledPointsInRobotRootFrame(ManagerTermBase):
     """Sampled asset point positions expressed in the robot's root frame.
 
-    The point indices are sampled on reset and reused within the episode so
-    each observed point follows the same material node over time.
+    Works for both volumetric/surface deformables (sampling nodal points) and
+    cable articulations (sampling per-segment frames). The point indices are
+    sampled on reset and reused within the episode so each observed point
+    follows the same material node / segment over time.
     """
 
     def __init__(self, cfg, env: ManagerBasedRLEnv):
@@ -86,7 +94,7 @@ class ObjectSampledPointsInRobotRootFrame(ManagerTermBase):
 
         Args:
             env: The environment instance.
-            asset_cfg: The deformable entity.
+            asset_cfg: The deformable or cable entity.
             robot_cfg: The robot entity providing the reference frame.
             num_points: Number of sampled points.
 
