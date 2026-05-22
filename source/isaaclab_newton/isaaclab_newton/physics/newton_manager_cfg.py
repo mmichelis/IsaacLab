@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from isaaclab.physics import PhysicsCfg
 from isaaclab.utils.configclass import configclass
@@ -40,11 +40,12 @@ class NewtonSolverCfg:
     override it.
     """
 
-    requires_graph_coloring: bool = False
+    requires_graph_coloring: ClassVar[bool] = False
     """Whether the solver requires graph coloring of the model's vertices.
 
-    This is used by the model builder to determine whether to run the coloring
-    pass on the model's vertices. The coloring is used to parallelize vertex updates in solvers like VBD.
+    Solver-level property, not a user-tunable field: the cloner reads it off
+    the cfg class to decide whether to run ``ModelBuilder.color()`` before
+    finalize. Subclasses (e.g. VBD) override this as a ``ClassVar`` to opt in.
     """
 
     solver_type: str = "None"
