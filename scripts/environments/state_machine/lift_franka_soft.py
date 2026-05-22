@@ -60,8 +60,6 @@ import gymnasium as gym
 import torch
 import warp as wp
 
-from isaaclab.assets.deformable_object.deformable_object_data import DeformableObjectData
-
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
@@ -320,7 +318,7 @@ def main():
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
     object_grasp_orientation[:, 0] = 1.0
     # Grasp at the deformable's centre of mass.
-    object_local_grasp_position = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device)
+    object_local_grasp_position = torch.tensor([0.0, 0.0, -0.002], device=env.unwrapped.device)
 
     # create state machine
     pick_sm = PickAndLiftSm(env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device)
@@ -339,8 +337,12 @@ def main():
             )
             tcp_rest_orientation = ee_frame_sensor.data.target_quat_w.torch[..., 0, :].clone()
             # -- object frame
-            object_data: DeformableObjectData = env.unwrapped.scene["object"].data
-            object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
+            object_data = env.unwrapped.scene["object"].data
+            if args_cli.task == "Isaac-Lift-Cable-Franka-v0":
+                # Grab the fourth cable link, matching the proxy-coupling demo target.
+                object_position = object_data.body_com_pos_w.torch[:, 3] - env.unwrapped.scene.env_origins
+            else:
+                object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
             object_position += object_local_grasp_position
 
             # -- target object frame
