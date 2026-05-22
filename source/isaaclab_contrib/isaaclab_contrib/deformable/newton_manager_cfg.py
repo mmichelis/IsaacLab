@@ -83,6 +83,67 @@ class VBDSolverCfg(NewtonSolverCfg):
 
 
 @configclass
+class MPMSolverCfg(NewtonSolverCfg):
+    """Configuration for Newton's implicit Material Point Method (MPM) solver.
+
+    Field names mirror :class:`newton.solvers.SolverImplicitMPM.Config`. Intended
+    as a sub-solver inside :class:`ProxyCoupledMJWarpMPMSolverCfg`; no standalone
+    MPM manager is provided in this revision. :attr:`class_type` is intentionally
+    inherited from :class:`NewtonSolverCfg` and is not consulted in coupled mode.
+    """
+
+    max_iterations: int = 250
+    """Maximum rheology / Newton iterations per MPM step."""
+
+    tolerance: float = 1.0e-4
+    """Convergence tolerance for the rheology solver."""
+
+    voxel_size: float = 0.1
+    """Background grid voxel size [m]."""
+
+    grid_type: str = "sparse"
+    """Background grid type: ``"sparse"``, ``"dense"``, or ``"fixed"``."""
+
+    grid_padding: int = 0
+    """Padding cells around the active grid region; relevant for ``"fixed"`` grids."""
+
+    max_active_cell_count: int = -1
+    """Maximum active grid cells. ``-1`` lets the solver size dynamically."""
+
+    transfer_scheme: str = "apic"
+    """Particle <-> grid transfer scheme: ``"apic"`` or ``"pic"``."""
+
+    integration_scheme: str = "pic"
+    """Particle integration scheme: ``"pic"`` or ``"gimp"``."""
+
+    strain_basis: str = "P0"
+    """Strain basis used by the rheology integrator."""
+
+    velocity_basis: str = "Q1"
+    """Grid velocity basis."""
+
+    collider_basis: str = "S2"
+    """Collider velocity basis for proxy / coupled colliders."""
+
+    collider_velocity_mode: str = "forward"
+    """Sampling mode for collider velocities: ``"forward"``, ``"backward"``,
+    ``"instantaneous"``, or ``"finite_difference"``."""
+
+    critical_fraction: float = 0.0
+    """Critical particle-volume fraction for Drucker-Prager (0 disables)."""
+
+    air_drag: float = 1.0
+    """Linear air-drag relaxation factor."""
+
+    warmstart_mode: str = "auto"
+    """Warmstart strategy for the implicit solve: ``"none"``, ``"auto"``,
+    ``"particles"``, ``"grid"``, or ``"smoothed"``."""
+
+    collider_normal_from_sdf_gradient: bool = False
+    """Use SDF gradients (instead of stored normals) for collider normals."""
+
+
+@configclass
 class CoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
     """Configuration for the coupled MJWarp + VBD solver.
 
@@ -157,6 +218,76 @@ class ProxyCoupledMJWarpVBDSolverCfg(NewtonSolverCfg):
 
     proxy_mode: str = "lagged"
     """Proxy transfer mode passed to :class:`newton.solvers.SolverProxyCoupled.Proxy`.
+
+    - ``"lagged"``: syncs source begin poses and end velocities, then rewinds
+      lagged feedback before the destination solve.
+    - ``"staggered"``: syncs source end poses and end velocities directly.
+    """
+
+    proxy_iterations: int = 1
+    """Number of relaxation iterations per coupled substep."""
+
+    proxy_collide_interval: int = 1
+    """Collision-detection refresh interval (in proxy passes)."""
+
+    proxy_mass_scale: float = 1.0
+    """Mass / inertia scale applied to destination proxy bodies (virtual inertia)."""
+
+
+@configclass
+class ProxyCoupledMJWarpMPMSolverCfg(NewtonSolverCfg):
+    """Configuration for the proxy-coupled MJWarp + implicit MPM solver.
+
+    Wraps Newton's :class:`newton.solvers.experimental.coupled.SolverCoupledProxy`
+    (lagged-impulse virtual-proxy coupling) with MuJoCo Warp as the rigid
+    sub-solver and implicit MPM as the particle sub-solver. Selected MuJoCo
+    bodies are exposed as proxies in the MPM view so MPM detects contacts
+    against them and returns feedback wrenches to MuJoCo via lagged impulses.
+
+    Body selectors are either :class:`~isaaclab.managers.SceneEntityCfg`
+    (scoped by the asset's ``prim_path``, optionally narrowed by ``body_names``
+    full-matched against body short names) or raw prim-path regex strings
+    (e.g. ``"/World/envs/env_.*/MyCube"``) matched against ``model.body_label``
+    via ``^<string>(/|$)``.
+    """
+
+    class_type: type[NewtonManager] | str = "{DIR}.proxy_coupled_mjwarp_mpm_manager:NewtonProxyCoupledMJWarpMPMManager"
+    """Manager class for the proxy-coupled MJWarp + MPM solver."""
+
+    requires_graph_coloring: bool = False
+    """MPM does not require :meth:`newton.ModelBuilder.color`."""
+
+    mjwarp_cfg: MJWarpSolverCfg = MJWarpSolverCfg()
+    """MuJoCo Warp sub-solver configuration."""
+
+    mpm_cfg: MPMSolverCfg = MPMSolverCfg()
+    """Implicit MPM sub-solver configuration."""
+
+    mjwarp_bodies: list[SceneEntityCfg | str] = []
+    """Selectors whose bodies/joints/shapes go to the MuJoCo entry.
+
+    Joints inherit their child body's owner; shapes inherit their body's
+    owner; static shapes (``body == -1``) always go to the MPM entry.
+    """
+
+    mpm_bodies: list[SceneEntityCfg | str] = []
+    """Selectors routed to the MPM entry (see :attr:`mjwarp_bodies`).
+
+    Typically empty (all rigid bodies live on the MuJoCo side); kept for
+    API symmetry with :class:`ProxyCoupledMJWarpVBDSolverCfg`.
+    """
+
+    proxy_bodies: list[SceneEntityCfg | str] = []
+    """Selectors naming MuJoCo bodies to expose as proxies in the MPM view.
+
+    For :class:`SceneEntityCfg` entries, ``body_names`` is **required**
+    (proxies are a subset, not the whole asset); raw strings are accepted
+    as-is. Matched bodies are filtered to those owning at least one
+    :attr:`newton.ShapeFlags.COLLIDE_SHAPES` shape. Empty list = no proxies.
+    """
+
+    proxy_mode: str = "lagged"
+    """Proxy transfer mode passed to :class:`newton.solvers.experimental.coupled.SolverCoupledProxy.Proxy`.
 
     - ``"lagged"``: syncs source begin poses and end velocities, then rewinds
       lagged feedback before the destination solve.
