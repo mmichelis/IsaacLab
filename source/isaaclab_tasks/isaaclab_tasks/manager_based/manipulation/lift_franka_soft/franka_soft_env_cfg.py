@@ -40,7 +40,8 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg, CoupledNewtonCfg
+from isaaclab_newton.physics import CoupledProxyCfg, CoupledSolverCfg, CoupledSolverEntryCfg, NewtonCoupledManager, ProxyCouplingCfg
 
 from isaaclab_tasks.utils import PresetCfg
 
@@ -61,18 +62,6 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
 # Shared volume material parameters. The Newton config below uses the equivalent Lame parameters.
 YOUNGS_MODULUS = 8e4
 POISSONS_RATIO = 0.25
-
-
-@configclass
-class DeformableNewtonCfg(NewtonCfg):
-    """NewtonCfg extended with model-level contact parameters for deformable objects.
-
-    Uses a distinct class name so that ``_is_kitless_physics`` does not
-    match it, ensuring Kit is launched for USD deformable spawning.
-    """
-
-    model_cfg: NewtonModelCfg | None = None
-    """Global Newton model parameters applied after builder finalization."""
 
 
 @configclass
@@ -119,7 +108,7 @@ class DeformableCfg(PresetCfg):
 class PhysicsCfg(PresetCfg):
     # Newton physics: MJWarp rigid + VBD soft, one-way coupled
     # (matches newton/examples/softbody/example_softbody_franka.py)
-    newton_mjwarp_vbd: DeformableNewtonCfg = DeformableNewtonCfg(
+    newton_mjwarp_vbd: CoupledNewtonCfg = CoupledNewtonCfg(
         solver_cfg=CoupledMJWarpVBDSolverCfg(
             rigid_solver_cfg=MJWarpSolverCfg(
                 njmax=40,
@@ -151,9 +140,63 @@ class PhysicsCfg(PresetCfg):
         use_cuda_graph=True,
     )
 
+    newton_mjwarp_vbd_proxy: CoupledNewtonCfg = CoupledNewtonCfg(
+        solver_cfg=CoupledSolverCfg(
+            entries=[
+                CoupledSolverEntryCfg(
+                    name="mjc",
+                    solver_cfg=MJWarpSolverCfg(
+                        njmax=40,
+                        nconmax=20,
+                        ls_iterations=20,
+                        cone="pyramidal",
+                        impratio=1,
+                        ls_parallel=False,
+                        integrator="implicitfast",
+                        ccd_iterations=100,
+                    ),
+                    include_static_shapes=True,
+                    body_entities=[SceneEntityCfg("robot")],
+                ),
+                CoupledSolverEntryCfg(
+                    name="vbd",
+                    solver_cfg=VBDSolverCfg(
+                        iterations=10,
+                        integrate_with_external_rigid_solver=True,
+                        particle_enable_self_contact=False,
+                        particle_collision_detection_interval=-1,
+                    ),
+                ),
+            ],
+            use_collision_pipeline=True,
+            proxy_coupling=ProxyCouplingCfg(
+                proxies=[
+                    CoupledProxyCfg(
+                        source="mjc",
+                        destination="vbd",
+                        body_entities=[SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"])],
+                        mass_scale=1.0,
+                        mode="lagged",
+                    )
+                ],
+                iterations=5,
+            ),
+        ),
+        model_cfg=NewtonModelCfg(
+            soft_contact_ke=1e4,
+            soft_contact_kd=1e-5,
+            soft_contact_mu=5.0,
+            shape_material_ke=4e4,
+            shape_material_kd=1e-5,
+            shape_material_mu=5.0,
+        ),
+        num_substeps=10,
+        use_cuda_graph=True,
+    )
+
     physx: PhysxCfg = PhysxCfg()
 
-    default = newton_mjwarp_vbd
+    default = newton_mjwarp_vbd_proxy
 
 
 ##
@@ -439,6 +482,8 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, 0.0)
         self.sim.physics = PhysicsCfg()
+        if hasattr(self.sim.physics, 'solver_cfg') and isinstance(self.sim.physics.solver_cfg, CoupledSolverCfg):
+            self.sim.physics.solver_cfg.scene_cfg = self.scene
 
         # viewer settings
         self.viewer.origin_type = "asset_root"

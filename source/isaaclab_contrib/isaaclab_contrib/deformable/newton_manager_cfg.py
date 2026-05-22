@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonSolverCfg
+from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonSolverCfg, NewtonCfg
 
 from isaaclab.utils.configclass import configclass
 
@@ -209,3 +209,19 @@ class NewtonModelCfg:
     coefficient overwritten to this value.  If ``None`` (default), the
     per-shape values parsed from USD/MJCF are kept.
     """
+
+
+@configclass
+class CoupledNewtonCfg(NewtonCfg):
+    """:class:`NewtonCfg` extended for coupled-solver setups.
+
+    Adds :attr:`model_cfg` for global model parameters and :attr:`scene_cfg` so
+    the manager can resolve :class:`~isaaclab.managers.SceneEntityCfg` selectors
+    against the scene at solver-build time.
+
+    Uses a distinct class name so :func:`_is_kitless_physics` does not match it,
+    ensuring Kit is launched for USD deformable/coupled spawning.
+    """
+
+    model_cfg: NewtonModelCfg | None = None
+    """Global Newton model parameters applied after builder finalization."""

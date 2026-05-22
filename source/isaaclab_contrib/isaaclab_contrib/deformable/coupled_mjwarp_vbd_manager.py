@@ -12,6 +12,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import warp as wp
+from isaaclab_newton.physics.mjwarp_manager import apply_mujoco_warp_model_overrides, resolve_mujoco_solver_kwargs
 from isaaclab_newton.physics.newton_manager import NewtonManager
 from newton import Contacts, Control, Model, ModelBuilder, State
 from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx

@@ -19,12 +19,12 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import CoupledMJWarpVBDSolverCfg, NewtonModelCfg, VBDSolverCfg, CoupledNewtonCfg
 
 from isaaclab_tasks.utils import PresetCfg
 
 from . import mdp
-from .franka_soft_env_cfg import DeformableNewtonCfg, FrankaSoftEnvCfg, _FrankaSoftSceneCfg
+from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
 from .franka_soft_env_cfg import EventCfg as FrankaSoftEventCfg
 
 ##
@@ -42,7 +42,7 @@ ROBOT_SHAPE_MATERIAL_BODY_NAMES = ".*"
 class PhysicsCfg(PresetCfg):
     # Newton physics: MJWarp rigid + VBD soft, one-way coupled
     # (matches newton/examples/softbody/example_softbody_franka.py)
-    newton_mjwarp_vdb: DeformableNewtonCfg = DeformableNewtonCfg(
+    newton_mjwarp_vdb: CoupledNewtonCfg = CoupledNewtonCfg(
         solver_cfg=CoupledMJWarpVBDSolverCfg(
             rigid_solver_cfg=MJWarpSolverCfg(
                 njmax=40,
