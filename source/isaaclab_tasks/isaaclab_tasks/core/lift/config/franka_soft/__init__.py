@@ -40,3 +40,13 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Isaac-Lift-CablePendulum-Franka-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.franka_cable_pendulum_env_cfg:FrankaCablePendulumEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
+    },
+)
