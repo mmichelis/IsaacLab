@@ -377,15 +377,8 @@ class NewtonVBDManager(NewtonManager):
         Index arrays are built lazily in :meth:`forward` at init time to avoid
         host-device transfers on the step path (which fail under graph capture).
         """
-        if not getattr(cls, "_dbg_substeps_entered", False):
-            n = None if cls._free_joint_ids is None else int(cls._free_joint_ids.shape[0])
-            print(f"[vbd writeback] _run_solver_substeps ENTERED on {cls.__name__}, n_free_joints={n}", flush=True)
-            cls._dbg_substeps_entered = True
         super()._run_solver_substeps(contacts)
         if cls._free_joint_ids is None:
-            if not getattr(cls, "_dbg_no_free", False):
-                print("[vbd writeback] _free_joint_ids is None — no FREE joints detected", flush=True)
-                cls._dbg_no_free = True
             return
         wp.launch(
             _write_free_joint_q_from_body_q,
@@ -399,29 +392,13 @@ class NewtonVBDManager(NewtonManager):
             ],
             device=PhysicsManager._device,
         )
-        import sys
-        cls._dbg_step = getattr(cls, "_dbg_step", 0) + 1
-        if cls._dbg_step in (5, 30):
-            sys.stderr.write(f"[vbd writeback step={cls._dbg_step}] launched kernel, joint_q.ptr=0x{cls._state_0.joint_q.ptr:x}\n")
-            sys.stderr.flush()
-            jq_torch = wp.to_torch(cls._state_0.joint_q)
-            bq_torch = wp.to_torch(cls._state_0.body_q)
-            sys.stderr.write(f"  joint_q[-14:]={jq_torch[-14:].cpu().tolist()}\n")
-            sys.stderr.write(f"  body_q[-2:]={bq_torch[-2:].cpu().tolist()}\n")
-            sys.stderr.flush()
 
     @classmethod
     def forward(cls) -> None:
         """Update articulation kinematics, skipping articulations VBD owns directly."""
-        if not getattr(cls, "_dbg_forward_entered", False):
-            print(f"[vbd writeback] forward() ENTERED on {cls.__name__}", flush=True)
-            cls._dbg_forward_entered = True
         if cls._fk_mask is None:
             cls._build_fk_mask()
             cls._build_free_joint_ids()
-            fk_n = None if cls._fk_mask is None else int(cls._fk_mask.shape[0])
-            fj_n = None if cls._free_joint_ids is None else int(cls._free_joint_ids.shape[0])
-            print(f"[vbd writeback] after build: fk_mask shape={fk_n}, n_free_joints={fj_n}", flush=True)
             if cls._fk_mask is None:
                 super().forward()
                 return
@@ -554,8 +531,14 @@ class NewtonVBDManager(NewtonManager):
             local_site_map: dict[str, list[list[int]]] = {}
             site_entries = proto_sites.get(id(proto), {})
 
-            # Add each env as a separate Newton world
+            # Two passes: rigid prototypes first across all envs, then
+            # per-world hooks. This lays out bodies as
+            # ``[Franka_env0, Franka_env1, ..., Cable_env0, Cable_env1, ...]``
+            # so the MJWarp-owned set is a dense ``[0, N)`` prefix that
+            # :class:`~newton.solvers.experimental.coupled.SolverCoupled`'s
+            # prefix-limit fast path requires.
             xform_cache = UsdGeom.XformCache()
+            env_transforms: list[tuple[int, tuple[float, float, float], tuple[float, float, float, float]]] = []
             for col, (_, env_path) in enumerate(env_paths):
                 builder.begin_world()
                 offset = builder.shape_count
@@ -569,19 +552,27 @@ class NewtonVBDManager(NewtonManager):
                     rotation.GetImaginary()[2],
                     rotation.GetReal(),
                 )
+                env_transforms.append((col, pos, quat))
                 builder.add_builder(proto, xform=wp.transform(pos, quat))
                 for label, proto_shape_indices in site_entries.items():
                     if label not in local_site_map:
                         local_site_map[label] = [[] for _ in range(num_worlds)]
                     for proto_shape_idx in proto_shape_indices:
                         local_site_map[label][col].append(offset + proto_shape_idx)
-
-                # Run per-world builder hooks for this world (deformables, cables, ...).
-                if hasattr(cls, "_per_world_builder_hooks"):
-                    for hook in cls._per_world_builder_hooks:
-                        hook(builder, col, list(pos), list(quat))
-
                 builder.end_world()
+
+            # Run per-world builder hooks (cable bodies, deformables, ...)
+            # AFTER all rigid prototypes have been added. Re-enter each world via ``_current_world`` directly because
+            # :meth:`ModelBuilder.begin_world` always allocates a new world id.
+            # NOTE: Can be removed once Proxy Coupling supports non-contiguous index sets.
+            if hasattr(cls, "_per_world_builder_hooks") and cls._per_world_builder_hooks:
+                for col, pos, quat in env_transforms:
+                    builder._current_world = col
+                    try:
+                        for hook in cls._per_world_builder_hooks:
+                            hook(builder, col, list(pos), list(quat))
+                    finally:
+                        builder._current_world = -1
 
             NewtonManager._cl_site_index_map = {
                 **global_site_map,
