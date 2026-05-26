@@ -20,12 +20,14 @@ from __future__ import annotations
 import math
 
 import torch
-from isaaclab.utils.math import quat_from_angle_axis
+from isaaclab_newton.physics import MJWarpSolverCfg
+from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -33,14 +35,15 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.utils.configclass import configclass
-
-from isaaclab_newton.physics import MJWarpSolverCfg
+from isaaclab.utils.math import quat_from_angle_axis
 
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledNewtonCfg, ProxyCoupledMJWarpVBDSolverCfg, VBDSolverCfg, NewtonModelCfg
-
-
-from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import (
+    CoupledNewtonCfg,
+    NewtonModelCfg,
+    ProxyCoupledMJWarpVBDSolverCfg,
+    VBDSolverCfg,
+)
 
 from . import mdp
 from .franka_cable_env_cfg import FrankaCableEnvCfg, _FrankaCableSceneCfg
@@ -152,7 +155,6 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         self.robot.actuators["panda_hand"].damping = 300.0
 
 
-
 ##
 # MDP overrides
 ##
@@ -256,6 +258,21 @@ class EventCfg:
         mode="reset",
         params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
     )
+    reset_assembly = EventTerm(
+        func=mdp.reset_cable_assembly_uniform,
+        mode="reset",
+        params={
+            "pose_range": {
+                "x": (-0.05, 0.05),
+                "y": (-0.05, 0.05),
+                "z": (-0.02, 0.02),
+                "yaw": (-math.pi / 18.0, math.pi / 18.0),
+            },
+            "cable_cfg": SceneEntityCfg("cable"),
+            "anchor_cfg": SceneEntityCfg("anchor"),
+            "plug_cfg": SceneEntityCfg("object"),
+        },
+    )
 
 
 @configclass
@@ -355,11 +372,7 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
                 ),
                 vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=5e2),
                 mjwarp_bodies=[SceneEntityCfg("robot")],
-                vbd_bodies=[
-                    SceneEntityCfg("object"), 
-                    SceneEntityCfg("anchor"), 
-                    SceneEntityCfg("cable")
-                ],
+                vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
