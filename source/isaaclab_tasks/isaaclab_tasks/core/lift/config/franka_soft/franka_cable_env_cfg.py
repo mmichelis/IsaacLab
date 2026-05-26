@@ -7,8 +7,12 @@
 
 from __future__ import annotations
 
+import math
+
 from isaaclab_newton.physics import MJWarpSolverCfg
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
+from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
+from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
@@ -19,6 +23,7 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.utils.configclass import configclass
 
@@ -31,8 +36,6 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
 )
 
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
-from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
-from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 
 from . import mdp
 from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
@@ -172,6 +175,19 @@ class EventCfg:
         mode="reset",
         params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
     )
+    reset_cable = EventTerm(
+        func=mdp.reset_cable_uniform,
+        mode="reset",
+        params={
+            "pose_range": {
+                "x": (-0.05, 0.05),
+                "y": (-0.05, 0.05),
+                "z": (-0.02, 0.02),
+                "yaw": (-math.pi / 18.0, math.pi / 18.0),
+            },
+            "cable_cfg": SceneEntityCfg("object"),
+        },
+    )
 
 
 @configclass
@@ -224,7 +240,7 @@ class RewardsCfg:
 class TerminationsCfg:
     """Time out and out-of-bounds terminations."""
 
-    # time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
 
 @configclass
@@ -244,7 +260,7 @@ class FrankaCableEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 6.0
+        self.episode_length_s = 3.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0

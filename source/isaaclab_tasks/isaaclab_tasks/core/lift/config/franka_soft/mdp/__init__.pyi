@@ -13,8 +13,14 @@ __all__ = [
     "object_lifted",
     "object_outside_table_bounds",
     "ObjectSampledPointsInRobotRootFrame",
+    "reset_cable_assembly_uniform",
+    "reset_cable_uniform",
 ]
 
+from .events import (
+    reset_cable_assembly_uniform,
+    reset_cable_uniform,
+)
 from .observations import (
     ObjectSampledPointsInRobotRootFrame,
     object_com_in_robot_root_frame,
