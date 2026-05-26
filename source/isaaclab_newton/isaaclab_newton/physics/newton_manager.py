@@ -567,7 +567,7 @@ class NewtonManager(PhysicsManager):
         # broadphase/narrowphase) is stale until FK runs.
         # Only runs FK for dirtied articulations via the accumulated mask.
         if cls._needs_collision_pipeline:
-            cls.forward(cls._model, cls._state_0.joint_q, cls._state_0.joint_qd, cls._state_0, cls._fk_reset_mask)
+            eval_fk(cls._model, cls._state_0.joint_q, cls._state_0.joint_qd, cls._state_0, cls._fk_reset_mask)
 
         # Zero both masks after consumption
         NewtonManager._world_reset_mask.zero_()
