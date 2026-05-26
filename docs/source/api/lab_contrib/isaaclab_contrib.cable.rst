@@ -8,8 +8,14 @@ isaaclab_contrib.cable
   .. autosummary::
 
     cable_object.CableObject
+    cable_object_data.CableData
     cable_object.CableRegistryEntry
-    cable_object_cfg.CableObjectCfg
+
+  .. rubric:: Re-exported from :mod:`isaaclab.assets.cable_object`
+
+  .. autosummary::
+
+    CableObjectCfg
 
   .. rubric:: Replicate-hook plumbing
 
@@ -27,7 +33,12 @@ Cable Object
   :inherited-members:
   :show-inheritance:
 
-.. autoclass:: isaaclab_contrib.cable.cable_object_cfg.CableObjectCfg
+.. autoclass:: isaaclab.assets.cable_object.CableObjectCfg
+  :members:
+  :show-inheritance:
+  :exclude-members: __init__
+
+.. autoclass:: isaaclab_contrib.cable.cable_object_data.CableData
   :members:
   :show-inheritance:
   :exclude-members: __init__

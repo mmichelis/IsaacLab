@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
     from isaaclab.renderers.base_renderer import BaseRenderer
 
+    from isaaclab_contrib.cable import CableObject
+
 import torch
 import warp as wp
 
@@ -25,6 +27,7 @@ from isaaclab.assets import (
     Articulation,
     ArticulationCfg,
     AssetBaseCfg,
+    CableObjectCfg,
     DeformableObject,
     DeformableObjectCfg,
     RigidObject,
@@ -133,6 +136,7 @@ class InteractiveScene:
         self._terrain = None
         self._articulations = dict()
         self._deformable_objects = dict()
+        self._cables = dict()
         self._rigid_objects = dict()
         self._rigid_object_collections = dict()
         self._sensors = dict()
@@ -537,6 +541,11 @@ class InteractiveScene:
         return self._deformable_objects
 
     @property
+    def cables(self) -> dict[str, CableObject]:
+        """A dictionary of cables in the scene."""
+        return self._cables
+
+    @property
     def rigid_objects(self) -> dict[str, RigidObject]:
         """A dictionary of rigid objects in the scene."""
         return self._rigid_objects
@@ -607,6 +616,8 @@ class InteractiveScene:
             articulation.reset(env_ids)
         for deformable_object in self._deformable_objects.values():
             deformable_object.reset(env_ids)
+        for cable in self._cables.values():
+            cable.reset(env_ids)
         for rigid_object in self._rigid_objects.values():
             rigid_object.reset(env_ids)
         for surface_gripper in self._surface_grippers.values():
@@ -624,6 +635,8 @@ class InteractiveScene:
             articulation.write_data_to_sim()
         for deformable_object in self._deformable_objects.values():
             deformable_object.write_data_to_sim()
+        for cable in self._cables.values():
+            cable.write_data_to_sim()
         for rigid_object in self._rigid_objects.values():
             rigid_object.write_data_to_sim()
         for surface_gripper in self._surface_grippers.values():
@@ -647,6 +660,8 @@ class InteractiveScene:
             articulation.update(dt)
         for deformable_object in self._deformable_objects.values():
             deformable_object.update(dt)
+        for cable in self._cables.values():
+            cable.update(dt)
         for rigid_object in self._rigid_objects.values():
             rigid_object.update(dt)
         for rigid_object_collection in self._rigid_object_collections.values():
@@ -826,6 +841,7 @@ class InteractiveScene:
         for asset_family in [
             self._articulations,
             self._deformable_objects,
+            self._cables,
             self._rigid_objects,
             self._rigid_object_collections,
             self._sensors,
@@ -853,6 +869,7 @@ class InteractiveScene:
         for asset_family in [
             self._articulations,
             self._deformable_objects,
+            self._cables,
             self._rigid_objects,
             self._rigid_object_collections,
             self._sensors,
@@ -924,6 +941,8 @@ class InteractiveScene:
                 self._articulations[asset_name] = asset_cfg.class_type(asset_cfg)
             elif isinstance(asset_cfg, DeformableObjectCfg):
                 self._deformable_objects[asset_name] = asset_cfg.class_type(asset_cfg)
+            elif isinstance(asset_cfg, CableObjectCfg):
+                self._cables[asset_name] = asset_cfg.class_type(asset_cfg)
             elif isinstance(asset_cfg, RigidObjectCfg):
                 self._rigid_objects[asset_name] = asset_cfg.class_type(asset_cfg)
             elif isinstance(asset_cfg, RigidObjectCollectionCfg):

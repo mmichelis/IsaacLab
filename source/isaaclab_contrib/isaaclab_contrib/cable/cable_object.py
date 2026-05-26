@@ -8,9 +8,11 @@
 The structure mirrors :mod:`isaaclab_contrib.deformable.deformable_object`. Cables
 differ from deformables in two respects only:
 
-1. They subclass :class:`Articulation` (not :class:`BaseDeformableObject`) because
+1. They are a peer of :class:`~isaaclab.assets.RigidObject` under
+   :class:`~isaaclab.assets.AssetBase` because
    ``newton.ModelBuilder.add_rod_graph`` produces a Newton articulation, and
-   ``ArticulationView`` already covers state read/write.
+   :class:`~newton.selection.ArticulationView` is composed as a backend
+   primitive to expose per-segment poses + joint state.
 2. Their material is consumed in-memory by the cable replicate hook (no USD
    read-back), since :class:`CableObject` always holds the source cfg.
 """
@@ -22,14 +24,27 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import newton
+import numpy as np
 import warp as wp
-from isaaclab_newton.assets.articulation.articulation import Articulation
 from isaaclab_newton.physics import NewtonManager as SimulationManager
+from newton.selection import ArticulationView
 
 import isaaclab.sim as sim_utils
+from isaaclab.assets.asset_base import AssetBase
+from isaaclab.physics import PhysicsEvent
+
+from .cable_object_data import CableData
 
 if TYPE_CHECKING:
-    from .cable_object_cfg import CableObjectCfg
+    from isaaclab.assets.cable_object import CableObjectCfg
+
+
+# Sub-label produced by ``newton.ModelBuilder.add_rod_graph`` under the cable's
+# source prim: Newton suffixes ``_articulation`` to the configured ``label``,
+# and ``add_cable_entry_to_builder`` uses ``label=f"{prim_path}/cable"``, so the
+# resulting articulation prim sits at ``{prim_path}/cable_articulation``. This
+# is the path :class:`newton.selection.ArticulationView` must select.
+_CABLE_ARTICULATION_SUBPATH = "/cable_articulation"
 
 
 @dataclass
@@ -184,23 +199,29 @@ def install_cable_builder_hooks() -> None:
         SimulationManager._per_world_builder_hooks.append(add_registered_cables_to_builder)
 
 
-class CableObject(Articulation):
+class CableObject(AssetBase):
     """Cable / 1D-rod asset (Newton backend).
 
-    Subclasses :class:`Articulation` so the cable's per-segment poses and
-    per-cable-joint state are exposed via :class:`ArticulationData` with no
-    parallel data class.
+    Peer of :class:`~isaaclab.assets.RigidObject` /
+    :class:`~isaaclab.assets.Articulation` /
+    :class:`~isaaclab.assets.DeformableObject` under
+    :class:`~isaaclab.assets.AssetBase`. Newton's
+    :class:`~newton.selection.ArticulationView` is composed as a backend
+    primitive (the same way :class:`~isaaclab.assets.RigidObject` uses it for
+    its single-body articulations), but the cable is not an Articulation in
+    the IsaacLab class hierarchy.
 
     Override surface beyond the base:
 
-    - :meth:`__init__` defers to the base ``__init__`` and then calls
-      :meth:`_register_cable` (mirroring :meth:`DeformableObject._register_deformable`),
-      which builds a :class:`CableRegistryEntry` from cfg and appends it to the
-      cable registry. Caller must have called :func:`install_cable_builder_hooks`
-      before constructing any :class:`CableObject` (typical: from a solver manager
-      init, mirroring how the deformable contrib package wires things up).
-    - :meth:`reset` snaps each environment's cable bodies back to the
-      rest pose stored in ``model.body_q``.
+    - :meth:`__init__` calls :meth:`AssetBase.__init__` (which spawns the USD
+      prim and registers the physics-ready callback) and then
+      :meth:`_register_cable`, which reads the spawned ``UsdGeomBasisCurves``
+      and appends an entry to :attr:`SimulationManager._cable_registry`.
+      Caller must have called :func:`install_cable_builder_hooks` (typically
+      from a VBD solver-manager ``initialize()``) before constructing any
+      :class:`CableObject`.
+    - :meth:`reset` snaps each environment's cable bodies back to the rest
+      pose stored in ``model.body_q``.
     """
 
     cfg: CableObjectCfg
@@ -209,13 +230,148 @@ class CableObject(Articulation):
         """Initialize the cable object.
 
         Args:
-            cfg: A configuration instance.
+            cfg: Cable configuration.
         """
         super().__init__(cfg)
-
-        # Read the cable's centerline / material from cfg and register in the
-        # cable registry. Mirrors :meth:`DeformableObject._register_deformable`.
+        # Read the spawned USD prim and append to SimulationManager._cable_registry.
         self._registry_entry = self._register_cable()
+
+    # ------------------------------------------------------------------
+    # AssetBase abstracts
+    # ------------------------------------------------------------------
+
+    @property
+    def num_instances(self) -> int:
+        """Number of cable instances (one per env)."""
+        return self._root_view.count
+
+    @property
+    def num_bodies(self) -> int:
+        """Number of capsule bodies per cable instance."""
+        return self._root_view.link_count
+
+    @property
+    def data(self) -> CableData:
+        """The cable's state container."""
+        return self._data
+
+    @property
+    def root_view(self) -> ArticulationView:
+        """Underlying Newton selection view (composition; not inherited)."""
+        return self._root_view
+
+    def update(self, dt: float) -> None:
+        """Advance the cable's data timestamp.
+
+        Args:
+            dt: Simulation step [s].
+        """
+        self._data.update(dt)
+
+    def write_data_to_sim(self) -> None:
+        """No-op: cables are passive (VBD-driven); nothing to flush each step."""
+        pass
+
+    def reset(
+        self,
+        env_ids: Sequence[int] | slice | None = None,
+        env_mask: wp.array | None = None,
+    ) -> None:
+        """Snap each env's cable bodies back to the spawn pose.
+
+        Restores four arrays per-env body slice. ``state.body_q`` and
+        ``solver.body_q_prev`` come from :attr:`Model.body_q` (the rest-pose
+        template that :class:`SolverVBD` itself reads at init);
+        ``state.body_qd`` and ``solver.body_inertia_q`` are zeroed.
+        ``body_q_prev`` is load-bearing — AVBD computes implicit velocity as
+        ``(body_q - body_q_prev) / dt``, so without this the snap-back
+        produces ~700 m/s spurious velocities.
+
+        Joint state and AVBD penalty/Dahl buffers are intentionally not
+        touched: they are global to the world (penalty ``k``) or would need
+        joint offsets in the registry (Dahl, ``joint_q``); in practice the
+        body-side reset is sufficient to keep post-reset dynamics bounded.
+
+        There is no ``super().reset(...)`` call: :class:`AssetBase.reset` is
+        abstract. The chain that ``Articulation.reset`` ran (actuator reset,
+        Newton actuator-adapter reset, two wrench-composer resets) was
+        already no-op for cables (empty actuators dict, ``_has_newton_actuators``
+        never set, idempotent on empty masks), so nothing is lost by dropping it.
+
+        Args:
+            env_ids: Environment indices to reset. ``None`` means all.
+            env_mask: AssetBase signature parity; unused.
+        """
+        if not getattr(self, "_is_initialized", False) or SimulationManager._solver is None:
+            return
+        model = SimulationManager.get_model()
+        state = SimulationManager.get_state_0()
+        solver = SimulationManager._solver
+        body_offsets = self._registry_entry.body_offsets
+        n = len(self._registry_entry.edges)
+        # Per-call zero buffer for velocity slices (one segment chain wide).
+        zero_qd = wp.zeros(n, dtype=state.body_qd.dtype, device=state.body_qd.device)
+        zero_q = wp.zeros(n, dtype=solver.body_inertia_q.dtype, device=solver.body_inertia_q.device)
+        env_iter = range(len(body_offsets)) if env_ids is None or env_ids == slice(None) else list(env_ids)
+        for env_idx in env_iter:
+            offset = int(body_offsets[env_idx])
+            wp.copy(dest=state.body_q, src=model.body_q, dest_offset=offset, src_offset=offset, count=n)
+            wp.copy(dest=solver.body_q_prev, src=model.body_q, dest_offset=offset, src_offset=offset, count=n)
+            wp.copy(dest=state.body_qd, src=zero_qd, dest_offset=offset, count=n)
+            wp.copy(dest=solver.body_inertia_q, src=zero_q, dest_offset=offset, count=n)
+
+    # ------------------------------------------------------------------
+    # Backend setup
+    # ------------------------------------------------------------------
+
+    def _initialize_impl(self) -> None:
+        """Bind the cable to Newton's runtime.
+
+        Mirrors :meth:`isaaclab_newton.assets.RigidObject._initialize_impl`,
+        but the selector points at the rod-graph articulation that
+        :meth:`add_cable_entry_to_builder` produces (``{prim_path}/cable_articulation``).
+        """
+        # 1. Selector expression — note ``.replace(".*", "*")`` to convert from
+        #    regex (used by the cfg) to glob (expected by Newton's selection).
+        root_prim_path_expr = (self.cfg.prim_path + _CABLE_ARTICULATION_SUBPATH).replace(".*", "*")
+
+        # 2. View + data
+        self._root_view = ArticulationView(
+            SimulationManager.get_model(),
+            root_prim_path_expr,
+            verbose=False,
+        )
+        self._data = CableData(self._root_view, self._device)
+
+        # 3. Rebind sim buffers on physics reset, matching RigidObject.
+        self._physics_ready_handle = SimulationManager.register_callback(
+            lambda _: self._data._create_simulation_bindings(),
+            PhysicsEvent.PHYSICS_READY,
+            name=f"cable_object_rebind_{self.cfg.prim_path}",
+        )
+
+        # 4. Index/mask buffers actually used: envs + bodies. No joint/tendon/
+        #    wrench-composer/actuator buffers — see plan/spec for the drop list.
+        self._ALL_INDICES = wp.array(np.arange(self.num_instances, dtype=np.int32), device=self.device)
+        self._ALL_ENV_MASK = wp.ones((self.num_instances,), dtype=wp.bool, device=self.device)
+        self._ALL_BODY_INDICES = wp.array(np.arange(self.num_bodies, dtype=np.int32), device=self.device)
+        self._ALL_BODY_MASK = wp.ones((self.num_bodies,), dtype=wp.bool, device=self.device)
+
+        # 5. Prime the data class.
+        self._data._create_simulation_bindings()
+        self.update(0.0)
+        self._data.is_primed = True
+
+    def _clear_callbacks(self) -> None:
+        """Clear callbacks, including the physics-ready rebind handle."""
+        super()._clear_callbacks()
+        if hasattr(self, "_physics_ready_handle") and self._physics_ready_handle is not None:
+            self._physics_ready_handle.deregister()
+            self._physics_ready_handle = None
+
+    # ------------------------------------------------------------------
+    # Cable registration (USD → registry entry)
+    # ------------------------------------------------------------------
 
     def _register_cable(self) -> CableRegistryEntry:
         """Read cable geometry + material from the spawned USD prim and register on
@@ -403,46 +559,3 @@ class CableObject(Articulation):
         )
         SimulationManager._cable_registry.append(entry)
         return entry
-
-    def reset(
-        self,
-        env_ids: Sequence[int] | slice | None = None,
-        env_mask: wp.array | None = None,
-    ) -> None:
-        """Snap each env's cable bodies back to the spawn pose.
-
-        Restores four arrays per-env body slice. ``state.body_q`` and
-        ``solver.body_q_prev`` come from :attr:`Model.body_q` (the rest-pose
-        template that :class:`SolverVBD` itself reads at init);
-        ``state.body_qd`` and ``solver.body_inertia_q`` are zeroed.
-        ``body_q_prev`` is load-bearing — AVBD computes implicit velocity as
-        ``(body_q - body_q_prev) / dt``, so without this the snap-back
-        produces ~700 m/s spurious velocities.
-
-        Joint state and AVBD penalty/Dahl buffers are intentionally not
-        touched: they are global to the world (penalty ``k``) or would need
-        joint offsets in the registry (Dahl, ``joint_q``); in practice the
-        body-side reset is sufficient to keep post-reset dynamics bounded.
-
-        Args:
-            env_ids: Environment indices to reset. ``None`` means all.
-            env_mask: Parent-class compatibility; unused.
-        """
-        super().reset(env_ids=env_ids, env_mask=env_mask)
-        if not getattr(self, "_is_initialized", False) or SimulationManager._solver is None:
-            return
-        model = SimulationManager.get_model()
-        state = SimulationManager.get_state_0()
-        solver = SimulationManager._solver
-        body_offsets = self._registry_entry.body_offsets
-        n = len(self._registry_entry.edges)
-        # Per-call zero buffer for velocity slices (one segment chain wide).
-        zero_qd = wp.zeros(n, dtype=state.body_qd.dtype, device=state.body_qd.device)
-        zero_q = wp.zeros(n, dtype=solver.body_inertia_q.dtype, device=solver.body_inertia_q.device)
-        env_iter = range(len(body_offsets)) if env_ids is None or env_ids == slice(None) else list(env_ids)
-        for env_idx in env_iter:
-            offset = int(body_offsets[env_idx])
-            wp.copy(dest=state.body_q, src=model.body_q, dest_offset=offset, src_offset=offset, count=n)
-            wp.copy(dest=solver.body_q_prev, src=model.body_q, dest_offset=offset, src_offset=offset, count=n)
-            wp.copy(dest=state.body_qd, src=zero_qd, dest_offset=offset, count=n)
-            wp.copy(dest=solver.body_inertia_q, src=zero_q, dest_offset=offset, count=n)
