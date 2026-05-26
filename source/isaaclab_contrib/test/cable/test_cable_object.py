@@ -183,7 +183,9 @@ def test_add_cable_entry_populates_body_offsets_and_last_edge_length():
 
 
 def test_cable_object_cfg_defaults():
-    """CableObjectCfg overrides actuators and articulation_root_prim_path."""
+    """CableObjectCfg now inherits AssetBaseCfg (not ArticulationCfg)."""
+    from isaaclab.assets.asset_base_cfg import AssetBaseCfg
+
     cfg = CableObjectCfg(
         prim_path="/World/Cable",
         spawn=sim_utils.CableCfg(
@@ -192,8 +194,13 @@ def test_cable_object_cfg_defaults():
             physics_material=NewtonCableMaterialCfg(),
         ),
     )
-    assert cfg.articulation_root_prim_path == "/cable_articulation"
-    assert cfg.actuators == {}
+    # Decoupled from Articulation: these fields no longer exist.
+    assert not hasattr(cfg, "articulation_root_prim_path")
+    assert not hasattr(cfg, "actuators")
+    # And it is genuinely an AssetBaseCfg, not an ArticulationCfg.
+    assert isinstance(cfg, AssetBaseCfg)
+    # Pose-only init_state is still present.
+    assert cfg.init_state.pos == (0.0, 0.0, 0.0)
 
 
 @pytest.mark.parametrize(
@@ -201,20 +208,21 @@ def test_cable_object_cfg_defaults():
     [
         # spawn=None → ValueError mentioning "CableCfg"
         (True, None, ValueError, "CableCfg"),
-        # registry not installed → RuntimeError mentioning the VBD solver requirement
-        (False, "valid", RuntimeError, "VBD"),
+        # registry not installed → RuntimeError mentioning VBD solver requirement
+        (False, "valid", RuntimeError, "VBD solver"),
     ],
     ids=["spawn_none", "hooks_not_installed"],
 )
 def test_cable_object_init_failure_paths(monkeypatch, setup_registry, spawn, expected_exc, expected_match):
     """CableObject.__init__ raises clear errors on invalid cfg or missing setup."""
+    from isaaclab.assets.asset_base import AssetBase
+
     if setup_registry:
         monkeypatch.setattr(NewtonManager, "_cable_registry", [], raising=False)
     else:
         monkeypatch.delattr(NewtonManager, "_cable_registry", raising=False)
-    monkeypatch.setattr(Articulation, "__init__", lambda self, cfg: setattr(self, "cfg", cfg))
+    monkeypatch.setattr(AssetBase, "__init__", lambda self, cfg: setattr(self, "cfg", cfg))
 
-    # "valid" sentinel → construct a real CableCfg
     if spawn == "valid":
         spawn_value = sim_utils.CableCfg(
             positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
@@ -578,3 +586,164 @@ def test_cable_object_reset_partial_envs_and_body_q_prev():
                 perturbed_q[slc],
                 err_msg=f"env {env_idx}: solver.body_q_prev reset despite env not being in env_ids.",
             )
+
+
+# ---------------------------------------------------------------------------
+# New tests codifying the refactor (Task 6)
+# ---------------------------------------------------------------------------
+
+
+def test_cable_object_is_not_articulation():
+    """Codify the decoupling: a CableObject must not be an Articulation."""
+    from isaaclab.assets.asset_base import AssetBase
+
+    # Class-level check: no need to instantiate.
+    assert issubclass(CableObject, AssetBase)
+    assert not issubclass(CableObject, Articulation)
+
+
+def test_cable_data_no_actuator_surface():
+    """CableData must not surface joint targets, actuators, jacobians,
+    or mass-matrix fields."""
+    from isaaclab_contrib.cable import CableData
+
+    forbidden = (
+        "joint_pos_target",
+        "joint_vel_target",
+        "joint_effort_target",
+        "computed_torque",
+        "applied_torque",
+        "joint_stiffness",
+        "joint_damping",
+        "joint_armature",
+        "joint_friction_coeff",
+        "gear_ratio",
+        "joint_pos_limits",
+        "joint_vel_limits",
+        "joint_effort_limits",
+        "soft_joint_pos_limits",
+        "soft_joint_vel_limits",
+        "body_link_jacobian_w",
+        "body_com_jacobian_w",
+        "mass_matrix",
+        "gravity_compensation_forces",
+        "projected_gravity_b",
+        "heading_w",
+        "body_mass",
+        "body_inertia",
+        "body_com_pose_b",
+    )
+    for name in forbidden:
+        assert not hasattr(CableData, name), (
+            f"CableData must not expose {name!r} — it is part of the joint-control / "
+            "actuator / dynamics surface that the cable refactor intentionally drops."
+        )
+
+
+@pytest.fixture
+def _cable_data_sim():
+    """Spawn a single curved cable on VBD; yield (cable, sim) ready to step."""
+    cable_spawn = sim_utils.CableCfg(
+        positions=[(0.0, 0.0, 0.5), (0.05, 0.0, 0.5), (0.1, 0.0, 0.5)],
+        width=0.01,
+        physics_material=NewtonCableMaterialCfg(),
+        collision_props=sim_utils.CollisionPropertiesCfg(),
+    )
+
+    @configclass
+    class _SceneCfg(InteractiveSceneCfg):
+        num_envs: int = 2
+        env_spacing: float = 1.0
+        cable: CableObjectCfg = CableObjectCfg(prim_path="{ENV_REGEX_NS}/Cable", spawn=cable_spawn)
+
+    newton_sim_cfg = SimulationCfg(physics=NewtonCfg(solver_cfg=VBDSolverCfg()), dt=0.01)
+
+    with build_simulation_context(device="cuda:0", sim_cfg=newton_sim_cfg, auto_add_lighting=True) as sim:
+        sim._app_control_on_stop_handle = None
+        scene = InteractiveScene(_SceneCfg())
+        sim.reset()
+        yield scene["cable"], sim
+
+
+def test_cable_data_segment_pose_shapes(_cable_data_sim):
+    """data.body_link_pose_w / body_link_vel_w / joint_pos / joint_vel have the
+    shapes promised in CableData's docstrings."""
+    cable, _ = _cable_data_sim
+    num_envs = cable.num_instances
+    num_bodies = cable.num_bodies
+
+    # body_link_pose_w returns a ProxyArray; access the underlying warp array.
+    body_pose = cable.data.body_link_pose_w
+    pose_warp = body_pose.warp if hasattr(body_pose, "warp") else body_pose
+    pose_shape = pose_warp.shape
+    # Newton transformf packs as (num_envs, num_bodies) with dtype transformf (7 floats).
+    assert pose_shape[0] == num_envs
+    assert pose_shape[1] == num_bodies
+
+    body_vel = cable.data.body_link_vel_w
+    vel_warp = body_vel.warp if hasattr(body_vel, "warp") else body_vel
+    vel_shape = vel_warp.shape
+    assert vel_shape[0] == num_envs
+    assert vel_shape[1] == num_bodies
+
+    # Derive num_joints from the joint_pos array shape (avoids calling the
+    # num_joints property which requires view.dof_count — use cached _num_joints).
+    num_joints = cable.data._num_joints
+
+    joint_pos = cable.data.joint_pos
+    jp_warp = joint_pos.warp if hasattr(joint_pos, "warp") else joint_pos
+    jp_shape = jp_warp.shape
+    assert jp_shape[0] == num_envs
+    assert jp_shape[1] == num_joints
+
+    joint_vel = cable.data.joint_vel
+    jv_warp = joint_vel.warp if hasattr(joint_vel, "warp") else joint_vel
+    jv_shape = jv_warp.shape
+    assert jv_shape[0] == num_envs
+    assert jv_shape[1] == num_joints
+
+
+def test_cable_data_root_and_body_poses_are_well_formed(_cable_data_sim):
+    """root_link_pose_w has the per-env root shape and body_link_pose_w has the
+    per-env-per-body shape; both contain finite values after sim.reset().
+
+    Note: ``root_link_pose_w`` returns Newton's articulation root, which for an
+    ``add_rod_graph`` cable is not necessarily identical to
+    ``body_link_pose_w[:, 0]``. Use ``body_link_pose_w`` when you need the
+    pose of a specific capsule segment.
+    """
+    cable, _ = _cable_data_sim
+    num_envs = cable.num_instances
+    num_bodies = cable.num_bodies
+    root_pose = cable.data.root_link_pose_w
+    body_pose = cable.data.body_link_pose_w
+    # ProxyArray exposes .warp; convert to numpy via the warp array.
+    root_warp = root_pose.warp if hasattr(root_pose, "warp") else root_pose
+    body_warp = body_pose.warp if hasattr(body_pose, "warp") else body_pose
+    root_np = root_warp.numpy()
+    body_np = body_warp.numpy()
+    # root_link_pose_w is shape (num_envs,) dtype=transformf, or (num_envs, 7) in float layout.
+    assert root_np.shape[0] == num_envs
+    # body_link_pose_w is shape (num_envs, num_bodies) dtype=transformf.
+    assert body_np.shape[0] == num_envs
+    assert body_np.shape[1] == num_bodies
+    # All values must be finite (no NaN/Inf from a fresh sim.reset()).
+    assert np.all(np.isfinite(root_np)), "root_link_pose_w contains non-finite values after reset."
+    assert np.all(np.isfinite(body_np)), "body_link_pose_w contains non-finite values after reset."
+
+
+def test_cable_data_segment_poses_after_step(_cable_data_sim):
+    """After several sim steps under gravity, the cable's tip z drops."""
+    cable, sim = _cable_data_sim
+    body_pose_before = cable.data.body_link_pos_w
+    pos_warp_before = body_pose_before.warp if hasattr(body_pose_before, "warp") else body_pose_before
+    tip_z_before = pos_warp_before.numpy()[:, -1, 2].copy()
+    for _ in range(20):
+        sim.step()
+    cable.update(sim.cfg.dt)
+    body_pose_after = cable.data.body_link_pos_w
+    pos_warp_after = body_pose_after.warp if hasattr(body_pose_after, "warp") else body_pose_after
+    tip_z_after = pos_warp_after.numpy()[:, -1, 2]
+    assert (tip_z_after < tip_z_before - 1e-3).all(), (
+        f"Cable tip did not move under gravity. before={tip_z_before}, after={tip_z_after}"
+    )

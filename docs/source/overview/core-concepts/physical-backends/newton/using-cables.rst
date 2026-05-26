@@ -115,8 +115,13 @@ physics rod graph is materialized at replicate time via
 or wire.
 
 Wrap the spawner in a :class:`~isaaclab_contrib.cable.CableObjectCfg` to get a
-runtime asset that can be reset and inspected through
-:class:`~isaaclab_newton.assets.articulation.Articulation` state:
+runtime asset that can be reset and inspected. :class:`~isaaclab_contrib.cable.CableObject`
+is a peer of :class:`~isaaclab.assets.RigidObject` / :class:`~isaaclab.assets.Articulation` /
+:class:`~isaaclab.assets.DeformableObject` under :class:`~isaaclab.assets.AssetBase`;
+its per-segment / root / joint state is exposed via
+:class:`~isaaclab_contrib.cable.CableData` (a curated subset of the data surface
+that :class:`~isaaclab_newton.assets.ArticulationData` would expose, with joint
+targets, actuators, tendons, jacobians, and mass matrices intentionally absent):
 
 .. code-block:: python
 

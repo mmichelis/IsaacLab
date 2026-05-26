@@ -26,6 +26,7 @@ __all__ = [
     "DeformableObject",
     "DeformableObjectCfg",
     "DeformableObjectData",
+    "CableObjectCfg",
 ]
 
 from .articulation import (
@@ -58,3 +59,4 @@ from .deformable_object import (
     DeformableObjectCfg,
     DeformableObjectData,
 )
+from .cable_object import CableObjectCfg
