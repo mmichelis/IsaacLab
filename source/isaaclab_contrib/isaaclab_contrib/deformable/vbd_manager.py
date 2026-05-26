@@ -29,6 +29,37 @@ if TYPE_CHECKING:
     from isaaclab.sim.simulation_context import SimulationContext
 
 logger = logging.getLogger(__name__)
+print(f"[VBD MANAGER LOADED v3] file={__file__}", flush=True)
+
+
+@wp.kernel(enable_backward=False)
+def _write_free_joint_q_from_body_q(
+    free_joint_ids: wp.array(dtype=int),
+    joint_q_start: wp.array(dtype=int),
+    joint_child: wp.array(dtype=int),
+    body_q: wp.array(dtype=wp.transformf),
+    joint_q: wp.array(dtype=float),
+):
+    """Copy each FREE joint's child ``body_q`` transform into its ``joint_q`` slot.
+
+    FREE joints store their pose as 7 floats matching the ``wp.transformf``
+    layout, so this is a straight component copy.
+
+    NOTE: Can be removed once VBD supports maximal coordinates with full state updates.
+    """
+    j = free_joint_ids[wp.tid()]
+    child = joint_child[j]
+    t = body_q[child]
+    p = wp.transform_get_translation(t)
+    r = wp.transform_get_rotation(t)
+    q0 = joint_q_start[j]
+    joint_q[q0 + 0] = p[0]
+    joint_q[q0 + 1] = p[1]
+    joint_q[q0 + 2] = p[2]
+    joint_q[q0 + 3] = r[0]
+    joint_q[q0 + 4] = r[1]
+    joint_q[q0 + 5] = r[2]
+    joint_q[q0 + 6] = r[3]
 
 
 @wp.kernel(enable_backward=False)
@@ -67,6 +98,8 @@ class NewtonVBDManager(NewtonManager):
     _cable_body_q_cpu = None
     _fk_mask: wp.array | None = None
     """``False`` for articulations VBD owns directly in ``body_q`` (CABLE or FREE joints), ``True`` elsewhere."""
+    _free_joint_ids: wp.array | None = None
+    """Indices of FREE joints whose ``body_q`` must be copied back to ``joint_q`` each step."""
 
     @classmethod
     def initialize(cls, sim_context: SimulationContext) -> None:
@@ -94,6 +127,7 @@ class NewtonVBDManager(NewtonManager):
         cls._curves_dirty = False
         cls._cable_body_q_cpu = None
         cls._fk_mask = None
+        cls._free_joint_ids = None
         NewtonManager._cable_registry = []
         NewtonManager._pending_cable_attachments = []
         NewtonManager._deformable_registry = []
@@ -316,10 +350,78 @@ class NewtonVBDManager(NewtonManager):
         cls._fk_mask = wp.array(mask_np, dtype=wp.bool, device=PhysicsManager._device)
 
     @classmethod
+    def _build_free_joint_ids(cls) -> None:
+        """Cache FREE joint indices for the :func:`_write_free_joint_q_from_body_q` kernel.
+
+        VBD integrates FREE-jointed rigids in ``body_q`` only, leaving the
+        corresponding ``joint_q[0:7]`` slots stale. Newton's ``ArticulationView``
+        reads root transforms from ``joint_q``, so without this writeback
+        :attr:`RigidObjectData.body_com_pos_w` and friends never update.
+
+        NOTE: Can be removed once VBD supports maximal coordinates with full state updates.
+        """
+        model = cls._model
+        if model is None or model.joint_type is None or int(model.joint_count) == 0:
+            return
+        joint_type_np = model.joint_type.numpy()
+        free_idx = np.where(joint_type_np == int(JointType.FREE))[0]
+        if free_idx.size == 0:
+            return
+        cls._free_joint_ids = wp.array(free_idx.astype(np.int32), dtype=int, device=PhysicsManager._device)
+
+    @classmethod
+    def _run_solver_substeps(cls, contacts) -> None:
+        """Run substeps, then sync FREE-joint ``joint_q`` from ``body_q``.
+
+        See :meth:`_build_free_joint_ids` for why the writeback is required.
+        Index arrays are built lazily in :meth:`forward` at init time to avoid
+        host-device transfers on the step path (which fail under graph capture).
+        """
+        if not getattr(cls, "_dbg_substeps_entered", False):
+            n = None if cls._free_joint_ids is None else int(cls._free_joint_ids.shape[0])
+            print(f"[vbd writeback] _run_solver_substeps ENTERED on {cls.__name__}, n_free_joints={n}", flush=True)
+            cls._dbg_substeps_entered = True
+        super()._run_solver_substeps(contacts)
+        if cls._free_joint_ids is None:
+            if not getattr(cls, "_dbg_no_free", False):
+                print("[vbd writeback] _free_joint_ids is None — no FREE joints detected", flush=True)
+                cls._dbg_no_free = True
+            return
+        wp.launch(
+            _write_free_joint_q_from_body_q,
+            dim=int(cls._free_joint_ids.shape[0]),
+            inputs=[
+                cls._free_joint_ids,
+                cls._model.joint_q_start,
+                cls._model.joint_child,
+                cls._state_0.body_q,
+                cls._state_0.joint_q,
+            ],
+            device=PhysicsManager._device,
+        )
+        import sys
+        cls._dbg_step = getattr(cls, "_dbg_step", 0) + 1
+        if cls._dbg_step in (5, 30):
+            sys.stderr.write(f"[vbd writeback step={cls._dbg_step}] launched kernel, joint_q.ptr=0x{cls._state_0.joint_q.ptr:x}\n")
+            sys.stderr.flush()
+            jq_torch = wp.to_torch(cls._state_0.joint_q)
+            bq_torch = wp.to_torch(cls._state_0.body_q)
+            sys.stderr.write(f"  joint_q[-14:]={jq_torch[-14:].cpu().tolist()}\n")
+            sys.stderr.write(f"  body_q[-2:]={bq_torch[-2:].cpu().tolist()}\n")
+            sys.stderr.flush()
+
+    @classmethod
     def forward(cls) -> None:
         """Update articulation kinematics, skipping articulations VBD owns directly."""
+        if not getattr(cls, "_dbg_forward_entered", False):
+            print(f"[vbd writeback] forward() ENTERED on {cls.__name__}", flush=True)
+            cls._dbg_forward_entered = True
         if cls._fk_mask is None:
             cls._build_fk_mask()
+            cls._build_free_joint_ids()
+            fk_n = None if cls._fk_mask is None else int(cls._fk_mask.shape[0])
+            fj_n = None if cls._free_joint_ids is None else int(cls._free_joint_ids.shape[0])
+            print(f"[vbd writeback] after build: fk_mask shape={fk_n}, n_free_joints={fj_n}", flush=True)
             if cls._fk_mask is None:
                 super().forward()
                 return
