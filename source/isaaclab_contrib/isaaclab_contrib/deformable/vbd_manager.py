@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from isaaclab.sim.simulation_context import SimulationContext
 
 logger = logging.getLogger(__name__)
-print(f"[VBD MANAGER LOADED v3] file={__file__}", flush=True)
 
 
 @wp.kernel(enable_backward=False)
