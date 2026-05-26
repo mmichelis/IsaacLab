@@ -185,7 +185,14 @@ class PickAndLiftSm:
     5. LIFT_OBJECT: The robot lifts the object to the desired pose. This is the final state.
     """
 
-    def __init__(self, dt: float, num_envs: int, device: torch.device | str = "cpu", position_threshold=0.03, task="Isaac-Lift-Soft-Franka-v0"):
+    def __init__(
+        self,
+        dt: float,
+        num_envs: int,
+        device: torch.device | str = "cpu",
+        position_threshold=0.03,
+        task="Isaac-Lift-Soft-Franka-v0",
+    ):
         """Initialize the state machine.
 
         Args:
@@ -309,7 +316,9 @@ def main():
     object_local_grasp_position = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device)
 
     # create state machine
-    pick_sm = PickAndLiftSm(env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device, task=args_cli.task)
+    pick_sm = PickAndLiftSm(
+        env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device, task=args_cli.task
+    )
 
     while simulation_app.is_running():
         # run everything in inference mode
