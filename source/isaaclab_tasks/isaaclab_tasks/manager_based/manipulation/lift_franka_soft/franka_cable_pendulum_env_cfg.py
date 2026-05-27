@@ -19,11 +19,11 @@ from __future__ import annotations
 
 import math
 
-from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
-from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 import torch
 from isaaclab_newton.physics import MJWarpSolverCfg
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
+from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
+from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
@@ -47,7 +47,7 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
     VBDSolverCfg,
 )
 
-from isaaclab_assets.robots.franka import FRANKA_ROBOTIQ_GRIPPER_CFG, FRANKA_PANDA_HIGH_PD_CFG
+from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
 from . import mdp
 from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
@@ -71,7 +71,7 @@ _ANCHOR_POS = (0.2, 0.3, 0.2)
 # Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
 _PLUG_RADIUS = 0.01
 _PLUG_HEIGHT = 0.03
-_PLUG_MASS = 0.01
+_PLUG_MASS = 0.02
 
 # Plug rest pose [m]: directly below the anchor at the cable's natural extent.
 _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
@@ -84,8 +84,8 @@ _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_
 
 @configclass
 class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
-    """Scene for the MJWarp Franka environment grasping a rigid VBD body attached to a VBD cable.
-    """
+    """Scene for the MJWarp Franka environment grasping a rigid VBD body attached to a VBD cable."""
+
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
     anchor: RigidObjectCfg = RigidObjectCfg(
@@ -102,7 +102,7 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
         spawn=sim_utils.CuboidCfg(
-            size=(2*_PLUG_RADIUS, 2*_PLUG_RADIUS, _PLUG_HEIGHT),
+            size=(2 * _PLUG_RADIUS, 2 * _PLUG_RADIUS, _PLUG_HEIGHT),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -223,7 +223,6 @@ class ActionsCfg:
         open_command_expr={"panda_finger_.*": 0.05},
         close_command_expr={"panda_finger_.*": 0.0},
     )
-
 
 
 @configclass
@@ -373,19 +372,19 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                vbd_cfg=VBDSolverCfg(iterations=50, rigid_avbd_beta=1e4, rigid_contact_k_start=1e3),
+                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
                 mjwarp_bodies=[SceneEntityCfg("robot")],
                 vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
-                proxy_iterations=1,
+                proxy_iterations=4,
                 proxy_collide_interval=1,
             ),
             model_cfg=NewtonModelCfg(
                 shape_material_ke=1e5,
                 shape_material_kd=1e-2,
-                shape_material_mu=4.0,
+                shape_material_mu=1.0,
             ),
             num_substeps=5,
         )

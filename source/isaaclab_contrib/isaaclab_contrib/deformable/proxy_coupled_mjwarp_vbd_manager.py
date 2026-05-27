@@ -20,7 +20,7 @@ import warp as wp
 from isaaclab_newton.physics.newton_manager import NewtonManager
 from newton import CollisionPipeline, JointType, Model, ShapeFlags
 from newton.solvers import SolverMuJoCo, SolverVBD
-from newton.solvers.experimental.coupled import ModelView, SolverCoupledProxy
+from newton.solvers.experimental.coupled import ModelView, SolverCoupledProxy, SolverCoupledAdmm
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.physics import PhysicsManager
@@ -99,12 +99,26 @@ class NewtonProxyCoupledMJWarpVBDManager(NewtonVBDManager):
                 )
             )
 
-        NewtonManager._solver = SolverCoupledProxy(
+        NewtonManager._solver = SolverCoupledAdmm(
             model=model,
             entries=entries,
-            coupling=SolverCoupledProxy.Config(
-                proxies=proxies,
+            # coupling=SolverCoupledProxy.Config(
+            #     proxies=proxies,
+            #     iterations=int(solver_cfg.proxy_iterations),
+            # ),
+            coupling=SolverCoupledAdmm.Config(
                 iterations=int(solver_cfg.proxy_iterations),
+                rho=30.0,
+                gamma=0.1,
+                baumgarte=0.005,
+                contact_pairs=[
+                    SolverCoupledAdmm.ContactPair(
+                        source="mjc", 
+                        destination="vbd",
+                        contact_distance=0.002,
+                        detection_margin=0.015
+                    ),
+                ],
             ),
         )
         NewtonManager._use_single_state = False
