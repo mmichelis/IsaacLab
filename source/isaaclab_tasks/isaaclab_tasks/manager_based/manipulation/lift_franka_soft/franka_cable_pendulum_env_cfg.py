@@ -383,9 +383,9 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
                 proxy_collide_interval=1,
             ),
             model_cfg=NewtonModelCfg(
-                shape_material_ke=1e4,
+                shape_material_ke=1e5,
                 shape_material_kd=1e-2,
-                shape_material_mu=1.0,
+                shape_material_mu=4.0,
             ),
             num_substeps=5,
         )
