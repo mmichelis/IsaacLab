@@ -121,7 +121,7 @@ class NewtonProxyCoupledMJWarpVBDManager(NewtonVBDManager):
             ),
         )
         NewtonManager._use_single_state = False
-        NewtonManager._needs_collision_pipeline = False
+        NewtonManager._needs_collision_pipeline = True
 
     @classmethod
     def _resolve_entity_to_body_ids(
