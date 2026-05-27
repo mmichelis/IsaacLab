@@ -65,12 +65,12 @@ _CABLE_WIDTH = 0.01
 _ANCHOR_POS = (0.2, 0.35, 0.2)
 
 # Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
-_PLUG_RADIUS = 0.03
+_PLUG_RADIUS = 0.01
 _PLUG_HEIGHT = 0.03
 _PLUG_MASS = 0.01
 
 # Plug rest pose [m]: directly below the anchor at the cable's natural extent.
-_PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 1) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
+_PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS-2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
 
 ##
@@ -112,7 +112,7 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=_PLUG_INIT_POS,
-            rot=quat_from_angle_axis(torch.tensor(torch.pi / 2.0), torch.tensor([1.0, 0.0, 0.0])),
+            rot=quat_from_angle_axis(torch.tensor(torch.pi / 2.0), torch.tensor([0.0, 1.0, 0.0])),
         ),
     )
 
@@ -124,7 +124,7 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
             width=_CABLE_WIDTH,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
             physics_material=NewtonCableMaterialCfg(
-                stretch_stiffness=1.0e4,
+                stretch_stiffness=1.0e6,
                 stretch_damping=1.0e-1,
                 bend_stiffness=5.0e-3,
                 bend_damping=2.0e-3,
@@ -139,7 +139,7 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
             ),
             CableAttachmentCfg(
                 target_prim_path="/World/envs/env_.*/Plug",
-                cable_anchor=-1,
+                cable_anchor=-2,
             ),
         ],
     )
@@ -150,9 +150,9 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
         # increase franka gripper stiffness
-        self.robot.actuators["panda_hand"].effort_limit_sim = 3000.0
-        self.robot.actuators["panda_hand"].stiffness = 6000.0
-        self.robot.actuators["panda_hand"].damping = 300.0
+        self.robot.actuators["panda_hand"].effort_limit_sim = 1500.0
+        self.robot.actuators["panda_hand"].stiffness = 1000.0
+        self.robot.actuators["panda_hand"].damping = 100.0
 
 
 ##
@@ -370,18 +370,18 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=5e2),
+                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e2),
                 mjwarp_bodies=[SceneEntityCfg("robot")],
                 vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
-                proxy_collide_interval=2,
+                proxy_collide_interval=5,
             ),
             model_cfg=NewtonModelCfg(
-                shape_material_ke=1e6,
-                shape_material_kd=1e-4,
-                shape_material_mu=9000.0,
+                shape_material_ke=1e4,
+                shape_material_kd=1e-5,
+                shape_material_mu=1.0,
             ),
-            num_substeps=10,
+            num_substeps=5,
         )
