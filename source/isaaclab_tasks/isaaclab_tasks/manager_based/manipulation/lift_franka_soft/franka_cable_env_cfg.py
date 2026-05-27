@@ -260,7 +260,7 @@ class FrankaCableEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 3.0
+        self.episode_length_s = 6.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
@@ -287,7 +287,6 @@ class FrankaCableEnvCfg(FrankaSoftEnvCfg):
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
-                proxy_collide_interval=5,
             ),
             model_cfg=NewtonModelCfg(
                 shape_material_ke=1e4,
