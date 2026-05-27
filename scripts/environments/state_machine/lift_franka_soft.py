@@ -160,7 +160,7 @@ def infer_state_machine(
             sm_state[tid] = PickSmState.APPROACH_TARGET
             sm_wait_time[tid] = 0.0
     elif state == PickSmState.APPROACH_TARGET:
-        approach_pos = wp.transform_get_translation(des_object_pose[tid]) + wp.vec3(0.03, 0.0, 0.0)
+        approach_pos = wp.transform_get_translation(des_object_pose[tid]) + wp.vec3(0.08, 0.0, 0.0)
         approach_rot = wp.transform_get_rotation(des_object_pose[tid])
         des_ee_pose[tid] = wp.transform(approach_pos, approach_rot)
         gripper_state[tid] = GripperState.CLOSE
@@ -169,7 +169,7 @@ def infer_state_machine(
             sm_state[tid] = PickSmState.OPEN_GRIPPER
             sm_wait_time[tid] = 0.0
     elif state == PickSmState.OPEN_GRIPPER:
-        release_pos = wp.transform_get_translation(des_object_pose[tid]) + wp.vec3(0.03, 0.0, 0.0)
+        release_pos = wp.transform_get_translation(des_object_pose[tid]) #+ wp.vec3(0.08, 0.0, 0.0)
         release_rot = wp.transform_get_rotation(des_object_pose[tid])
         des_ee_pose[tid] = wp.transform(release_pos, release_rot)
         gripper_state[tid] = GripperState.OPEN
@@ -185,10 +185,10 @@ class PickSmWaitTime:
 
     REST = wp.constant(0.2)
     APPROACH_ABOVE_OBJECT = wp.constant(1.0)
-    APPROACH_OBJECT = wp.constant(1.0)
-    GRASP_OBJECT = wp.constant(1.0)
-    LIFT_OBJECT = wp.constant(1.5)
-    APPROACH_TARGET = wp.constant(1.0)
+    APPROACH_OBJECT = wp.constant(0.5)
+    GRASP_OBJECT = wp.constant(0.5)
+    LIFT_OBJECT = wp.constant(1.0)
+    APPROACH_TARGET = wp.constant(1.5)
 
 
 class PickAndLiftSm:
@@ -336,7 +336,7 @@ def main():
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
     object_grasp_orientation[:, 0] = 1.0
     # Grasp at the deformable's centre of mass.
-    object_local_grasp_position = torch.tensor([0.0, 0.0, -0.001], device=env.unwrapped.device)
+    object_local_grasp_position = torch.tensor([-0.01, 0.0, -0.002], device=env.unwrapped.device)
 
     # create state machine
     pick_sm = PickAndLiftSm(
@@ -370,7 +370,7 @@ def main():
 
             # -- target object frame
             # desired_position = env.unwrapped.command_manager.get_command("object_pose")[..., :3]
-            desired_position = torch.tensor([[0.55, 0.2, 0.2]], device=env.unwrapped.device)
+            desired_position = torch.tensor([[0.42, 0.1, 0.2]], device=env.unwrapped.device)
 
             # advance state machine
             actions = pick_sm.compute(

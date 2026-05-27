@@ -66,19 +66,19 @@ _SEGMENT_LENGTH = 0.02
 _CABLE_WIDTH = 0.01
 
 # Anchor pose in the env-local frame [m]. Positioned above the tabletop, in front of the robot.
-_ANCHOR_POS = (0.2, 0.3, 0.2)
+_ANCHOR_POS = (0.15, 0.3, 0.2)
 
 # Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
 _PLUG_RADIUS = 0.01
-_PLUG_HEIGHT = 0.03
-_PLUG_MASS = 0.02
+_PLUG_HEIGHT = 0.04
+_PLUG_MASS = 0.21
 
 # Plug rest pose [m]: directly below the anchor at the cable's natural extent.
 _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
 # Target-hole pose [m]: center of the socket. Placed in front of the plug's rest position;
 # the socket opens along -x so the plug (oriented along x) can be inserted by pushing in +x.
-_TARGET_HOLE_POS = (_PLUG_INIT_POS[0] - 0.1, _PLUG_INIT_POS[1] - 0.1, _PLUG_INIT_POS[2])
+_TARGET_HOLE_POS = (_PLUG_INIT_POS[0] - 0.15, _PLUG_INIT_POS[1] - 0.2, _PLUG_INIT_POS[2])
 # Inner clear opening in the y-z plane [m]: slightly larger than the plug diameter (2*_PLUG_RADIUS).
 _TARGET_HOLE_INNER = 0.025
 # Wall thickness [m].
@@ -175,6 +175,8 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
         spawn=sim_utils.CylinderCfg(
             radius=_PLUG_RADIUS,
             height=_PLUG_HEIGHT,
+        # spawn=sim_utils.CuboidCfg(
+        #     size=(2*_PLUG_RADIUS, 2*_PLUG_RADIUS, _PLUG_HEIGHT),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -197,8 +199,8 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
                 stretch_stiffness=1.0e3,
                 stretch_damping=1.0e-1,
                 bend_stiffness=5.0e-2,
-                bend_damping=2.0e-4,
-                density=100.0,
+                bend_damping=5.0e-4,
+                density=1.0,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
@@ -328,21 +330,21 @@ class EventCfg:
         mode="reset",
         params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
     )
-    reset_assembly = EventTerm(
-        func=mdp.reset_cable_assembly_uniform,
-        mode="reset",
-        params={
-            "pose_range": {
-                "x": (-0.05, 0.05),
-                "y": (-0.02, 0.02),
-                "z": (-0.02, 0.02),
-                "yaw": (-math.pi / 18.0, math.pi / 18.0),
-            },
-            "cable_cfg": SceneEntityCfg("cable"),
-            "anchor_cfg": SceneEntityCfg("anchor"),
-            "plug_cfg": SceneEntityCfg("object"),
-        },
-    )
+    # reset_assembly = EventTerm(
+    #     func=mdp.reset_cable_assembly_uniform,
+    #     mode="reset",
+    #     params={
+    #         "pose_range": {
+    #             "x": (-0.05, 0.05),
+    #             "y": (-0.02, 0.02),
+    #             "z": (-0.02, 0.02),
+    #             "yaw": (-math.pi / 18.0, math.pi / 18.0),
+    #         },
+    #         "cable_cfg": SceneEntityCfg("cable"),
+    #         "anchor_cfg": SceneEntityCfg("anchor"),
+    #         "plug_cfg": SceneEntityCfg("object"),
+    #     },
+    # )
 
 
 @configclass
