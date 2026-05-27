@@ -115,8 +115,7 @@ class NewtonProxyCoupledMJWarpVBDManager(NewtonVBDManager):
                     SolverCoupledAdmm.ContactPair(
                         source="mjc", 
                         destination="vbd",
-                        contact_distance=0.002,
-                        detection_margin=0.015
+                        contact_distance=0.003,
                     ),
                 ],
             ),

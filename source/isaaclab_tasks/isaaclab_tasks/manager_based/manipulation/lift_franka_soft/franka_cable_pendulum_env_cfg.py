@@ -124,7 +124,7 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
             physics_material=NewtonCableMaterialCfg(
                 stretch_stiffness=1.0e3,
                 stretch_damping=1.0e-1,
-                bend_stiffness=5.0e-3,
+                bend_stiffness=5.0e-2,
                 bend_damping=2.0e-4,
                 density=100.0,
             ),
@@ -221,7 +221,7 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.0},
+        close_command_expr={"panda_finger_.*": 0.005},
     )
 
 
@@ -378,7 +378,7 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
-                proxy_iterations=4,
+                proxy_iterations=5,
                 proxy_collide_interval=1,
             ),
             model_cfg=NewtonModelCfg(
@@ -386,5 +386,5 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
                 shape_material_kd=1e-2,
                 shape_material_mu=1.0,
             ),
-            num_substeps=5,
+            num_substeps=10,
         )
