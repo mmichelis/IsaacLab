@@ -76,6 +76,18 @@ _PLUG_MASS = 0.02
 # Plug rest pose [m]: directly below the anchor at the cable's natural extent.
 _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
+# Target-hole pose [m]: center of the socket. Placed in front of the plug's rest position;
+# the socket opens along -x so the plug (oriented along x) can be inserted by pushing in +x.
+_TARGET_HOLE_POS = (_PLUG_INIT_POS[0] - 0.1, _PLUG_INIT_POS[1] - 0.1, _PLUG_INIT_POS[2])
+# Inner clear opening in the y-z plane [m]: slightly larger than the plug diameter (2*_PLUG_RADIUS).
+_TARGET_HOLE_INNER = 0.025
+# Wall thickness [m].
+_TARGET_HOLE_WALL_THICKNESS = 0.003
+# Socket depth along x [m]: matches the plug height so the plug can fully insert.
+_TARGET_HOLE_DEPTH = _PLUG_HEIGHT
+# Center-to-wall-center offset along y/z [m].
+_TARGET_HOLE_WALL_OFFSET = (_TARGET_HOLE_INNER + _TARGET_HOLE_WALL_THICKNESS) / 2.0
+
 
 ##
 # Scene
@@ -99,10 +111,70 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
     )
 
+    # Target hole modeled as 4 thin kinematic cuboid walls forming a square socket.
+    # The opening faces -x (toward the plug); walls extend along x by _TARGET_HOLE_DEPTH.
+    target_hole_top: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/TargetHoleTop",
+        spawn=sim_utils.CuboidCfg(
+            size=(
+                _TARGET_HOLE_DEPTH,
+                _TARGET_HOLE_INNER + 2 * _TARGET_HOLE_WALL_THICKNESS,
+                _TARGET_HOLE_WALL_THICKNESS,
+            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1], _TARGET_HOLE_POS[2] + _TARGET_HOLE_WALL_OFFSET),
+        ),
+    )
+    target_hole_bottom: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/TargetHoleBottom",
+        spawn=sim_utils.CuboidCfg(
+            size=(
+                _TARGET_HOLE_DEPTH,
+                _TARGET_HOLE_INNER + 2 * _TARGET_HOLE_WALL_THICKNESS,
+                _TARGET_HOLE_WALL_THICKNESS,
+            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1], _TARGET_HOLE_POS[2] - _TARGET_HOLE_WALL_OFFSET),
+        ),
+    )
+    target_hole_left: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/TargetHoleLeft",
+        spawn=sim_utils.CuboidCfg(
+            size=(_TARGET_HOLE_DEPTH, _TARGET_HOLE_WALL_THICKNESS, _TARGET_HOLE_INNER),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1] - _TARGET_HOLE_WALL_OFFSET, _TARGET_HOLE_POS[2]),
+        ),
+    )
+    target_hole_right: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/TargetHoleRight",
+        spawn=sim_utils.CuboidCfg(
+            size=(_TARGET_HOLE_DEPTH, _TARGET_HOLE_WALL_THICKNESS, _TARGET_HOLE_INNER),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1] + _TARGET_HOLE_WALL_OFFSET, _TARGET_HOLE_POS[2]),
+        ),
+    )
+
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
-        spawn=sim_utils.CuboidCfg(
-            size=(2 * _PLUG_RADIUS, 2 * _PLUG_RADIUS, _PLUG_HEIGHT),
+        spawn=sim_utils.CylinderCfg(
+            radius=_PLUG_RADIUS,
+            height=_PLUG_HEIGHT,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -184,7 +256,7 @@ class CommandsCfg:
             prim_path="/Visuals/Command/goal_pose",
             markers={
                 "sphere": sim_utils.SphereCfg(
-                    radius=0.005,
+                    radius=0.0,
                     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.9, 0.2), opacity=0.4),
                 ),
             },
@@ -355,7 +427,7 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
-        self.sim.gravity = (0.0, 0.0, 0.0)
+        self.sim.gravity = (0.0, 0.0, -9.81)
 
         view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
@@ -374,7 +446,15 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
                 ),
                 vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
                 mjwarp_bodies=[SceneEntityCfg("robot")],
-                vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
+                vbd_bodies=[
+                    SceneEntityCfg("object"),
+                    SceneEntityCfg("anchor"),
+                    SceneEntityCfg("target_hole_top"),
+                    SceneEntityCfg("target_hole_bottom"),
+                    SceneEntityCfg("target_hole_left"),
+                    SceneEntityCfg("target_hole_right"),
+                    SceneEntityCfg("cable"),
+                ],
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
