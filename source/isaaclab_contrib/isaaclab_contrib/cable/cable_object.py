@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -125,7 +126,7 @@ def add_cable_entry_to_builder(
             label=f"{expanded_prim_path}/cable_root_free",
         )
         builder.add_articulation([root_joint_id], label=f"{expanded_prim_path}/cable_root_articulation")
-        
+
     entry.segment_body_indices.append(list(rod_body_indices))
     if env_idx == 0:
         u, v = entry.edges[-1]
@@ -180,20 +181,23 @@ def apply_cable_attachments_to_builder(
             )
         cable_body_idx = segments_in_world[anchor_idx]
 
-        # Try both the unexpanded regex template and the per-env-expanded form:
-        # USD-imported targets keep the template until the cloner's post-build
-        # rewrite, while builder-hook targets are already per-env expanded.
-        # Filter by ``body_world``: ``-1`` is Newton's "global" sentinel for
-        # bodies added outside any ``begin_world``/``end_world`` block (e.g.
-        # single-env flat path); world-specific matches win over global ones.
+        # Match labels via the regex template *and* its per-env expansion:
+        # rigid bodies added by the cloner via ``add_builder(proto)`` carry the
+        # prototype's ``env_0/...`` label until the cloner's post-build rewrite
+        # (which runs after these hooks), while builder-hook bodies (e.g. cables)
+        # are already per-env expanded. The regex pattern accepts both. Filter
+        # by ``body_world``: ``-1`` is Newton's "global" sentinel for bodies
+        # added outside any ``begin_world``/``end_world`` block (e.g. single-env
+        # flat path); world-specific matches win over global ones.
         target_path = attachment.target_prim_path
         expanded_target_path = target_path.replace("env_.*", f"env_{world_idx}")
+        target_re = re.compile(target_path)
         body_label = builder.body_label
         body_world = builder.body_world
         target_body_idx = -1
         for body_idx in range(len(body_label)):
             label = body_label[body_idx]
-            if label != target_path and label != expanded_target_path:
+            if label != expanded_target_path and not target_re.fullmatch(label):
                 continue
             if body_world[body_idx] == world_idx or body_world[body_idx] == -1:
                 target_body_idx = body_idx
