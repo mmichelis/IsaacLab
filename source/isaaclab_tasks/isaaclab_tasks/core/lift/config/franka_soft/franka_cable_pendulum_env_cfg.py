@@ -24,7 +24,7 @@ from isaaclab_newton.physics import MJWarpSolverCfg
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import RigidObjectCfg
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -44,6 +44,8 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
     ProxyCoupledMJWarpVBDSolverCfg,
     VBDSolverCfg,
 )
+
+from isaaclab_assets.robots.franka import FRANKA_ROBOTIQ_GRIPPER_CFG
 
 from . import mdp
 from .franka_cable_env_cfg import FrankaCableEnvCfg, _FrankaCableSceneCfg
@@ -70,7 +72,7 @@ _PLUG_HEIGHT = 0.03
 _PLUG_MASS = 0.005
 
 # Plug rest pose [m]: directly below the anchor at the cable's natural extent.
-_PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS-2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
+_PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
 
 ##
@@ -82,12 +84,21 @@ _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS-2) * _SEGMENT_LENGTH, _ANCHOR_PO
 class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
     """Scene for the Franka cable pendulum environment.
 
-    Inherits ``robot``, ``ee_frame``, ``table``, ``ground``, ``sky_light`` and
-    the actuator tuning from :class:`_FrankaCableSceneCfg`. Replaces the cable
-    spawn to lay it out vertically and wire it to two new attachment bodies:
-    a kinematic ``anchor`` above the tabletop and a rigid ``plug`` at the
-    cable's other end.
+    Inherits ``ee_frame``, ``table``, ``ground``, ``sky_light`` from
+    :class:`_FrankaCableSceneCfg`. Swaps the Franka Panda gripper for a Robotiq
+    2F-85, replaces the cable spawn to lay it out vertically, and wires it to
+    two new attachment bodies: a kinematic ``anchor`` above the tabletop and a
+    rigid ``plug`` at the cable's other end.
     """
+
+    # Override the inherited robot to use the Franka with a Robotiq 2F-85 gripper.
+    # ``FRANKA_ROBOTIQ_GRIPPER_CFG`` sets ``init_state.pos = (-0.85, 0, 0.76)`` for the
+    # gear-assembly cell; reset it so the robot sits at the env-local origin like the
+    # parent cable env.
+    robot: ArticulationCfg = FRANKA_ROBOTIQ_GRIPPER_CFG.replace(
+        prim_path="/World/envs/env_.*/Robot",
+        init_state=FRANKA_ROBOTIQ_GRIPPER_CFG.init_state.replace(pos=(0.0, 0.0, 0.0)),
+    )
 
     anchor: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Anchor",
@@ -145,14 +156,22 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
     )
 
     def __post_init__(self):
-        super().__post_init__()
+        # Skip ``_FrankaCableSceneCfg.__post_init__``: its gripper tuning targets the
+        # ``panda_hand`` actuator, which does not exist on the Robotiq variant. Inline
+        # the rigid-body/gravity setup the parent would have done.
         self.robot.spawn.rigid_props.disable_gravity = True
         self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
-        # increase franka gripper stiffness
-        self.robot.actuators["panda_hand"].effort_limit_sim = 1500.0
-        self.robot.actuators["panda_hand"].stiffness = 1000.0
-        self.robot.actuators["panda_hand"].damping = 200.0
+        # ``FRANKA_ROBOTIQ_GRIPPER_CFG`` ships arm gains tuned for the gear-assembly
+        # cell (stiffness 1100/1000, effort 5200/720, no armature). Under MJWarp with
+        # gravcomp those gains are violently underdamped and the arm jitters. Restore
+        # the FRANKA_PANDA_HIGH_PD_CFG values the cable env was designed around.
+        for arm in ("panda_shoulder", "panda_forearm"):
+            self.robot.actuators[arm].stiffness = 400.0
+            self.robot.actuators[arm].damping = 80.0
+            self.robot.actuators[arm].armature = 1e-3
+        self.robot.actuators["panda_shoulder"].effort_limit_sim = 87.0
+        self.robot.actuators["panda_forearm"].effort_limit_sim = 12.0
 
 
 ##
@@ -217,13 +236,20 @@ class ActionsCfg:
             ik_method="dls",
             ik_params={"lambda_val": 0.05},
         ),
-        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+        # TCP offset from the ``panda_hand`` flange to the Robotiq 2F-85 fingertip plane.
+        # ~160 mm based on the Robotiq 2F-85 datasheet plus the standard Franka coupler;
+        # confirm in viewer if grasps miss the plug.
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.17]),
     )
+    # Robotiq 2F-85 is underactuated: ``finger_joint`` drives the linkage and the rest
+    # mimic. USD revolute-joint range is [0, 47] deg (≈ [0, 0.82] rad). ``open`` leaves
+    # the jaws fully open (~85 mm gap); ``close`` = 0.6 rad ≈ 34 deg clamps onto the
+    # ~20 mm plug (mid-range of gear-assembly's 0.4-0.69 close widths for 2F-85).
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
-        joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.01},
+        joint_names=["finger_joint"],
+        open_command_expr={"finger_joint": 0.0},
+        close_command_expr={"finger_joint": 0.6},
     )
 
 
@@ -340,6 +366,7 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
     scene: _FrankaCablePendulumSceneCfg = _FrankaCablePendulumSceneCfg(
         num_envs=128, env_spacing=2.5, replicate_physics=True
     )
+    actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
@@ -374,7 +401,10 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
                 mjwarp_bodies=[SceneEntityCfg("robot")],
                 vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
                 proxy_bodies=[
-                    SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
+                    # Robotiq 2F-85 contact bodies for VBD cable contact. The two
+                    # ``(left|right)_inner_finger`` bodies are the finger pads that
+                    # physically touch the plug/cable (verified against the USD).
+                    SceneEntityCfg("robot", body_names=["panda_hand", "(left|right)_inner_finger"]),
                 ],
                 proxy_iterations=1,
                 proxy_collide_interval=1,
