@@ -103,6 +103,9 @@ def add_cable_entry_to_builder(
     # not visit builder-hook bodies, so we must produce the per-env label ourselves.
     expanded_prim_path = entry.prim_path.replace("env_.*", f"env_{env_idx}")
     entry.body_offsets.append(builder.body_count)
+    # :meth:`add_rod_graph` only joins adjacent segments, leaving the chain root as an
+    # orphan body that breaks :class:`SolverMuJoCo` topological walks (``KeyError`` on
+    # ``body_mapping[parent]``). Anchor it with a free joint in its own articulation.
     rod_body_indices, _rod_joint_indices = builder.add_rod_graph(
         node_positions=world_nodes,
         edges=entry.edges,
@@ -113,8 +116,16 @@ def add_cable_entry_to_builder(
         bend_stiffness=entry.bend_stiffness,
         bend_damping=entry.bend_damping,
         label=f"{expanded_prim_path}/cable",
-        wrap_in_articulation=True,
     )
+    # NOTE: if statement below can be removed once mujoco solver stops parsing cable bodies
+    # even though it cannot solve cable joint.
+    if rod_body_indices:
+        root_joint_id = builder.add_joint_free(
+            child=int(rod_body_indices[0]),
+            label=f"{expanded_prim_path}/cable_root_free",
+        )
+        builder.add_articulation([root_joint_id], label=f"{expanded_prim_path}/cable_root_articulation")
+        
     entry.segment_body_indices.append(list(rod_body_indices))
     if env_idx == 0:
         u, v = entry.edges[-1]

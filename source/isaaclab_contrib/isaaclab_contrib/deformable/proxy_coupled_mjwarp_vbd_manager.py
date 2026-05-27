@@ -15,10 +15,12 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+import numpy as np
+import warp as wp
 from isaaclab_newton.physics.newton_manager import NewtonManager
-from newton import CollisionPipeline, Model, ShapeFlags
+from newton import CollisionPipeline, JointType, Model, ShapeFlags
 from newton.solvers import SolverMuJoCo, SolverVBD
-from newton.solvers.experimental.coupled import SolverCoupledProxy
+from newton.solvers.experimental.coupled import ModelView, SolverCoupledProxy
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.physics import PhysicsManager
@@ -68,6 +70,7 @@ class NewtonProxyCoupledMJWarpVBDManager(NewtonVBDManager):
                 bodies=mjc_bodies,
                 joints=mjc_joints,
                 shapes=mjc_shapes,
+                configure_view=cls._configure_mjc_view,
             ),
             SolverCoupledProxy.Entry(
                 name="vbd",
@@ -271,3 +274,29 @@ class NewtonProxyCoupledMJWarpVBDManager(NewtonVBDManager):
                     proxy_ids.append(body_id)
 
         return proxy_ids
+
+    @staticmethod
+    def _configure_mjc_view(view: ModelView) -> None:
+        """Overlay :attr:`~newton.JointType.CABLE` joints as :attr:`~newton.JointType.D6` on the MJC view.
+
+        :class:`~newton.solvers.SolverMuJoCo`'s converter has no CABLE codepath
+        and raises ``NotImplementedError`` on the first cable joint. A cable's
+        ``joint_dof_dim = (1, 1)`` re-interpreted as D6 expands to one SLIDE +
+        one HINGE, allocating exactly 2 qpos / 2 qvel that match Newton's
+        ``joint_q`` / ``joint_qd`` 1:1 — no count overrides needed. VBD owns
+        the real cable forces; the parent :class:`~newton.Model` is untouched.
+
+        NOTE: This is a temporary view workaround until the MJWarp skips cable joints natively.
+        """
+        parent = view.parent
+        if int(parent.joint_count) == 0:
+            return
+
+        joint_type_np = parent.joint_type.numpy()
+        cable_joint_ids = np.flatnonzero(joint_type_np == int(JointType.CABLE))
+        if cable_joint_ids.size == 0:
+            return
+
+        new_joint_type = joint_type_np.copy()
+        new_joint_type[cable_joint_ids] = int(JointType.D6)
+        view.joint_type = wp.array(new_joint_type, dtype=parent.joint_type.dtype, device=parent.device)
