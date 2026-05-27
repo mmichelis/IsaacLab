@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from isaaclab.physics import PhysicsCfg
 from isaaclab.utils.configclass import configclass
@@ -104,6 +104,20 @@ class NewtonCfg(PhysicsCfg):
     """Whether to use CUDA graphing when simulating.
 
     If set to False, the simulation performance will be severely degraded.
+    """
+
+    usd_joint_ordering: Literal["bfs", "dfs"] | None = "dfs"
+    """Joint ordering used when importing USD assets into Newton.
+
+    Set to ``None`` for closed-loop assets whose joint graph cannot be represented
+    as a tree.
+    """
+
+    skip_validation_joints: bool = False
+    """Whether to skip Newton's joint-articulation validation during model finalization.
+
+    This is required for some Kamino closed-loop assets that intentionally keep
+    loop-closing joints outside of an articulation tree.
     """
 
     solver_cfg: NewtonSolverCfg | None = None

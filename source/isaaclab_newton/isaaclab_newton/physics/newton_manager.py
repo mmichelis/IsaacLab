@@ -812,7 +812,8 @@ class NewtonManager(PhysicsManager):
             cls._builder.request_state_attributes(*cls._pending_extended_state_attributes)
             NewtonManager._pending_extended_state_attributes = set()
         with Timer(name="newton_finalize_builder", msg="Finalize builder took:"):
-            NewtonManager._model = cls._builder.finalize(device=device)
+            skip_validation_joints = bool(getattr(PhysicsManager._cfg, "skip_validation_joints", False))
+            NewtonManager._model = cls._builder.finalize(device=device, skip_validation_joints=skip_validation_joints)
             cls._model.set_gravity(cls._gravity_vector)
             cls._model.num_envs = cls._num_envs
 
@@ -886,14 +887,15 @@ class NewtonManager(PhysicsManager):
         builder = ModelBuilder(up_axis=up_axis)
 
         schema_resolvers = [SchemaResolverNewton(), SchemaResolverPhysx()]
+        usd_import_kwargs = {"joint_ordering": getattr(PhysicsManager._cfg, "usd_joint_ordering", "dfs")}
 
         if not env_paths:
             # No env Xforms — flat loading
-            builder.add_usd(stage, schema_resolvers=schema_resolvers)
+            builder.add_usd(stage, schema_resolvers=schema_resolvers, **usd_import_kwargs)
         else:
             # Load everything except the env subtrees (ground plane, lights, etc.)
             ignore_paths = [path for _, path in env_paths]
-            builder.add_usd(stage, ignore_paths=ignore_paths, schema_resolvers=schema_resolvers)
+            builder.add_usd(stage, ignore_paths=ignore_paths, schema_resolvers=schema_resolvers, **usd_import_kwargs)
 
             # Build a prototype from the first env (all envs assumed identical)
             _, proto_path = env_paths[0]
@@ -902,6 +904,7 @@ class NewtonManager(PhysicsManager):
                 stage,
                 root_path=proto_path,
                 schema_resolvers=schema_resolvers,
+                **usd_import_kwargs,
             )
 
             # Inject registered sites into the proto before replication
@@ -1444,6 +1447,7 @@ class NewtonManager(PhysicsManager):
         up_axis_token = UsdGeom.GetStageUpAxis(stage)
         up_axis = Axis.from_string(str(up_axis_token))
         schema_resolvers = [SchemaResolverNewton(), SchemaResolverPhysx()]
+        usd_import_kwargs = {"joint_ordering": getattr(PhysicsManager._cfg, "usd_joint_ordering", "dfs")}
 
         env_pattern = re.compile(r"^env_(\d+)$")
         env_paths: list[tuple[int, str]] = []
@@ -1458,7 +1462,7 @@ class NewtonManager(PhysicsManager):
 
         if not env_paths:
             # Fallback: ingest the whole stage as a single world.
-            builder.add_usd(stage, schema_resolvers=schema_resolvers)
+            builder.add_usd(stage, schema_resolvers=schema_resolvers, **usd_import_kwargs)
             NewtonManager._num_envs = 1
             return builder
 
@@ -1473,6 +1477,7 @@ class NewtonManager(PhysicsManager):
             stage,
             ignore_paths=[r"/World/envs($|/.*)"],
             schema_resolvers=schema_resolvers,
+            **usd_import_kwargs,
         )
 
         # Build env_0 as a prototype, then replicate across envs.
@@ -1482,6 +1487,7 @@ class NewtonManager(PhysicsManager):
             stage,
             root_path=proto_env_path,
             schema_resolvers=schema_resolvers,
+            **usd_import_kwargs,
         )
 
         xform_cache = UsdGeom.XformCache()

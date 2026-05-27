@@ -14,7 +14,17 @@ from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 
 from pxr import Usd
 
+from isaaclab.physics import PhysicsManager
+
 from isaaclab_newton.physics import NewtonManager
+
+
+def _get_usd_import_kwargs() -> dict[str, object]:
+    """Return Newton USD import options from the active physics configuration."""
+    cfg = PhysicsManager._cfg
+    if cfg is None:
+        return {}
+    return {"joint_ordering": getattr(cfg, "usd_joint_ordering", "dfs")}
 
 
 def _build_newton_builder_from_mapping(
@@ -51,12 +61,14 @@ def _build_newton_builder_from_mapping(
         quaternions[:, 3] = 1.0
 
     schema_resolvers = [SchemaResolverNewton(), SchemaResolverPhysx()]
+    usd_import_kwargs = _get_usd_import_kwargs()
 
     builder = NewtonManager.create_builder(up_axis=up_axis)
     stage_info = builder.add_usd(
         stage,
         ignore_paths=["/World/envs", *sources],
         schema_resolvers=schema_resolvers,
+        **usd_import_kwargs,
     )
 
     # The prototype is built from env_0 in absolute world coordinates.
@@ -72,6 +84,7 @@ def _build_newton_builder_from_mapping(
             load_visual_shapes=True,
             skip_mesh_approximation=True,
             schema_resolvers=schema_resolvers,
+            **usd_import_kwargs,
         )
         if simplify_meshes:
             p.approximate_meshes("convex_hull", keep_visual_shapes=True)
@@ -314,6 +327,7 @@ def newton_visualizer_prebuild(
         simplify_meshes=simplify_meshes,
     )
     _rename_builder_labels(builder, sources, destinations, env_ids, mapping)
-    model = builder.finalize(device=device)
+    skip_validation_joints = bool(getattr(PhysicsManager._cfg, "skip_validation_joints", False))
+    model = builder.finalize(device=device, skip_validation_joints=skip_validation_joints)
     state = model.state()
     return model, state
