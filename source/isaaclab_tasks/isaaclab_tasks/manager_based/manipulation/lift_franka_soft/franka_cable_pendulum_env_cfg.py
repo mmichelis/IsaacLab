@@ -47,7 +47,7 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
     VBDSolverCfg,
 )
 
-from isaaclab_assets.robots.franka import FRANKA_ROBOTIQ_GRIPPER_CFG
+from isaaclab_assets.robots.franka import FRANKA_ROBOTIQ_GRIPPER_CFG, FRANKA_PANDA_HIGH_PD_CFG
 
 from . import mdp
 from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
@@ -71,7 +71,7 @@ _ANCHOR_POS = (0.2, 0.3, 0.2)
 # Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
 _PLUG_RADIUS = 0.01
 _PLUG_HEIGHT = 0.03
-_PLUG_MASS = 0.005
+_PLUG_MASS = 0.01
 
 # Plug rest pose [m]: directly below the anchor at the cable's natural extent.
 _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
@@ -84,23 +84,9 @@ _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_
 
 @configclass
 class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
-    """Scene for the Franka cable pendulum environment.
-
-    Inherits ``ee_frame``, ``table``, ``ground``, ``sky_light`` from
-    :class:`_FrankaSoftSceneCfg`. Swaps the Franka Panda gripper for a Robotiq
-    2F-85, replaces the cable spawn to lay it out vertically, and wires it to
-    two new attachment bodies: a kinematic ``anchor`` above the tabletop and a
-    rigid ``plug`` at the cable's other end.
+    """Scene for the MJWarp Franka environment grasping a rigid VBD body attached to a VBD cable.
     """
-
-    # Override the inherited robot to use the Franka with a Robotiq 2F-85 gripper.
-    # ``FRANKA_ROBOTIQ_GRIPPER_CFG`` sets ``init_state.pos = (-0.85, 0, 0.76)`` for the
-    # gear-assembly cell; reset it so the robot sits at the env-local origin like the
-    # parent cable env.
-    robot: ArticulationCfg = FRANKA_ROBOTIQ_GRIPPER_CFG.replace(
-        prim_path="/World/envs/env_.*/Robot",
-        init_state=FRANKA_ROBOTIQ_GRIPPER_CFG.init_state.replace(pos=(0.0, 0.0, 0.0)),
-    )
+    robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
     anchor: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Anchor",
@@ -115,9 +101,8 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
 
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
-        spawn=sim_utils.CylinderCfg(
-            radius=_PLUG_RADIUS,
-            height=_PLUG_HEIGHT,
+        spawn=sim_utils.CuboidCfg(
+            size=(2*_PLUG_RADIUS, 2*_PLUG_RADIUS, _PLUG_HEIGHT),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -137,10 +122,10 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
             width=_CABLE_WIDTH,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
             physics_material=NewtonCableMaterialCfg(
-                stretch_stiffness=1.0e5,
+                stretch_stiffness=1.0e3,
                 stretch_damping=1.0e-1,
-                bend_stiffness=5.0e-1,
-                bend_damping=2.0e-3,
+                bend_stiffness=5.0e-3,
+                bend_damping=2.0e-4,
                 density=100.0,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -158,22 +143,14 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
     )
 
     def __post_init__(self):
-        # Skip ``_FrankaCableSceneCfg.__post_init__``: its gripper tuning targets the
-        # ``panda_hand`` actuator, which does not exist on the Robotiq variant. Inline
-        # the rigid-body/gravity setup the parent would have done.
+        super().__post_init__()
         self.robot.spawn.rigid_props.disable_gravity = True
         self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
-        # ``FRANKA_ROBOTIQ_GRIPPER_CFG`` ships arm gains tuned for the gear-assembly
-        # cell (stiffness 1100/1000, effort 5200/720, no armature). Under MJWarp with
-        # gravcomp those gains are violently underdamped and the arm jitters. Restore
-        # the FRANKA_PANDA_HIGH_PD_CFG values the cable env was designed around.
-        for arm in ("panda_shoulder", "panda_forearm"):
-            self.robot.actuators[arm].stiffness = 400.0
-            self.robot.actuators[arm].damping = 80.0
-            self.robot.actuators[arm].armature = 1e-3
-        self.robot.actuators["panda_shoulder"].effort_limit_sim = 87.0
-        self.robot.actuators["panda_forearm"].effort_limit_sim = 12.0
+        # increase franka gripper stiffness
+        self.robot.actuators["panda_hand"].effort_limit_sim = 1500.0
+        self.robot.actuators["panda_hand"].stiffness = 1500.0
+        self.robot.actuators["panda_hand"].damping = 150.0
 
 
 ##
@@ -196,9 +173,9 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.2, 0.4),
-            pos_y=(-0.0, 0.2),
-            pos_z=(0.05, 0.2),
+            pos_x=(_PLUG_INIT_POS[0] - 0.1, _PLUG_INIT_POS[0] + 0.0),
+            pos_y=(_PLUG_INIT_POS[1] - 0.05, _PLUG_INIT_POS[1] + 0.05),
+            pos_z=(_PLUG_INIT_POS[2] - 0.05, _PLUG_INIT_POS[2] + 0.05),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -207,7 +184,7 @@ class CommandsCfg:
             prim_path="/Visuals/Command/goal_pose",
             markers={
                 "sphere": sim_utils.SphereCfg(
-                    radius=0.02,
+                    radius=0.005,
                     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.9, 0.2), opacity=0.4),
                 ),
             },
@@ -238,21 +215,15 @@ class ActionsCfg:
             ik_method="dls",
             ik_params={"lambda_val": 0.05},
         ),
-        # TCP offset from the ``panda_hand`` flange to the Robotiq 2F-85 fingertip plane.
-        # ~160 mm based on the Robotiq 2F-85 datasheet plus the standard Franka coupler;
-        # confirm in viewer if grasps miss the plug.
-        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.17]),
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
     )
-    # Robotiq 2F-85 is underactuated: ``finger_joint`` drives the linkage and the rest
-    # mimic. USD revolute-joint range is [0, 47] deg (≈ [0, 0.82] rad). ``open`` leaves
-    # the jaws fully open (~85 mm gap); ``close`` = 0.6 rad ≈ 34 deg clamps onto the
-    # ~20 mm plug (mid-range of gear-assembly's 0.4-0.69 close widths for 2F-85).
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
-        joint_names=["finger_joint"],
-        open_command_expr={"finger_joint": 0.0},
-        close_command_expr={"finger_joint": 0.6},
+        joint_names=["panda_finger.*"],
+        open_command_expr={"panda_finger_.*": 0.05},
+        close_command_expr={"panda_finger_.*": 0.0},
     )
+
 
 
 @configclass
@@ -402,14 +373,11 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
+                vbd_cfg=VBDSolverCfg(iterations=50, rigid_avbd_beta=1e4, rigid_contact_k_start=1e3),
                 mjwarp_bodies=[SceneEntityCfg("robot")],
                 vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
                 proxy_bodies=[
-                    # Robotiq 2F-85 contact bodies for VBD cable contact. The two
-                    # ``(left|right)_inner_finger`` bodies are the finger pads that
-                    # physically touch the plug/cable (verified against the USD).
-                    SceneEntityCfg("robot", body_names=["panda_hand", "(left|right)_inner_finger"]),
+                    SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
                 proxy_iterations=1,
                 proxy_collide_interval=1,
