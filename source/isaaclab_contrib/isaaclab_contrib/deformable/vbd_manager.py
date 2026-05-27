@@ -530,14 +530,8 @@ class NewtonVBDManager(NewtonManager):
             local_site_map: dict[str, list[list[int]]] = {}
             site_entries = proto_sites.get(id(proto), {})
 
-            # Two passes: rigid prototypes first across all envs, then
-            # per-world hooks. This lays out bodies as
-            # ``[Franka_env0, Franka_env1, ..., Cable_env0, Cable_env1, ...]``
-            # so the MJWarp-owned set is a dense ``[0, N)`` prefix that
-            # :class:`~newton.solvers.experimental.coupled.SolverCoupled`'s
-            # prefix-limit fast path requires.
+            # Add each env as a separate Newton world
             xform_cache = UsdGeom.XformCache()
-            env_transforms: list[tuple[int, tuple[float, float, float], tuple[float, float, float, float]]] = []
             for col, (_, env_path) in enumerate(env_paths):
                 builder.begin_world()
                 offset = builder.shape_count
@@ -551,27 +545,19 @@ class NewtonVBDManager(NewtonManager):
                     rotation.GetImaginary()[2],
                     rotation.GetReal(),
                 )
-                env_transforms.append((col, pos, quat))
                 builder.add_builder(proto, xform=wp.transform(pos, quat))
                 for label, proto_shape_indices in site_entries.items():
                     if label not in local_site_map:
                         local_site_map[label] = [[] for _ in range(num_worlds)]
                     for proto_shape_idx in proto_shape_indices:
                         local_site_map[label][col].append(offset + proto_shape_idx)
-                builder.end_world()
 
-            # Run per-world builder hooks (cable bodies, deformables, ...)
-            # AFTER all rigid prototypes have been added. Re-enter each world via ``_current_world`` directly because
-            # :meth:`ModelBuilder.begin_world` always allocates a new world id.
-            # NOTE: Can be removed once Proxy Coupling supports non-contiguous index sets.
-            if hasattr(cls, "_per_world_builder_hooks") and cls._per_world_builder_hooks:
-                for col, pos, quat in env_transforms:
-                    builder._current_world = col
-                    try:
-                        for hook in cls._per_world_builder_hooks:
-                            hook(builder, col, list(pos), list(quat))
-                    finally:
-                        builder._current_world = -1
+                # Run per-world builder hooks for this world (deformables, cables, ...).
+                if hasattr(cls, "_per_world_builder_hooks"):
+                    for hook in cls._per_world_builder_hooks:
+                        hook(builder, col, list(pos), list(quat))
+
+                builder.end_world()
 
             NewtonManager._cl_site_index_map = {
                 **global_site_map,
