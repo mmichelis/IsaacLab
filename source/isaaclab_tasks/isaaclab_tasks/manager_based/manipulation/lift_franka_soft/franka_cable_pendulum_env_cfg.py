@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import math
 
+from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
+from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 import torch
 from isaaclab_newton.physics import MJWarpSolverCfg
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
@@ -48,7 +50,7 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
 from isaaclab_assets.robots.franka import FRANKA_ROBOTIQ_GRIPPER_CFG
 
 from . import mdp
-from .franka_cable_env_cfg import FrankaCableEnvCfg, _FrankaCableSceneCfg
+from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
 
 ##
 # Cable / attachment geometry constants
@@ -81,11 +83,11 @@ _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_
 
 
 @configclass
-class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
+class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
     """Scene for the Franka cable pendulum environment.
 
     Inherits ``ee_frame``, ``table``, ``ground``, ``sky_light`` from
-    :class:`_FrankaCableSceneCfg`. Swaps the Franka Panda gripper for a Robotiq
+    :class:`_FrankaSoftSceneCfg`. Swaps the Franka Panda gripper for a Robotiq
     2F-85, replaces the cable spawn to lay it out vertically, and wires it to
     two new attachment bodies: a kinematic ``anchor`` above the tabletop and a
     rigid ``plug`` at the cable's other end.
@@ -360,7 +362,7 @@ class TerminationsCfg:
 
 
 @configclass
-class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
+class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
     """Franka Panda manipulating a cable with a fixed anchor and a rigid plug."""
 
     scene: _FrankaCablePendulumSceneCfg = _FrankaCablePendulumSceneCfg(
@@ -384,6 +386,9 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, 0.0)
+
+        view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
+        self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
 
         # The proxy-coupled solver from FrankaCableEnvCfg is reused. Both the kinematic anchor
         # and the rigid plug are connected to the cable via VBD attachments, so the solver
