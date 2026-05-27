@@ -150,9 +150,9 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
         # increase franka gripper stiffness
-        self.robot.actuators["panda_hand"].effort_limit_sim = 1500.0
+        self.robot.actuators["panda_hand"].effort_limit_sim = 100.0
         self.robot.actuators["panda_hand"].stiffness = 1000.0
-        self.robot.actuators["panda_hand"].damping = 100.0
+        self.robot.actuators["panda_hand"].damping = 20.0
 
 
 ##
@@ -223,7 +223,7 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.0},
+        close_command_expr={"panda_finger_.*": 0.005},
     )
 
 
@@ -376,7 +376,7 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
-                proxy_collide_interval=5,
+                proxy_collide_interval=1,
             ),
             model_cfg=NewtonModelCfg(
                 shape_material_ke=1e4,
