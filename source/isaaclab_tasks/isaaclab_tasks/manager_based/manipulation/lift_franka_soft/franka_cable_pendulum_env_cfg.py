@@ -62,7 +62,7 @@ _SEGMENT_LENGTH = 0.02
 _CABLE_WIDTH = 0.01
 
 # Anchor pose in the env-local frame [m]. Positioned above the tabletop, in front of the robot.
-_ANCHOR_POS = (0.2, 0.25, 0.2)
+_ANCHOR_POS = (0.2, 0.3, 0.2)
 
 # Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
 _PLUG_RADIUS = 0.01
@@ -100,25 +100,11 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
     )
 
-    # object: RigidObjectCfg = RigidObjectCfg(
-    #     prim_path="/World/envs/env_.*/Plug",
-    #     spawn=sim_utils.CylinderCfg(
-    #         radius=_PLUG_RADIUS,
-    #         height=_PLUG_HEIGHT,
-    #         rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-    #         mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
-    #         collision_props=sim_utils.CollisionPropertiesCfg(),
-    #         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.2, 0.2)),
-    #     ),
-    #     init_state=RigidObjectCfg.InitialStateCfg(
-    #         pos=_PLUG_INIT_POS,
-    #         rot=quat_from_angle_axis(torch.tensor(torch.pi / 2.0), torch.tensor([0.0, 1.0, 0.0])),
-    #     ),
-    # )
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
-        spawn=sim_utils.CuboidCfg(
-            size=(0.05, 0.05, 0.05),
+        spawn=sim_utils.CylinderCfg(
+            radius=_PLUG_RADIUS,
+            height=_PLUG_HEIGHT,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -126,13 +112,13 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=_PLUG_INIT_POS,
-            # rot=quat_from_angle_axis(torch.tensor(torch.pi / 2.0), torch.tensor([0.0, 1.0, 0.0])),
+            rot=quat_from_angle_axis(torch.tensor(torch.pi / 2.0), torch.tensor([0.0, 1.0, 0.0])),
         ),
     )
 
     cable: CableObjectCfg = CableObjectCfg(
         prim_path="/World/envs/env_.*/Cable",
-        init_state=CableObjectCfg.InitialStateCfg(pos=(0.2, 0.35, 0.7)),#_ANCHOR_POS),
+        init_state=CableObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
         spawn=sim_utils.CableCfg(
             positions=[(i * _SEGMENT_LENGTH, 0.0, 0.0) for i in range(_NUM_POINTS)],
             width=_CABLE_WIDTH,
@@ -140,22 +126,22 @@ class _FrankaCablePendulumSceneCfg(_FrankaCableSceneCfg):
             physics_material=NewtonCableMaterialCfg(
                 stretch_stiffness=1.0e5,
                 stretch_damping=1.0e-1,
-                bend_stiffness=5.0e-3,
+                bend_stiffness=5.0e-1,
                 bend_damping=2.0e-3,
-                density=50.0,
+                density=100.0,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
-        # attachments=[
-        #     CableAttachmentCfg(
-        #         target_prim_path="/World/envs/env_.*/Anchor",
-        #         cable_anchor=0,
-        #     ),
-        #     CableAttachmentCfg(
-        #         target_prim_path="/World/envs/env_.*/Plug",
-        #         cable_anchor=-2,
-        #     ),
-        # ],
+        attachments=[
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Anchor",
+                cable_anchor=0,
+            ),
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Plug",
+                cable_anchor=-2,
+            ),
+        ],
     )
 
     def __post_init__(self):
@@ -237,7 +223,7 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.005},
+        close_command_expr={"panda_finger_.*": 0.01},
     )
 
 
@@ -278,7 +264,7 @@ class EventCfg:
         params={
             "pose_range": {
                 "x": (-0.05, 0.05),
-                "y": (-0.05, 0.05),
+                "y": (-0.02, 0.02),
                 "z": (-0.02, 0.02),
                 "yaw": (-math.pi / 18.0, math.pi / 18.0),
             },
@@ -370,7 +356,7 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
-        self.sim.gravity = (0.0, 0.0, -9.81)
+        self.sim.gravity = (0.0, 0.0, 0.0)
 
         # The proxy-coupled solver from FrankaCableEnvCfg is reused. Both the kinematic anchor
         # and the rigid plug are connected to the cable via VBD attachments, so the solver
@@ -384,7 +370,7 @@ class FrankaCablePendulumEnvCfg(FrankaCableEnvCfg):
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e4, rigid_contact_k_start=1e3),
+                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
                 mjwarp_bodies=[SceneEntityCfg("robot")],
                 vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
                 proxy_bodies=[
