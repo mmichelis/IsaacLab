@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Franka Panda manipulating a Newton cable pendulum.
+"""Franka Panda manipulating a Newton cable plug.
 
 The cable is welded at one end to a kinematic anchor fixed above the tabletop
 and at the other end to a rigid plug body. The RL task is to bring the plug to
@@ -196,7 +196,7 @@ class TargetHoleCfg(RigidObjectSpawnerCfg):
 
 
 @configclass
-class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
+class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
     """Scene for the MJWarp Franka environment grasping a rigid VBD body attached to a VBD cable."""
 
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
@@ -407,7 +407,7 @@ class ActionsCfg:
 
 @configclass
 class ObservationsCfg:
-    """Policy observations for the cable pendulum task."""
+    """Policy observations for the cable plug task."""
 
     @configclass
     class PolicyCfg(ObsGroup):
@@ -429,7 +429,7 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    """Reset events for the cable pendulum task."""
+    """Reset events for the cable plug task."""
 
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
@@ -512,12 +512,10 @@ class TerminationsCfg:
 
 
 @configclass
-class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
+class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
     """Franka Panda manipulating a cable with a fixed anchor and a rigid plug."""
 
-    scene: _FrankaCablePendulumSceneCfg = _FrankaCablePendulumSceneCfg(
-        num_envs=128, env_spacing=2.5, replicate_physics=True
-    )
+    scene: _FrankaCablePlugSceneCfg = _FrankaCablePlugSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     commands: CommandsCfg = CommandsCfg()
