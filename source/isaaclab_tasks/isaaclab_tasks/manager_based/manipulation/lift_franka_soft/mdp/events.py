@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING
 
 import torch
 import warp as wp
-from newton.solvers import SolverVBD
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import quat_apply, quat_mul
@@ -157,6 +156,7 @@ def _apply_transform(
     # SolverCoupledProxy exposes sub-solvers via .solver(name) over a compacted
     # ModelView whose body_q_prev / body_inertia_q are indexed by local ids;
     # plain SolverVBD has model.body_count-sized arrays (local == global).
+    from newton.solvers import SolverVBD
     solver = NewtonVBDManager._solver
     if solver is None:
         raise RuntimeError("VBD solver is not initialized; cannot reset cable state.")
@@ -242,7 +242,6 @@ def reset_cable_uniform(
     # sync — flag the curve buffers dirty so the next render picks up the new
     # pose without waiting for a sim step.
     NewtonVBDManager._mark_curves_dirty()
-
 
 def reset_cable_assembly_uniform(
     env: ManagerBasedEnv,
