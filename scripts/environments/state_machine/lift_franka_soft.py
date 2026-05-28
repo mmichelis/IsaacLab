@@ -247,7 +247,7 @@ class PickAndLiftSm:
         # the kernel keeps the SM in LIFT_OBJECT and never releases the object.
         self.offset_insert = torch.zeros((self.num_envs, 7), device=self.device)
         self.offset_insert[:, -1] = 1.0  # identity quaternion (x, y, z, w)
-        if task == "Isaac-Lift-CablePendulum-Franka-v0":
+        if task == "Isaac-Lift-CablePlug-Franka-v0":
             self.offset_insert[:, 0] = 0.1
 
         # convert to warp
@@ -368,7 +368,7 @@ def main():
             if args_cli.task == "Isaac-Lift-Cable-Franka-v0":
                 # Grab the fourth cable link, matching the proxy-coupling demo target.
                 object_position = object_data.body_com_pos_w.torch[:, 3] - env.unwrapped.scene.env_origins
-            elif args_cli.task == "Isaac-Lift-CablePendulum-Franka-v0":
+            elif args_cli.task == "Isaac-Lift-CablePlug-Franka-v0":
                 # Grab the rigid plug
                 object_position = object_data.body_link_pos_w.torch[:, 0] - env.unwrapped.scene.env_origins
             else:
