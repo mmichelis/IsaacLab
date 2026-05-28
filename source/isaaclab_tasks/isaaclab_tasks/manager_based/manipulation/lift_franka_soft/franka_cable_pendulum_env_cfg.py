@@ -86,7 +86,7 @@ _PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_
 # the socket opens along -x so the plug (oriented along x) can be inserted by pushing in +x.
 _TARGET_HOLE_POS = (_PLUG_INIT_POS[0] - 0.15, _PLUG_INIT_POS[1] - 0.2, _PLUG_INIT_POS[2])
 # Inner clear opening in the y-z plane [m]: slightly larger than the plug diameter (2*_PLUG_RADIUS).
-_TARGET_HOLE_INNER = 0.025
+_TARGET_HOLE_INNER = 0.03
 # Wall thickness [m].
 _TARGET_HOLE_WALL_THICKNESS = 0.003
 # Socket depth along x [m]: matches the plug height so the plug can fully insert.
