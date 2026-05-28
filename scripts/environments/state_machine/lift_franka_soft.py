@@ -101,7 +101,8 @@ def infer_state_machine(
     des_object_pose: wp.array(dtype=wp.transform),
     des_ee_pose: wp.array(dtype=wp.transform),
     gripper_state: wp.array(dtype=float),
-    offset: wp.array(dtype=wp.transform),
+    offset_approach: wp.array(dtype=wp.transform),
+    offset_insert: wp.array(dtype=wp.transform),
     position_threshold: float,
 ):
     # retrieve thread id
@@ -118,7 +119,7 @@ def infer_state_machine(
             sm_state[tid] = PickSmState.APPROACH_ABOVE_OBJECT
             sm_wait_time[tid] = 0.0
     elif state == PickSmState.APPROACH_ABOVE_OBJECT:
-        des_ee_pose[tid] = wp.transform_multiply(offset[tid], object_pose[tid])
+        des_ee_pose[tid] = wp.transform_multiply(offset_approach[tid], object_pose[tid])
         gripper_state[tid] = GripperState.OPEN
         if distance_below_threshold(
             wp.transform_get_translation(ee_pose[tid]),
@@ -154,15 +155,15 @@ def infer_state_machine(
     elif state == PickSmState.LIFT_OBJECT:
         des_ee_pose[tid] = des_object_pose[tid]
         gripper_state[tid] = GripperState.CLOSE
-        # wait for a while
-        if sm_wait_time[tid] >= PickSmWaitTime.LIFT_OBJECT:
-            # move to next state and reset wait time
+        # Only transition out if an insert offset is configured (nonzero translation);
+        # an all-zero ``offset_insert`` parks the SM in LIFT_OBJECT for tasks that don't insert.
+        insert_t = wp.transform_get_translation(offset_insert[tid])
+        insert_active = insert_t[0] != 0.0 or insert_t[1] != 0.0 or insert_t[2] != 0.0
+        if insert_active and sm_wait_time[tid] >= PickSmWaitTime.LIFT_OBJECT:
             sm_state[tid] = PickSmState.APPROACH_TARGET
             sm_wait_time[tid] = 0.0
     elif state == PickSmState.APPROACH_TARGET:
-        approach_pos = wp.transform_get_translation(des_object_pose[tid]) + wp.vec3(0.08, 0.0, 0.0)
-        approach_rot = wp.transform_get_rotation(des_object_pose[tid])
-        des_ee_pose[tid] = wp.transform(approach_pos, approach_rot)
+        des_ee_pose[tid] = wp.transform_multiply(offset_insert[tid], des_object_pose[tid])
         gripper_state[tid] = GripperState.CLOSE
         # hold the pre-insertion pose, then release the plug
         if sm_wait_time[tid] >= PickSmWaitTime.APPROACH_TARGET:
@@ -239,11 +240,15 @@ class PickAndLiftSm:
 
         # approach above object offset
         self.offset = torch.zeros((self.num_envs, 7), device=self.device)
-        # if task == "Isaac-Lift-CablePendulum-Franka-v0":
-        #     self.offset[:, 0] = -0.1
-        # else:
         self.offset[:, 2] = 0.1
         self.offset[:, -1] = 1.0  # warp expects quaternion as (x, y, z, w)
+
+        # Insertion offset applied to ``des_object_pose`` during APPROACH_TARGET. When all-zero,
+        # the kernel keeps the SM in LIFT_OBJECT and never releases the object.
+        self.offset_insert = torch.zeros((self.num_envs, 7), device=self.device)
+        self.offset_insert[:, -1] = 1.0  # identity quaternion (x, y, z, w)
+        if task == "Isaac-Lift-CablePendulum-Franka-v0":
+            self.offset_insert[:, 0] = 0.1
 
         # convert to warp
         self.sm_dt_wp = wp.from_torch(self.sm_dt, wp.float32)
@@ -252,6 +257,7 @@ class PickAndLiftSm:
         self.des_ee_pose_wp = wp.from_torch(self.des_ee_pose, wp.transform)
         self.des_gripper_state_wp = wp.from_torch(self.des_gripper_state, wp.float32)
         self.offset_wp = wp.from_torch(self.offset, wp.transform)
+        self.offset_insert_wp = wp.from_torch(self.offset_insert, wp.transform)
 
     def reset_idx(self, env_ids: Sequence[int] = None):
         """Reset the state machine."""
@@ -282,6 +288,7 @@ class PickAndLiftSm:
                 self.des_ee_pose_wp,
                 self.des_gripper_state_wp,
                 self.offset_wp,
+                self.offset_insert_wp,
                 self.position_threshold,
             ],
             device=self.device,
@@ -370,8 +377,8 @@ def main():
             object_position += object_local_grasp_position
 
             # -- target object frame
-            # desired_position = env.unwrapped.command_manager.get_command("object_pose")[..., :3]
-            desired_position = torch.tensor([[0.42, 0.1, 0.2]], device=env.unwrapped.device)
+            desired_position = env.unwrapped.command_manager.get_command("object_pose")[..., :3]
+            # desired_position = torch.tensor([[0.42, 0.1, 0.2]], device=env.unwrapped.device)
 
             # advance state machine
             actions = pick_sm.compute(
