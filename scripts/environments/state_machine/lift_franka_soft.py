@@ -82,7 +82,8 @@ class PickSmState:
     APPROACH_OBJECT = wp.constant(2)
     GRASP_OBJECT = wp.constant(3)
     LIFT_OBJECT = wp.constant(4)
-    OPEN_GRIPPER = wp.constant(5)
+    APPROACH_TARGET = wp.constant(5)
+    OPEN_GRIPPER = wp.constant(6)
 
 
 @wp.func
@@ -153,6 +154,25 @@ def infer_state_machine(
     elif state == PickSmState.LIFT_OBJECT:
         des_ee_pose[tid] = des_object_pose[tid]
         gripper_state[tid] = GripperState.CLOSE
+        # wait for a while
+        if sm_wait_time[tid] >= PickSmWaitTime.LIFT_OBJECT:
+            # move to next state and reset wait time
+            sm_state[tid] = PickSmState.APPROACH_TARGET
+            sm_wait_time[tid] = 0.0
+    elif state == PickSmState.APPROACH_TARGET:
+        approach_pos = wp.transform_get_translation(des_object_pose[tid]) + wp.vec3(0.08, 0.0, 0.0)
+        approach_rot = wp.transform_get_rotation(des_object_pose[tid])
+        des_ee_pose[tid] = wp.transform(approach_pos, approach_rot)
+        gripper_state[tid] = GripperState.CLOSE
+        # hold the pre-insertion pose, then release the plug
+        if sm_wait_time[tid] >= PickSmWaitTime.APPROACH_TARGET:
+            sm_state[tid] = PickSmState.OPEN_GRIPPER
+            sm_wait_time[tid] = 0.0
+    elif state == PickSmState.OPEN_GRIPPER:
+        release_pos = wp.transform_get_translation(des_object_pose[tid]) #+ wp.vec3(0.08, 0.0, 0.0)
+        release_rot = wp.transform_get_rotation(des_object_pose[tid])
+        des_ee_pose[tid] = wp.transform(release_pos, release_rot)
+        gripper_state[tid] = GripperState.OPEN
     # increment wait time
     sm_wait_time[tid] = sm_wait_time[tid] + dt[tid]
 
@@ -165,9 +185,10 @@ class PickSmWaitTime:
 
     REST = wp.constant(0.2)
     APPROACH_ABOVE_OBJECT = wp.constant(1.0)
-    APPROACH_OBJECT = wp.constant(1.0)
-    GRASP_OBJECT = wp.constant(1.0)
-    LIFT_OBJECT = wp.constant(1.5)
+    APPROACH_OBJECT = wp.constant(0.5)
+    GRASP_OBJECT = wp.constant(0.5)
+    LIFT_OBJECT = wp.constant(1.0)
+    APPROACH_TARGET = wp.constant(1.5)
 
 
 class PickAndLiftSm:
@@ -182,7 +203,9 @@ class PickAndLiftSm:
     2. APPROACH_ABOVE_OBJECT: The robot moves above the object.
     3. APPROACH_OBJECT: The robot moves to the object.
     4. GRASP_OBJECT: The robot grasps the object.
-    5. LIFT_OBJECT: The robot lifts the object to the desired pose. This is the final state.
+    5. LIFT_OBJECT: The robot lifts the object to the desired pose.
+    6. APPROACH_TARGET: The robot holds the grasped object 0.1 m in front (+x) of the desired pose.
+    7. OPEN_GRIPPER: The robot opens the gripper to release the object. This is the final state.
     """
 
     def __init__(
@@ -313,7 +336,7 @@ def main():
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
     object_grasp_orientation[:, 0] = 1.0
     # Grasp at the deformable's centre of mass.
-    object_local_grasp_position = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device)
+    object_local_grasp_position = torch.tensor([-0.01, 0.0, -0.002], device=env.unwrapped.device)
 
     # create state machine
     pick_sm = PickAndLiftSm(
@@ -347,7 +370,8 @@ def main():
             object_position += object_local_grasp_position
 
             # -- target object frame
-            desired_position = env.unwrapped.command_manager.get_command("deformable_pose")[..., :3]
+            # desired_position = env.unwrapped.command_manager.get_command("object_pose")[..., :3]
+            desired_position = torch.tensor([[0.42, 0.1, 0.2]], device=env.unwrapped.device)
 
             # advance state machine
             actions = pick_sm.compute(
