@@ -94,9 +94,11 @@ def _sample_rigid_transform(
 def _scatter_reset_kernel(
     global_ids: wp.array(dtype=int),
     local_ids: wp.array(dtype=int),
+    free_q_starts: wp.array(dtype=int),
     new_body_q: wp.array(dtype=wp.transformf),
     state_body_q: wp.array(dtype=wp.transformf),
     state_body_qd: wp.array(dtype=wp.spatial_vectorf),
+    state_joint_q: wp.array(dtype=float),
     body_q_prev: wp.array(dtype=wp.transformf),
     body_inertia_q: wp.array(dtype=wp.transformf),
 ) -> None:
@@ -106,6 +108,13 @@ def _scatter_reset_kernel(
     ``global_ids``; the VBD sub-solver's ``body_q_prev`` / ``body_inertia_q``
     may be sized to a compacted view and are indexed by ``local_ids``. A
     negative ``local_ids[tid]`` skips the solver-side write.
+
+    For FREE-jointed bodies, ``free_q_starts[tid]`` gives the offset into
+    ``state_joint_q`` where the 7-float pose should be mirrored; a negative
+    value skips that write (e.g. for CABLE-jointed cable segments whose
+    ``joint_q`` uses a different layout). Without this writeback,
+    ``ArticulationView`` readers (and thus :attr:`RigidObjectData`) lag the
+    reset by one frame.
 
     ``body_q_prev == body_q`` keeps AVBD's velocity finite-difference at zero
     on the next step; ``body_inertia_q`` is zeroed to match solver init.
@@ -119,6 +128,17 @@ def _scatter_reset_kernel(
     if lid >= 0:
         body_q_prev[lid] = q
         body_inertia_q[lid] = wp.transformf()
+    q0 = free_q_starts[tid]
+    if q0 >= 0:
+        p = wp.transform_get_translation(q)
+        r = wp.transform_get_rotation(q)
+        state_joint_q[q0 + 0] = p[0]
+        state_joint_q[q0 + 1] = p[1]
+        state_joint_q[q0 + 2] = p[2]
+        state_joint_q[q0 + 3] = r[0]
+        state_joint_q[q0 + 4] = r[1]
+        state_joint_q[q0 + 5] = r[2]
+        state_joint_q[q0 + 6] = r[3]
 
 
 def _apply_transform(
@@ -138,6 +158,8 @@ def _apply_transform(
     Returns:
         ``(n_envs, k, 7)`` per-body world poses in ``wp.transformf`` layout.
     """
+    from newton import JointType
+
     from isaaclab_contrib.deformable.vbd_manager import NewtonVBDManager
 
     # ``model.body_q`` is the immutable build-time rest pose (never mutated after
@@ -157,6 +179,7 @@ def _apply_transform(
     # ModelView whose body_q_prev / body_inertia_q are indexed by local ids;
     # plain SolverVBD has model.body_count-sized arrays (local == global).
     from newton.solvers import SolverVBD
+
     solver = NewtonVBDManager._solver
     if solver is None:
         raise RuntimeError("VBD solver is not initialized; cannot reset cable state.")
@@ -165,6 +188,16 @@ def _apply_transform(
 
     flat_global = body_ids.reshape(-1).to(dtype=torch.int32).contiguous()
     flat_q = new_body_q.reshape(-1, 7).contiguous()
+
+    # Per-body ``joint_q`` offset for FREE-jointed bodies (``-1`` otherwise, e.g.
+    # CABLE-jointed cable segments whose ``joint_q`` has a different layout).
+    joint_type = wp.to_torch(model.joint_type).to(env.device)
+    free = (joint_type == int(JointType.FREE)).nonzero(as_tuple=True)[0]
+    body_to_q_start = torch.full((int(model.body_count),), -1, dtype=torch.int32, device=env.device)
+    body_to_q_start[wp.to_torch(model.joint_child).to(env.device)[free].long()] = (
+        wp.to_torch(model.joint_q_start).to(env.device)[free].to(torch.int32)
+    )
+    flat_q_starts = body_to_q_start[flat_global.long()].contiguous()
 
     # Bounds-check globals: fail fast with a clear message instead of a CUDA assert.
     min_id, max_id = int(flat_global.min().item()), int(flat_global.max().item())
@@ -208,9 +241,16 @@ def _apply_transform(
         inputs=[
             wp.from_torch(flat_global, dtype=wp.int32),
             wp.from_torch(flat_local, dtype=wp.int32),
+            wp.from_torch(flat_q_starts, dtype=wp.int32),
             wp.from_torch(flat_q, dtype=wp.transformf),
         ],
-        outputs=[state.body_q, state.body_qd, vbd_solver.body_q_prev, vbd_solver.body_inertia_q],
+        outputs=[
+            state.body_q,
+            state.body_qd,
+            state.joint_q,
+            vbd_solver.body_q_prev,
+            vbd_solver.body_inertia_q,
+        ],
         device=state.body_q.device,
     )
     NewtonVBDManager._mark_state_dirty()
@@ -242,6 +282,7 @@ def reset_cable_uniform(
     # sync — flag the curve buffers dirty so the next render picks up the new
     # pose without waiting for a sim step.
     NewtonVBDManager._mark_curves_dirty()
+
 
 def reset_cable_assembly_uniform(
     env: ManagerBasedEnv,
