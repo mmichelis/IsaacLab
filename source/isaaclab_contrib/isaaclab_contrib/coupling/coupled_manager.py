@@ -16,10 +16,10 @@ Sub-solver classes are resolved from their configs via
 
 from __future__ import annotations
 
-import numpy as np
 import re
 from typing import TYPE_CHECKING, ClassVar
 
+import numpy as np
 import warp as wp
 from isaaclab_newton.physics import (
     FeatherstoneSolverCfg,
