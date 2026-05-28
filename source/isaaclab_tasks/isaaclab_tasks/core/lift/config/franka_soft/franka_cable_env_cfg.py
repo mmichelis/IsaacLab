@@ -28,10 +28,10 @@ from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_contrib.cable.cable_object_cfg import CableObjectCfg
+from isaaclab_contrib.coupling import CoupledProxySolverCfg
 from isaaclab_contrib.deformable.newton_manager_cfg import (
     CoupledNewtonCfg,
     NewtonModelCfg,
-    ProxyCoupledMJWarpVBDSolverCfg,
     VBDSolverCfg,
 )
 
@@ -274,16 +274,16 @@ class FrankaCableEnvCfg(FrankaSoftEnvCfg):
         # fingers exposed as virtual proxies so VBD detects them as contacts on the cable.
         self.sim.physics = CoupledNewtonCfg(
             scene_cfg=self.scene,
-            solver_cfg=ProxyCoupledMJWarpVBDSolverCfg(
-                mjwarp_cfg=MJWarpSolverCfg(
+            solver_cfg=CoupledProxySolverCfg(
+                src_solver_cfg=MJWarpSolverCfg(
                     cone="elliptic",
                     ls_parallel=True,
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                vbd_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e2),
-                mjwarp_bodies=[SceneEntityCfg("robot")],
-                vbd_bodies=[SceneEntityCfg("object")],
+                dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e2),
+                src_bodies=[SceneEntityCfg("robot")],
+                dst_bodies=[SceneEntityCfg("object")],
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
