@@ -17,13 +17,16 @@ to the plug.
 
 from __future__ import annotations
 
-import math
+from collections.abc import Callable
+from dataclasses import MISSING
 
 import torch
 from isaaclab_newton.physics import MJWarpSolverCfg
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
 from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
 from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
+
+from pxr import Usd
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
@@ -36,6 +39,9 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
+from isaaclab.sim import schemas
+from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg
+from isaaclab.sim.utils import bind_visual_material, clone, create_prim, get_current_stage
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.math import quat_from_angle_axis
 
@@ -85,8 +91,101 @@ _TARGET_HOLE_INNER = 0.025
 _TARGET_HOLE_WALL_THICKNESS = 0.003
 # Socket depth along x [m]: matches the plug height so the plug can fully insert.
 _TARGET_HOLE_DEPTH = _PLUG_HEIGHT
-# Center-to-wall-center offset along y/z [m].
-_TARGET_HOLE_WALL_OFFSET = (_TARGET_HOLE_INNER + _TARGET_HOLE_WALL_THICKNESS) / 2.0
+
+
+##
+# Target-hole spawner: a single rigid body whose collision geometry is a square
+# socket built from four kinematic cuboid walls (compound shape). Modeling it as
+# one body keeps the scene cfg tidy: one ``target_hole`` entity instead of four
+# ``target_hole_{top,bottom,left,right}`` entries.
+##
+
+
+@clone
+def _spawn_target_hole(
+    prim_path: str,
+    cfg: TargetHoleCfg,
+    translation: tuple[float, float, float] | None = None,
+    orientation: tuple[float, float, float, float] | None = None,
+    **kwargs,
+) -> Usd.Prim:
+    """Spawn a square socket as one rigid body with four child cuboid collision shapes.
+
+    The opening faces -x and the walls extend along +x by :attr:`TargetHoleCfg.depth`.
+    Rigid-body / mass APIs are applied to the parent Xform; each child cuboid contributes
+    a separate collision shape that shares the parent's body.
+    """
+    stage = get_current_stage()
+    if stage.GetPrimAtPath(prim_path).IsValid():
+        raise ValueError(f"A prim already exists at path: '{prim_path}'.")
+    create_prim(prim_path, prim_type="Xform", translation=translation, orientation=orientation, stage=stage)
+
+    inner = cfg.inner_size
+    thickness = cfg.wall_thickness
+    depth = cfg.depth
+    span = inner + 2.0 * thickness
+    offset = (inner + thickness) / 2.0
+    # (name, size_xyz, local_pos): opening faces -x.
+    walls = (
+        ("top", (depth, span, thickness), (0.0, 0.0, offset)),
+        ("bottom", (depth, span, thickness), (0.0, 0.0, -offset)),
+        ("left", (depth, thickness, inner), (0.0, -offset, 0.0)),
+        ("right", (depth, thickness, inner), (0.0, offset, 0.0)),
+    )
+
+    # Author the shared visual material once and bind it to every wall.
+    material_path: str | None = None
+    if cfg.visual_material is not None:
+        material_path = (
+            cfg.visual_material_path
+            if cfg.visual_material_path.startswith("/")
+            else f"{prim_path}/{cfg.visual_material_path}"
+        )
+        cfg.visual_material.func(material_path, cfg.visual_material)
+
+    for name, size, pos in walls:
+        wall_path = f"{prim_path}/{name}"
+        mesh_path = f"{wall_path}/geometry/mesh"
+        # Cube prims carry a single ``size``; per-axis dimensions come from the Xform scale.
+        unit = min(size)
+        scale = tuple(dim / unit for dim in size)
+        create_prim(wall_path, prim_type="Xform", translation=pos, stage=stage)
+        create_prim(mesh_path, prim_type="Cube", scale=scale, attributes={"size": unit}, stage=stage)
+        if cfg.collision_props is not None:
+            schemas.define_collision_properties(mesh_path, cfg.collision_props, stage=stage)
+        if material_path is not None:
+            bind_visual_material(mesh_path, material_path, stage=stage)
+
+    if cfg.mass_props is not None:
+        schemas.define_mass_properties(prim_path, cfg.mass_props, stage=stage)
+    if cfg.rigid_props is not None:
+        schemas.define_rigid_body_properties(prim_path, cfg.rigid_props, stage=stage)
+    return stage.GetPrimAtPath(prim_path)
+
+
+@configclass
+class TargetHoleCfg(RigidObjectSpawnerCfg):
+    """Spawn a square socket as one (kinematic) rigid body with four cuboid walls.
+
+    See :func:`_spawn_target_hole` for the geometry layout.
+    """
+
+    func: Callable = _spawn_target_hole
+
+    inner_size: float = MISSING
+    """Inner clear opening in the y-z plane [m]."""
+
+    wall_thickness: float = MISSING
+    """Wall thickness [m]."""
+
+    depth: float = MISSING
+    """Socket depth along x [m]."""
+
+    visual_material: sim_utils.VisualMaterialCfg | None = None
+    """Visual material shared by all four walls. If None, no material is bound."""
+
+    visual_material_path: str = "material"
+    """Path to the visual material prim, relative to the socket prim path."""
 
 
 ##
@@ -111,63 +210,19 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
     )
 
-    # Target hole modeled as 4 thin kinematic cuboid walls forming a square socket.
-    # The opening faces -x (toward the plug); walls extend along x by _TARGET_HOLE_DEPTH.
-    target_hole_top: RigidObjectCfg = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/TargetHoleTop",
-        spawn=sim_utils.CuboidCfg(
-            size=(
-                _TARGET_HOLE_DEPTH,
-                _TARGET_HOLE_INNER + 2 * _TARGET_HOLE_WALL_THICKNESS,
-                _TARGET_HOLE_WALL_THICKNESS,
-            ),
+    # Square socket built as one kinematic rigid body with four cuboid collision walls.
+    # The opening faces -x (toward the plug); walls extend along +x by _TARGET_HOLE_DEPTH.
+    target_hole: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/TargetHole",
+        spawn=TargetHoleCfg(
+            inner_size=_TARGET_HOLE_INNER,
+            wall_thickness=_TARGET_HOLE_WALL_THICKNESS,
+            depth=_TARGET_HOLE_DEPTH,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1], _TARGET_HOLE_POS[2] + _TARGET_HOLE_WALL_OFFSET),
-        ),
-    )
-    target_hole_bottom: RigidObjectCfg = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/TargetHoleBottom",
-        spawn=sim_utils.CuboidCfg(
-            size=(
-                _TARGET_HOLE_DEPTH,
-                _TARGET_HOLE_INNER + 2 * _TARGET_HOLE_WALL_THICKNESS,
-                _TARGET_HOLE_WALL_THICKNESS,
-            ),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1], _TARGET_HOLE_POS[2] - _TARGET_HOLE_WALL_OFFSET),
-        ),
-    )
-    target_hole_left: RigidObjectCfg = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/TargetHoleLeft",
-        spawn=sim_utils.CuboidCfg(
-            size=(_TARGET_HOLE_DEPTH, _TARGET_HOLE_WALL_THICKNESS, _TARGET_HOLE_INNER),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1] - _TARGET_HOLE_WALL_OFFSET, _TARGET_HOLE_POS[2]),
-        ),
-    )
-    target_hole_right: RigidObjectCfg = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/TargetHoleRight",
-        spawn=sim_utils.CuboidCfg(
-            size=(_TARGET_HOLE_DEPTH, _TARGET_HOLE_WALL_THICKNESS, _TARGET_HOLE_INNER),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(_TARGET_HOLE_POS[0], _TARGET_HOLE_POS[1] + _TARGET_HOLE_WALL_OFFSET, _TARGET_HOLE_POS[2]),
-        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_TARGET_HOLE_POS),
     )
 
     object: RigidObjectCfg = RigidObjectCfg(
@@ -175,8 +230,8 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
         spawn=sim_utils.CylinderCfg(
             radius=_PLUG_RADIUS,
             height=_PLUG_HEIGHT,
-        # spawn=sim_utils.CuboidCfg(
-        #     size=(2*_PLUG_RADIUS, 2*_PLUG_RADIUS, _PLUG_HEIGHT),
+            # spawn=sim_utils.CuboidCfg(
+            #     size=(2*_PLUG_RADIUS, 2*_PLUG_RADIUS, _PLUG_HEIGHT),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -446,26 +501,19 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                dst_solver_cfg=VBDSolverCfg(
-                    iterations=20, 
-                    rigid_avbd_beta=1e3, 
-                    rigid_contact_k_start=1e3
-                ),
+                dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
                 src_bodies=[SceneEntityCfg("robot")],
                 dst_bodies=[
                     SceneEntityCfg("object"),
                     SceneEntityCfg("anchor"),
-                    SceneEntityCfg("target_hole_top"),
-                    SceneEntityCfg("target_hole_bottom"),
-                    SceneEntityCfg("target_hole_left"),
-                    SceneEntityCfg("target_hole_right"),
+                    SceneEntityCfg("target_hole"),
                     SceneEntityCfg("cable"),
                 ],
                 iterations=5,
                 rho=30.0,
                 gamma=0.1,
                 baumgarte=0.005,
-                contact_distance=0.003
+                contact_distance=0.003,
             ),
             model_cfg=NewtonModelCfg(
                 shape_material_ke=1e5,

@@ -169,7 +169,7 @@ def infer_state_machine(
             sm_state[tid] = PickSmState.OPEN_GRIPPER
             sm_wait_time[tid] = 0.0
     elif state == PickSmState.OPEN_GRIPPER:
-        release_pos = wp.transform_get_translation(des_object_pose[tid]) #+ wp.vec3(0.08, 0.0, 0.0)
+        release_pos = wp.transform_get_translation(des_object_pose[tid])
         release_rot = wp.transform_get_rotation(des_object_pose[tid])
         des_ee_pose[tid] = wp.transform(release_pos, release_rot)
         gripper_state[tid] = GripperState.OPEN
