@@ -32,6 +32,8 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from isaaclab.envs.mdp.commands.commands_cfg import UniformPoseCommandCfg
+from isaaclab.envs.mdp.commands.pose_command import UniformPoseCommand
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -43,7 +45,7 @@ from isaaclab.sim import schemas
 from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg
 from isaaclab.sim.utils import bind_visual_material, clone, create_prim, get_current_stage
 from isaaclab.utils.configclass import configclass
-from isaaclab.utils.math import quat_from_angle_axis
+from isaaclab.utils.math import combine_frame_transforms, quat_from_angle_axis
 
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
 from isaaclab_contrib.coupling import CoupledAdmmSolverCfg
@@ -287,18 +289,67 @@ class _FrankaCablePendulumSceneCfg(_FrankaSoftSceneCfg):
 ##
 
 
+class _UniformPoseCommandWithTarget(UniformPoseCommand):
+    """:class:`UniformPoseCommand` that drags a rigid scene asset along with the sampled command.
+
+    On every resample (reset or mid-episode), the named asset's root pose in the world
+    frame is written to ``command_pose + target_offset_b`` expressed in the robot's
+    root frame and then transformed to world. The asset's orientation is set to the
+    command's orientation. Useful when a fixture (e.g., an insertion socket) should
+    follow the sampled goal pose.
+    """
+
+    cfg: _UniformPoseCommandWithTargetCfg
+
+    def __init__(self, cfg: _UniformPoseCommandWithTargetCfg, env):
+        super().__init__(cfg, env)
+        self._target = env.scene[cfg.target_asset_name]
+        self._target_offset_b = torch.tensor(cfg.target_offset_b, device=self.device).view(1, 3)
+
+    def _resample_command(self, env_ids):
+        super()._resample_command(env_ids)
+        target_pos_b = self.pose_command_b[env_ids, :3] + self._target_offset_b
+        target_quat_b = self.pose_command_b[env_ids, 3:]
+        target_pos_w, target_quat_w = combine_frame_transforms(
+            self.robot.data.root_pos_w.torch[env_ids],
+            self.robot.data.root_quat_w.torch[env_ids],
+            target_pos_b,
+            target_quat_b,
+        )
+        self._target.write_root_pose_to_sim_index(
+            root_pose=torch.cat([target_pos_w, target_quat_w], dim=-1), env_ids=env_ids
+        )
+
+
+@configclass
+class _UniformPoseCommandWithTargetCfg(UniformPoseCommandCfg):
+    """Configuration for :class:`_UniformPoseCommandWithTarget`."""
+
+    class_type: type = _UniformPoseCommandWithTarget
+
+    target_asset_name: str = MISSING
+    """Name of the scene asset whose root pose follows the command."""
+
+    target_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Offset added to the command position [m] in the robot root frame."""
+
+
 @configclass
 class CommandsCfg:
     """Plug goal pose sampled in the robot root frame.
 
     Ranges are tightened compared to :class:`FrankaCableEnvCfg.CommandsCfg` to keep
     targets inside the half-sphere reachable by the plug while the cable is
-    anchored above the tabletop.
+    anchored above the tabletop. The ``target_hole`` socket follows each sample,
+    shifted by :attr:`_UniformPoseCommandWithTargetCfg.target_offset_b` in +x so
+    the plug can be pushed into it.
     """
 
-    object_pose = mdp.UniformPoseCommandCfg(
+    object_pose = _UniformPoseCommandWithTargetCfg(
         asset_name="robot",
         body_name="panda_hand",
+        target_asset_name="target_hole",
+        target_offset_b=(0.1, 0.0, 0.0),
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
