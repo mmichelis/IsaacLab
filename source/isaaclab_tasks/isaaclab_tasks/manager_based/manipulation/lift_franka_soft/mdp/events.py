@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 import torch
 import warp as wp
+from newton.solvers import SolverVBD
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import quat_apply, quat_mul
@@ -174,18 +175,31 @@ def _apply_transform(
         )
 
     if hasattr(solver, "solver") and callable(getattr(solver, "solver")):
-        vbd_solver = solver.solver("vbd")
-        global_to_local = wp.to_torch(solver._entries["vbd"].body_global_to_local)
+        vbd_solver = solver.solver("dst")
+        if not isinstance(vbd_solver, SolverVBD):
+            raise RuntimeError(
+                "reset_cable_*: destination entry of the coupled solver is"
+                f" {type(vbd_solver).__name__}, not `SolverVBD`. The cable reset path writes to"
+                " VBD-specific buffers (`body_q_prev`, `body_inertia_q`); configure"
+                " `CoupledProxySolverCfg.dst_solver_cfg` as a `VBDSolverCfg`."
+            )
+        global_to_local = wp.to_torch(solver._entries["dst"].body_global_to_local)
         flat_local = global_to_local[flat_global.long()].to(dtype=torch.int32).contiguous()
         unowned = (flat_local < 0).nonzero(as_tuple=False).flatten()
         if unowned.numel():
             bad = flat_global[unowned[:5]].tolist()
             raise RuntimeError(
-                "reset_cable_*: at least one body is not owned by the VBD entry of the proxy-coupled"
-                f" solver (first few global ids: {bad}). Ensure cable/anchor/plug are listed in"
-                " `ProxyCoupledMJWarpVBDSolverCfg.vbd_bodies`."
+                "reset_cable_*: at least one body is not owned by the destination entry of the"
+                f" proxy-coupled solver (first few global ids: {bad}). Ensure cable/anchor/plug are"
+                " listed in `CoupledProxySolverCfg.dst_bodies`."
             )
     else:
+        if not isinstance(solver, SolverVBD):
+            raise RuntimeError(
+                f"reset_cable_*: active solver is {type(solver).__name__}, not `SolverVBD` or a"
+                " coupled solver with a VBD destination entry. The cable reset path writes to"
+                " VBD-specific buffers (`body_q_prev`, `body_inertia_q`)."
+            )
         vbd_solver, flat_local = solver, flat_global
 
     wp.launch(

@@ -40,10 +40,10 @@ from isaaclab.utils.configclass import configclass
 from isaaclab.utils.math import quat_from_angle_axis
 
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
+from isaaclab_contrib.coupling import CoupledProxySolverCfg
 from isaaclab_contrib.deformable.newton_manager_cfg import (
     CoupledNewtonCfg,
     NewtonModelCfg,
-    ProxyCoupledMJWarpVBDSolverCfg,
     VBDSolverCfg,
 )
 
@@ -365,16 +365,16 @@ class FrankaCablePendulumEnvCfg(FrankaSoftEnvCfg):
         # needs to know about them on the VBD side.
         self.sim.physics = CoupledNewtonCfg(
             scene_cfg=self.scene,
-            solver_cfg=ProxyCoupledMJWarpVBDSolverCfg(
-                mjwarp_cfg=MJWarpSolverCfg(
+            solver_cfg=CoupledProxySolverCfg(
+                src_solver_cfg=MJWarpSolverCfg(
                     cone="elliptic",
                     ls_parallel=True,
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                vbd_cfg=VBDSolverCfg(iterations=50, rigid_avbd_beta=1e4, rigid_contact_k_start=1e3),
-                mjwarp_bodies=[SceneEntityCfg("robot")],
-                vbd_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
+                dst_solver_cfg=VBDSolverCfg(iterations=50, rigid_avbd_beta=1e4, rigid_contact_k_start=1e3),
+                src_bodies=[SceneEntityCfg("robot")],
+                dst_bodies=[SceneEntityCfg("object"), SceneEntityCfg("anchor"), SceneEntityCfg("cable")],
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
