@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import MISSING
 
+import math
 import torch
 from isaaclab_newton.physics import MJWarpSolverCfg
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
@@ -397,21 +398,21 @@ class EventCfg:
         mode="reset",
         params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
     )
-    # reset_assembly = EventTerm(
-    #     func=mdp.reset_cable_assembly_uniform,
-    #     mode="reset",
-    #     params={
-    #         "pose_range": {
-    #             "x": (-0.05, 0.05),
-    #             "y": (-0.02, 0.02),
-    #             "z": (-0.02, 0.02),
-    #             "yaw": (-math.pi / 18.0, math.pi / 18.0),
-    #         },
-    #         "cable_cfg": SceneEntityCfg("cable"),
-    #         "anchor_cfg": SceneEntityCfg("anchor"),
-    #         "plug_cfg": SceneEntityCfg("object"),
-    #     },
-    # )
+    reset_assembly = EventTerm(
+        func=mdp.reset_cable_assembly_uniform,
+        mode="reset",
+        params={
+            "pose_range": {
+                "x": (-0.05, 0.05),
+                "y": (-0.02, 0.02),
+                "z": (-0.02, 0.02),
+                "yaw": (-math.pi / 18.0, math.pi / 18.0),
+            },
+            "cable_cfg": SceneEntityCfg("cable"),
+            "anchor_cfg": SceneEntityCfg("anchor"),
+            "plug_cfg": SceneEntityCfg("object"),
+        },
+    )
 
 
 @configclass
