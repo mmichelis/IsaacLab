@@ -3,22 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Waterhose manipulation environment skeleton.
+"""Waterhose manipulation environment.
 
-The MDP config groups below (commands, actions, observations, events, rewards,
-terminations) are copied from the Franka cable-plug task
-(:mod:`isaaclab_tasks.manager_based.manipulation.lift_franka_soft`) so they can
-be edited freely to fit this environment. The reward/observation *functions*
-themselves are still imported from ``lift_franka_soft.mdp``.
-
-The scene (:class:`WaterhoseSceneCfg`) is intentionally empty apart from a sky
-light and a ground plane; all manipulated assets are expected to be loaded
-externally. Because the
-config groups and the coupled MJWarp+VBD physics block reference scene entities
-by name (``robot``, ``object``, ``anchor``, ``cable``,
-``target_hole_{top,bottom,left,right}``), the module imports cleanly, but the
-environment will only build and run once assets with those names are added to
-the scene.
+MDP config groups are copied from the Franka cable-plug task
+(:mod:`isaaclab_tasks.manager_based.manipulation.lift_franka_soft`), whose
+``mdp`` functions are reused by import.
 """
 
 from __future__ import annotations
@@ -54,22 +43,11 @@ from ..lift_franka_soft import mdp
 
 WATERHOSE_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-##
-# Cable anchor geometry
-##
-# Cable init pose [m] (must match the ``cable`` asset's ``init_state.pos`` below).
+# Cable tail nodes (curve indices 42, 43) from cable001.usda, local frame [m].
+# Anchor sits at the cable_anchor=-1 segment center: the midpoint of these nodes.
 _CABLE_INIT_POS = (0.0, 0.0, 0.5)
-
-# Tail-segment nodes (curve indices 42, 43) read from ``cable001.usda``, in the
-# cable's local frame [m]. ``cable_anchor=-1`` is the last rod *segment*, whose
-# body origin is the midpoint of its two end nodes (consistent with the head node
-# sitting half a segment from the segment-0 body center).
 _CABLE_TAIL_NODE_42 = (-0.1882251501083374, 0.3453156650066376, -0.266216903924942)
 _CABLE_TAIL_NODE_43 = (-0.18807558715343475, 0.3453156650066376, -0.2473306804895401)
-
-# World position of the tail segment (``cable_anchor=-1``) body center: the cable
-# init pose plus the midpoint of nodes 42 and 43. The kinematic anchor sits here
-# so welding the segment center (``cable_local_pos=(0, 0, 0)``) pins it exactly.
 _ANCHOR_POS = tuple(
     init + 0.5 * (n42 + n43) for init, n42, n43 in zip(_CABLE_INIT_POS, _CABLE_TAIL_NODE_42, _CABLE_TAIL_NODE_43)
 )
@@ -81,7 +59,7 @@ _ANCHOR_POS = tuple(
 
 @configclass
 class WaterhoseSceneCfg(InteractiveSceneCfg):
-    """Minimal scene: a sky light and a ground plane. Manipulated assets are loaded externally."""
+    """Cable + plug with the cable tail pinned to a kinematic anchor; sky light and ground."""
 
     plug = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
@@ -92,7 +70,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    # Kinematic anchor pinning the cable's tail (cable_anchor=-1) at its rest position.
+    # Kinematic anchor pinning the cable tail.
     anchor = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Anchor",
         spawn=sim_utils.SphereCfg(
@@ -128,8 +106,6 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
             CableAttachmentCfg(
                 target_prim_path="/World/envs/env_.*/Anchor",
                 cable_anchor=-1,
-                # Default cable_local_pos=(0, 0, 0): weld the tail segment's body
-                # center, which is exactly where the anchor is placed.
             ),
         ],
     )
@@ -218,11 +194,7 @@ class ActionsCfg:
 
 
 def dummy_obs(env) -> torch.Tensor:
-    """Placeholder observation term: a per-env zero scalar, shape [num_envs, 1].
-
-    Returns a valid 2-D tensor the observation manager can concatenate. Replace
-    with real observation terms once the scene assets are loaded.
-    """
+    """Placeholder per-env zero observation, shape [num_envs, 1]."""
     return torch.zeros(env.num_envs, 1, device=env.device)
 
 
