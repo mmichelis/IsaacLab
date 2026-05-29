@@ -43,13 +43,18 @@ from ..lift_franka_soft import mdp
 
 WATERHOSE_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-# Cable tail nodes (curve indices 42, 43) from cable001.usda, local frame [m].
-# Anchor sits at the cable_anchor=-1 segment center: the midpoint of these nodes.
+# Anchor = segment-body center (midpoint of its two nodes) at the cable's fixed end.
+# cable001 fixes the tail (nodes 42, 43); cable002 fixes the head (nodes 0, 1).
 _CABLE_INIT_POS = (0.0, 0.0, 0.5)
-_CABLE_TAIL_NODE_42 = (-0.1882251501083374, 0.3453156650066376, -0.266216903924942)
-_CABLE_TAIL_NODE_43 = (-0.18807558715343475, 0.3453156650066376, -0.2473306804895401)
+_CABLE1_TAIL_NODE_42 = (-0.1882251501083374, 0.3453156650066376, -0.266216903924942)
+_CABLE1_TAIL_NODE_43 = (-0.18807558715343475, 0.3453156650066376, -0.2473306804895401)
+_CABLE2_HEAD_NODE_0 = (-0.18045400083065033, 0.3453156650066376, -0.24754305183887482)
+_CABLE2_HEAD_NODE_1 = (-0.18038532137870789, 0.3453156650066376, -0.25747784972190857)
 _ANCHOR_POS = tuple(
-    init + 0.5 * (n42 + n43) for init, n42, n43 in zip(_CABLE_INIT_POS, _CABLE_TAIL_NODE_42, _CABLE_TAIL_NODE_43)
+    init + 0.5 * (a + b) for init, a, b in zip(_CABLE_INIT_POS, _CABLE1_TAIL_NODE_42, _CABLE1_TAIL_NODE_43)
+)
+_ANCHOR2_POS = tuple(
+    init + 0.5 * (a + b) for init, a, b in zip(_CABLE_INIT_POS, _CABLE2_HEAD_NODE_0, _CABLE2_HEAD_NODE_1)
 )
 
 ##
@@ -61,20 +66,11 @@ _ANCHOR_POS = tuple(
 class WaterhoseSceneCfg(InteractiveSceneCfg):
     """Cable + plug with the cable tail pinned to a kinematic anchor; sky light and ground."""
 
-    plug = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/Plug",
-        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(-0.38398558, 0.34585292, 0.5 - 0.36874688),
-            rot=(0.0, -0.57096256, 0.0, 0.8209761),
-        ),
-    )
-
-    # Kinematic anchor pinning the cable tail.
-    anchor = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/Anchor",
+    ### Cable 1
+    anchor1 = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Anchor1",
         spawn=sim_utils.SphereCfg(
-            radius=0.01,
+            radius=0.005,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
@@ -82,16 +78,25 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
     )
 
-    cable = CableObjectCfg(
-        prim_path="/World/envs/env_.*/Cable",
+    plug1 = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Plug1",
+        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(-0.38398558, 0.34585292, 0.5 - 0.36874688),
+            rot=(0.0, -0.57096256, 0.0, 0.8209761),
+        ),
+    )
+
+    cable1 = CableObjectCfg(
+        prim_path="/World/envs/env_.*/Cable1",
         spawn=sim_utils.UsdFileCfg(
             usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "cable001.usda"),
             physics_material=NewtonCableMaterialCfg(
-                stretch_stiffness=1e3,
-                bend_stiffness=1e-4,
-                stretch_damping=1e-1,
-                bend_damping=1e-4,
-                density=100.0,
+                stretch_stiffness=1e6,
+                bend_stiffness=2e1,
+                stretch_damping=1e-5,
+                bend_damping=1e0,
+                density=1000.0,
             ),
         ),
         init_state=CableObjectCfg.InitialStateCfg(
@@ -99,13 +104,62 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
         ),
         attachments=[
             CableAttachmentCfg(
-                target_prim_path="/World/envs/env_.*/Plug",
+                target_prim_path="/World/envs/env_.*/Plug1",
                 cable_anchor=0,
                 cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
             ),
             CableAttachmentCfg(
-                target_prim_path="/World/envs/env_.*/Anchor",
+                target_prim_path="/World/envs/env_.*/Anchor1",
                 cable_anchor=-1,
+            ),
+        ],
+    )
+
+    ### Cable 2
+    anchor2 = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Anchor2",
+        spawn=sim_utils.SphereCfg(
+            radius=0.005,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR2_POS),
+    )
+
+    plug2 = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Plug2",
+        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.00921878, 0.34529759, 0.5 - 0.37485825),
+            rot=(0.0, 0.52994014, 0.0, 0.84803505),
+        ),
+    )
+
+    cable2 = CableObjectCfg(
+        prim_path="/World/envs/env_.*/Cable2",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "cable002.usda"),
+            physics_material=NewtonCableMaterialCfg(
+                stretch_stiffness=1e6,
+                bend_stiffness=2e1,
+                stretch_damping=1e-5,
+                bend_damping=1e0,
+                density=1000.0,
+            ),
+        ),
+        init_state=CableObjectCfg.InitialStateCfg(
+            pos=_CABLE_INIT_POS,
+        ),
+        attachments=[
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Plug2",
+                cable_anchor=-1,
+                cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
+            ),
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Anchor2",
+                cable_anchor=0,
             ),
         ],
     )
@@ -273,8 +327,8 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
-        self.sim.gravity = (0.0, 0.0, -9.81)
-        # self.sim.gravity = (0.0, 0.0, 0.0)
+        # self.sim.gravity = (0.0, 0.0, -9.81)
+        self.sim.gravity = (0.0, 0.0, 0.0)
 
         view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
