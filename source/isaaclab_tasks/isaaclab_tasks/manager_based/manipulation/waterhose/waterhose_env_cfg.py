@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 
-import torch
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCollisionPipelineCfg
 from isaaclab_newton.sim.spawners.materials.physics_materials_cfg import NewtonCableMaterialCfg
 from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
@@ -64,6 +63,13 @@ _CABLE2_HEAD_NODE_1 = (-0.18038532137870789, 0.3453156650066376, -0.257477849721
 _CABLE1_ANCHOR_NODE = _CABLE1_TAIL_NODE_42
 _CABLE2_ANCHOR_NODE = _CABLE2_HEAD_NODE_1
 
+# World positions of the cable fixed-end nodes = per-env kinematic anchor bodies. The
+# cable welds to these (a per-env body) rather than the shared static world body: a
+# fixed joint to the global world body (-1) corrupts the multi-env coupled MJWarp+VBD
+# solve (robot joints go NaN at step 0).
+_ANCHOR_POS = tuple(p + n for p, n in zip(_FRIDGE_POS, _CABLE1_ANCHOR_NODE))
+_ANCHOR2_POS = tuple(p + n for p, n in zip(_FRIDGE_POS, _CABLE2_ANCHOR_NODE))
+
 
 ##
 # Scene
@@ -81,6 +87,28 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
             usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "fridge.usda"),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=_FRIDGE_POS),
+    )
+
+    ### Per-env kinematic anchors the cable fixed ends weld to (see _ANCHOR_POS note).
+    anchor1 = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Anchor1",
+        spawn=sim_utils.SphereCfg(
+            radius=0.005,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
+    )
+    anchor2 = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Anchor2",
+        spawn=sim_utils.SphereCfg(
+            radius=0.005,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR2_POS),
     )
 
     ### rby1df robot (28-DOF, fixed base). Drive gains match the reference example.
@@ -148,9 +176,8 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
                 cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
             ),
             CableAttachmentCfg(
-                target_prim_path="/World/envs/env_.*/Fridge",
-                cable_anchor=42,
-                target_local_pos=_CABLE1_ANCHOR_NODE,  # fixed node 42 in the fridge's source frame
+                target_prim_path="/World/envs/env_.*/Anchor1",
+                cable_anchor=42,  # last segment start node; Anchor1 sits exactly there
             ),
         ],
     )
@@ -187,9 +214,8 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
                 cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
             ),
             CableAttachmentCfg(
-                target_prim_path="/World/envs/env_.*/Fridge",
-                cable_anchor=1,
-                target_local_pos=_CABLE2_ANCHOR_NODE,  # fixed node 1 in the fridge's source frame
+                target_prim_path="/World/envs/env_.*/Anchor2",
+                cable_anchor=1,  # head segment start node; Anchor2 sits exactly there
             ),
         ],
     )
@@ -337,6 +363,8 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
                     SceneEntityCfg("cable2"),
                     SceneEntityCfg("plug1"),
                     SceneEntityCfg("plug2"),
+                    SceneEntityCfg("anchor1"),
+                    SceneEntityCfg("anchor2"),
                 ],
                 iterations=5,
                 rho=30.0,
