@@ -93,7 +93,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
     anchor1 = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Anchor1",
         spawn=sim_utils.SphereCfg(
-            radius=0.005,
+            radius=0.001,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
@@ -103,7 +103,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
     anchor2 = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Anchor2",
         spawn=sim_utils.SphereCfg(
-            radius=0.005,
+            radius=0.001,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
