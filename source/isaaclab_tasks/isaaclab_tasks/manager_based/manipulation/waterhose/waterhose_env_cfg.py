@@ -47,18 +47,14 @@ WATERHOSE_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 # (u, v), +Z from u->v), so cable_local_pos=(0, 0, 0) welds at u. The anchor sits
 # at that start node: cable001's last segment is edge (42, 43) -> u=42; cable002's
 # first segment is edge (0, 1) -> u=0.
-_CABLE_INIT_POS = (0.0, 0.0, 0.5)
+_FRIDGE_POS = (0.0, 0.0, 0.5)
 _CABLE1_TAIL_NODE_42 = (-0.18810473382472992, 0.3453156650066376, -0.25986239314079285)
 _CABLE1_TAIL_NODE_43 = (-0.18807558715343475, 0.3453156650066376, -0.2473306804895401)
 _CABLE2_HEAD_NODE_0 = (-0.18045400083065033, 0.3453156650066376, -0.24754305183887482)
 _CABLE2_HEAD_NODE_1 = (-0.18038532137870789, 0.3453156650066376, -0.25747784972190857)
 _CABLE1_ANCHOR_NODE = _CABLE1_TAIL_NODE_42
 _CABLE2_ANCHOR_NODE = _CABLE2_HEAD_NODE_1
-_ANCHOR_POS = tuple(i + n for i, n in zip(_CABLE_INIT_POS, _CABLE1_ANCHOR_NODE))
-_ANCHOR2_POS = tuple(i + n for i, n in zip(_CABLE_INIT_POS, _CABLE2_ANCHOR_NODE))
 
-# Origin for the (split) static fridge pieces; all three load here to reassemble.
-_FRIDGE_POS = (0.5, 0.0, 0.0)
 
 ##
 # Scene
@@ -68,6 +64,15 @@ _FRIDGE_POS = (0.5, 0.0, 0.0)
 @configclass
 class WaterhoseSceneCfg(InteractiveSceneCfg):
     """Cable + plug with the cable tail pinned to static anchors; sky light and ground."""
+
+    ### Static fridge body
+    fridge = AssetBaseCfg(
+        prim_path="/World/envs/env_.*/Fridge",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "fridge.usda"),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=_FRIDGE_POS),
+    )
 
     ### Cable 1
     plug1 = RigidObjectCfg(
@@ -92,7 +97,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
             ),
         ),
         init_state=CableObjectCfg.InitialStateCfg(
-            pos=_CABLE_INIT_POS,
+            pos=_FRIDGE_POS,
         ),
         attachments=[
             CableAttachmentCfg(
@@ -100,10 +105,11 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
                 cable_anchor=0,
                 cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
             ),
-            # CableAttachmentCfg(
-            #     target_prim_path="/World/envs/env_.*/Anchor1",
-            #     cable_anchor=42,
-            # ),
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Fridge",
+                cable_anchor=42,
+                target_local_pos=_CABLE1_ANCHOR_NODE,  # fixed node 42 in the fridge's source frame
+            ),
         ],
     )
 
@@ -130,7 +136,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
             ),
         ),
         init_state=CableObjectCfg.InitialStateCfg(
-            pos=_CABLE_INIT_POS,
+            pos=_FRIDGE_POS,
         ),
         attachments=[
             CableAttachmentCfg(
@@ -138,10 +144,11 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
                 cable_anchor=-1,
                 cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
             ),
-            # CableAttachmentCfg(
-            #     target_prim_path="/World/envs/env_.*/Anchor2",
-            #     cable_anchor=1,
-            # ),
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Fridge",
+                cable_anchor=1,
+                target_local_pos=_CABLE2_ANCHOR_NODE,  # fixed node 1 in the fridge's source frame
+            ),
         ],
     )
 
@@ -157,15 +164,6 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
         prim_path="/World/GroundPlane",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0.0, 0.0, -1.05]),
         spawn=GroundPlaneCfg(),
-    )
-
-    ### Static fridge body
-    fridge = AssetBaseCfg(
-        prim_path="/World/envs/env_.*/Fridge",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "fridge.usd"),
-        ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=_FRIDGE_POS),
     )
 
 
@@ -317,8 +315,8 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
-        # self.sim.gravity = (0.0, 0.0, -9.81)
-        self.sim.gravity = (0.0, 0.0, 0.0)
+        self.sim.gravity = (0.0, 0.0, -9.81)
+        # self.sim.gravity = (0.0, 0.0, 0.0)
 
         view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
