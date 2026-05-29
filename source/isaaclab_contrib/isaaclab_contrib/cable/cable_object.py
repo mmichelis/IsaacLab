@@ -433,7 +433,11 @@ class CableObject(Articulation):
         # into ``node_positions``; the replicate hook only adds the env transform.
         entry = CableRegistryEntry(
             prim_path=self.cfg.prim_path,
-            curve_prim_path=str(curve_prim.GetPrimPath()),
+            # Per-env template (keeps the ``env_.*`` pattern) so the Fabric cable sync can
+            # resolve each cloned env's curve prim. ``find_first_matching_prim`` returns
+            # env_0's concrete prim, so rebase its sub-path onto the cfg template prim_path;
+            # otherwise every env resolves to env_0 and only env_0's cable updates visually.
+            curve_prim_path=self.cfg.prim_path + curve_prim.GetPrimPath().pathString[len(str(template_prim_path)) :],
             node_positions=node_positions,
             edges=edges,
             radius=radius,
