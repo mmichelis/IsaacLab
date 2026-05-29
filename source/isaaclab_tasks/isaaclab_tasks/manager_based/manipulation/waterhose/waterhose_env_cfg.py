@@ -77,7 +77,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
     ### Cable 1
     plug1 = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug1",
-        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
+        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug.usda")),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=(-0.38398558, 0.34585292, 0.5 - 0.36874688),
             rot=(0.0, -0.57096256, 0.0, 0.8209761),
@@ -299,7 +299,7 @@ class TerminationsCfg:
 class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
     """Waterhose environment reusing the cable-plug MDP on an externally loaded scene."""
 
-    scene: WaterhoseSceneCfg = WaterhoseSceneCfg(num_envs=8, env_spacing=0.5, replicate_physics=True)
+    scene: WaterhoseSceneCfg = WaterhoseSceneCfg(num_envs=8, env_spacing=2.5, replicate_physics=True)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
@@ -316,10 +316,13 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, -9.81)
-        # self.sim.gravity = (0.0, 0.0, 0.0)
 
-        view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
+        view = dict(eye=(1.5, 4.5, 0.8), lookat=(0.0, 0.0, 0.3), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
+
+        # Resolution of `--video` recordings (independent of the on-screen visualizer windows above).
+        self.video_recorder.window_width = 1920
+        self.video_recorder.window_height = 1080
 
         # self.sim.physics = CoupledNewtonCfg(
         #     scene_cfg=self.scene,
