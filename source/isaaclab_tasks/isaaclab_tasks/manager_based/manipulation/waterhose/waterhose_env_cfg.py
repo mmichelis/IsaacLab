@@ -25,8 +25,10 @@ from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.assets.rigid_object.rigid_object_cfg import RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
@@ -213,71 +215,27 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
 
 
 @configclass
-class CommandsCfg:
-    """Cable goal pose sampled in the robot root frame."""
-
-    # object_pose = mdp.UniformPoseCommandCfg(
-    #     asset_name="robot",
-    #     body_name="panda_hand",
-    #     resampling_time_range=(5.0, 5.0),
-    #     debug_vis=True,
-    #     ranges=mdp.UniformPoseCommandCfg.Ranges(
-    #         pos_x=(0.4, 0.6),
-    #         pos_y=(-0.25, 0.25),
-    #         pos_z=(0.1, 0.3),
-    #         roll=(0.0, 0.0),
-    #         pitch=(0.0, 0.0),
-    #         yaw=(0.0, 0.0),
-    #     ),
-    #     goal_pose_visualizer_cfg=VisualizationMarkersCfg(
-    #         prim_path="/Visuals/Command/goal_pose",
-    #         markers={
-    #             "sphere": sim_utils.SphereCfg(
-    #                 radius=0.02,
-    #                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.9, 0.2), opacity=0.01),
-    #             ),
-    #         },
-    #     ),
-    #     # Hide the EE frame
-    #     current_pose_visualizer_cfg=VisualizationMarkersCfg(
-    #         prim_path="/Visuals/Command/body_pose",
-    #         markers={
-    #             "sphere": sim_utils.SphereCfg(
-    #                 radius=1e-6,
-    #                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 0.0), opacity=0.0),
-    #             ),
-    #         },
-    #     ),
-    # )
-
-
-@configclass
 class ActionsCfg:
-    """7-dim absolute end-effector pose (xyz + quaternion) via differential IK + 1-dim binary gripper."""
+    """Joint-position control of the rby1df robot.
 
-    # arm_action = DifferentialInverseKinematicsActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["panda_joint.*"],
-    #     body_name="panda_hand",
-    #     controller=DifferentialIKControllerCfg(
-    #         command_type="pose",
-    #         use_relative_mode=False,
-    #         ik_method="dls",
-    #         ik_params={"lambda_val": 0.05},
-    #     ),
-    #     body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
-    # )
-    # gripper_action = mdp.BinaryJointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["panda_finger.*"],
-    #     open_command_expr={"panda_finger_.*": 0.05},
-    #     close_command_expr={"panda_finger_.*": 0.005},
-    # )
+    Actions are offsets from the default joint pose (``use_default_offset=True``), so a
+    zero action holds the rest configuration. Only the gripper *driver* joints
+    (``*_gripper_finger_joint_1``) are actuated; the left/right finger joints follow
+    them via the USD mimic joints.
+    """
 
-
-def dummy_obs(env) -> torch.Tensor:
-    """Placeholder per-env zero observation, shape [num_envs, 1]."""
-    return torch.zeros(env.num_envs, 1, device=env.device)
+    body_action = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["torso_joint_.*", "left_arm_joint_.*", "right_arm_joint_.*", "head_joint_.*"],
+        scale=0.1,
+        use_default_offset=True,
+    )
+    gripper_action = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[".*_gripper_finger_joint_1"],
+        scale=1.0,
+        use_default_offset=True,
+    )
 
 
 @configclass
@@ -286,15 +244,9 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        # joint_pos = ObsTerm(func=mdp.joint_pos_rel)
-        # joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        # plug_position = ObsTerm(
-        #     func=mdp.object_com_in_robot_root_frame,
-        #     params={"asset_cfg": SceneEntityCfg("object")},
-        # )
-        # target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "object_pose"})
-        # actions = ObsTerm(func=mdp.last_action)
-        actions = ObsTerm(func=dummy_obs)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self) -> None:
             self.enable_corruption = True
@@ -307,20 +259,20 @@ class ObservationsCfg:
 class EventCfg:
     """Reset events for the cable plug task."""
 
-    # reset_robot_joints = EventTerm(
-    #     func=mdp.reset_joints_by_scale,
-    #     mode="reset",
-    #     params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
-    # )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
+    )
 
 
 @configclass
 class RewardsCfg:
     """Reach-and-track reward shaping for the rigid plug."""
 
-    # joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-2)
-    # joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-4)
-    # joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-2)
+    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-4)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
 
 
 @configclass
@@ -342,7 +294,6 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
     scene: WaterhoseSceneCfg = WaterhoseSceneCfg(num_envs=8, env_spacing=2.5, replicate_physics=True)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
-    commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
@@ -357,15 +308,14 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, -9.81)
 
-        view = dict(eye=(1.5, 4.5, 0.8), lookat=(0.0, 0.0, 0.3), window_width=1600, window_height=1600)
+        view = dict(eye=(-2.0, 1.5, 0.8), lookat=(0.0, 0.35, 0.2), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
 
         # Resolution of `--video` recordings (independent of the on-screen visualizer windows above).
-        self.video_recorder.window_width = 1920
-        self.video_recorder.window_height = 1080
+        self.video_recorder.window_width = 1600
+        self.video_recorder.window_height = 1600
 
-        # Coupled MJWarp (articulated rby1df robot) + VBD (cables/plugs). The robot must
-        # live in the MJWarp rigid solver to be driven; the cables/plugs stay in VBD.
+        # Coupled MJWarp (articulated rby1df robot) + VBD (cables/plugs).
         self.sim.physics = CoupledNewtonCfg(
             scene_cfg=self.scene,
             solver_cfg=CoupledAdmmSolverCfg(
