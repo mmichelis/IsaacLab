@@ -15,17 +15,19 @@ from __future__ import annotations
 import os
 
 import torch
-from isaaclab_newton.physics import NewtonCollisionPipelineCfg
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCollisionPipelineCfg
 from isaaclab_newton.sim.spawners.materials.physics_materials_cfg import NewtonCableMaterialCfg
 from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
 from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg
+from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.assets.rigid_object.rigid_object_cfg import RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg
@@ -33,6 +35,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
+from isaaclab_contrib.coupling import CoupledAdmmSolverCfg
 from isaaclab_contrib.deformable.newton_manager_cfg import (
     CoupledNewtonCfg,
     NewtonModelCfg,
@@ -42,6 +45,10 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
 from ..lift_franka_soft import mdp
 
 WATERHOSE_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+# rby1df robot: URDF converted to USD (scripts/tools/convert_urdf.py) then flattened
+# into a single self-contained asset.
+_RBY1_USD = os.path.join(WATERHOSE_ASSETS_DIR, "rby1df", "rby1df.usda")
 
 # add_rod_graph places each segment's body frame at the edge's start node u (edge
 # (u, v), +Z from u->v), so cable_local_pos=(0, 0, 0) welds at u. The anchor sits
@@ -72,6 +79,39 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
             usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "fridge.usda"),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=_FRIDGE_POS),
+    )
+
+    ### rby1df robot (28-DOF, fixed base). Drive gains match the reference example.
+    robot = ArticulationCfg(
+        prim_path="/World/envs/env_.*/Robot",
+        spawn=sim_utils.UsdFileCfg(usd_path=_RBY1_USD),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0, 1.0, -1.0),
+            rot=(0.0, 0.0, -0.70710678, 0.70710678),  # 90 deg about +Z (x, y, z, w)
+        ),
+        actuators={
+            "body": ImplicitActuatorCfg(
+                joint_names_expr=["torso_joint_.*", "left_arm_joint_.*", "right_arm_joint_.*", "head_joint_.*"],
+                stiffness=120000.0,
+                damping=12000.0,
+                effort_limit=10000.0,
+                armature=0.2,
+            ),
+            "gripper": ImplicitActuatorCfg(
+                joint_names_expr=[".*_gripper_finger_joint_1"],
+                stiffness=10000.0,
+                damping=1000.0,
+                effort_limit=100000.0,
+                armature=0.5,
+            ),
+            "fingers": ImplicitActuatorCfg(
+                joint_names_expr=[".*_gripper_(left|right)_finger_joint"],
+                stiffness=500000.0,
+                damping=10000.0,
+                effort_limit=500000.0,
+                armature=0.5,
+            ),
+        },
     )
 
     ### Cable 1
@@ -324,41 +364,35 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
         self.video_recorder.window_width = 1920
         self.video_recorder.window_height = 1080
 
-        # self.sim.physics = CoupledNewtonCfg(
-        #     scene_cfg=self.scene,
-        #     solver_cfg=CoupledAdmmSolverCfg(
-        #         src_solver_cfg=MJWarpSolverCfg(
-        #             cone="elliptic",
-        #             ls_parallel=True,
-        #             ls_iterations=20,
-        #             integrator="implicitfast",
-        #         ),
-        #         dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
-        #         src_bodies=[SceneEntityCfg("robot")],
-        #         dst_bodies=[
-        #             SceneEntityCfg("object"),
-        #             SceneEntityCfg("anchor"),
-        #             SceneEntityCfg("cable"),
-        #         ],
-        #         iterations=5,
-        #         rho=30.0,
-        #         gamma=0.1,
-        #         baumgarte=0.005,
-        #         contact_distance=0.003,
-        #     ),
-        #     model_cfg=NewtonModelCfg(
-        #         shape_material_ke=1e5,
-        #         shape_material_kd=1e-2,
-        #         shape_material_mu=1.0,
-        #     ),
-        #     num_substeps=10,
-        # )
+        # Coupled MJWarp (articulated rby1df robot) + VBD (cables/plugs). The robot must
+        # live in the MJWarp rigid solver to be driven; the cables/plugs stay in VBD.
         self.sim.physics = CoupledNewtonCfg(
-            solver_cfg=VBDSolverCfg(
-                iterations=20,
-                rigid_body_contact_buffer_size=1024,
-                rigid_contact_k_start=1.0e1,
-                rigid_avbd_beta=1e2,
+            scene_cfg=self.scene,
+            solver_cfg=CoupledAdmmSolverCfg(
+                src_solver_cfg=MJWarpSolverCfg(
+                    cone="elliptic",
+                    ls_parallel=True,
+                    ls_iterations=20,
+                    integrator="implicitfast",
+                ),
+                dst_solver_cfg=VBDSolverCfg(
+                    iterations=20,
+                    rigid_avbd_beta=1e2,
+                    rigid_contact_k_start=1e1,
+                    rigid_body_contact_buffer_size=1024,
+                ),
+                src_bodies=[SceneEntityCfg("robot")],
+                dst_bodies=[
+                    SceneEntityCfg("cable1"),
+                    SceneEntityCfg("cable2"),
+                    SceneEntityCfg("plug1"),
+                    SceneEntityCfg("plug2"),
+                ],
+                iterations=5,
+                rho=30.0,
+                gamma=0.1,
+                baumgarte=0.005,
+                contact_distance=0.003,
             ),
             num_substeps=8,
             collision_cfg=NewtonCollisionPipelineCfg(rigid_contact_max=65536),
