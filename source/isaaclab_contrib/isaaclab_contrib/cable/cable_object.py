@@ -144,6 +144,29 @@ def add_registered_cables_to_builder(
         add_cable_entry_to_builder(builder, entry, world_idx, env_position, env_rotation, cable_idx=cable_idx)
 
 
+def _resolve_static_target_xform(
+    target_path: str,
+    env_position: list[float],
+    env_rotation: list[float] | tuple[float, float, float, float],
+) -> wp.transform | None:
+    """World transform for a cable-attachment target that is a USD-only (non-body) prim.
+
+    Static scene prims (e.g. an ``AssetBaseCfg`` world-static collider) have no Newton
+    body. Resolve the source prim's pose relative to its ``env_N`` root, then place it
+    at this world's env offset. Returns ``None`` if no prim matches ``target_path``.
+    """
+    prim = sim_utils.find_first_matching_prim(target_path)
+    if prim is None:
+        return None
+    match = re.match(r"(?P<env>.*/env_\d+)", prim.GetPath().pathString)
+    env_prim = prim.GetStage().GetPrimAtPath(match.group("env")) if match else None
+    ref = env_prim if env_prim is not None and env_prim.IsValid() else None
+    target_xform = wp.transform(*sim_utils.resolve_prim_pose(prim, ref_prim=ref))
+    if ref is None:
+        return target_xform
+    return wp.transform_multiply(wp.transform(env_position, env_rotation), target_xform)
+
+
 def apply_cable_attachments_to_builder(
     builder,
     world_idx: int,
@@ -161,12 +184,6 @@ def apply_cable_attachments_to_builder(
     pending = getattr(SimulationManager, "_pending_cable_attachments", None)
     if not pending:
         return
-
-    def _to_wp_xform(pos, quat_xyzw):
-        return wp.transform(
-            (float(pos[0]), float(pos[1]), float(pos[2])),
-            (float(quat_xyzw[0]), float(quat_xyzw[1]), float(quat_xyzw[2]), float(quat_xyzw[3])),
-        )
 
     for cable_idx, attachment in pending:
         entry = SimulationManager._cable_registry[cable_idx]
@@ -202,7 +219,13 @@ def apply_cable_attachments_to_builder(
             if body_world[body_idx] == world_idx or body_world[body_idx] == -1:
                 target_body_idx = body_idx
                 break
+        # No matching Newton body: the target may be a USD-only static scene prim
+        # (e.g. an AssetBaseCfg world-static collider). Resolve its world pose so
+        # the cable can be welded to that fixed point instead.
+        static_target_xform = None
         if target_body_idx < 0:
+            static_target_xform = _resolve_static_target_xform(target_path, env_position, env_rotation)
+        if target_body_idx < 0 and static_target_xform is None:
             available_in_world = [body_label[i] for i in range(len(body_label)) if body_world[i] in (world_idx, -1)]
             searched = (
                 target_path
@@ -214,14 +237,21 @@ def apply_cable_attachments_to_builder(
                 f" Available body labels in this world: {available_in_world}."
             )
 
-        parent_xform = _to_wp_xform(attachment.cable_local_pos, attachment.cable_local_quat)
-        child_xform = _to_wp_xform(attachment.target_local_pos, attachment.target_local_quat)
+        target_xform = wp.transform(attachment.target_local_pos, attachment.target_local_quat)
+        if static_target_xform is not None:
+            # Weld to the world at the static target's pose (parent = world body -1).
+            target_body_idx = -1
+            target_xform = wp.transform_multiply(static_target_xform, target_xform)
+        cable_xform = wp.transform(attachment.cable_local_pos, attachment.cable_local_quat)
 
+        # Keep the articulated cable segment as the loop-joint child. Targets may be
+        # static scene bodies (or world, -1) with no articulation, while the cable
+        # segment is already reachable through the cable root articulation.
         builder.add_joint_fixed(
-            parent=cable_body_idx,
-            child=target_body_idx,
-            parent_xform=parent_xform,
-            child_xform=child_xform,
+            parent=target_body_idx,
+            child=cable_body_idx,
+            parent_xform=target_xform,
+            child_xform=cable_xform,
             label=f"{entry.prim_path}/attachment_seg{anchor_idx}_w{world_idx}",
             collision_filter_parent=True,
         )
