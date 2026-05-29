@@ -116,7 +116,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
     ### Cable 2
     plug2 = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug2",
-        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
+        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug.usda")),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=(0.00921878, 0.34529759, 0.5 - 0.37485825),
             rot=(0.0, 0.52994014, 0.0, 0.84803505),
