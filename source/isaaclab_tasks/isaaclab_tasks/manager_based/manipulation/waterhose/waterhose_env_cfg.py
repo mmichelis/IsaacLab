@@ -23,13 +23,17 @@ the scene.
 
 from __future__ import annotations
 
+import os
+
 import torch
 from isaaclab_newton.physics import NewtonCollisionPipelineCfg
+from isaaclab_newton.sim.spawners.materials.physics_materials_cfg import NewtonCableMaterialCfg
 from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
 from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
+from isaaclab.assets.rigid_object.rigid_object_cfg import RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -39,6 +43,7 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
+from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
 from isaaclab_contrib.deformable.newton_manager_cfg import (
     CoupledNewtonCfg,
     NewtonModelCfg,
@@ -46,6 +51,28 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
 )
 
 from ..lift_franka_soft import mdp
+
+WATERHOSE_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+##
+# Cable anchor geometry
+##
+# Cable init pose [m] (must match the ``cable`` asset's ``init_state.pos`` below).
+_CABLE_INIT_POS = (0.0, 0.0, 0.5)
+
+# Tail-segment nodes (curve indices 42, 43) read from ``cable001.usda``, in the
+# cable's local frame [m]. ``cable_anchor=-1`` is the last rod *segment*, whose
+# body origin is the midpoint of its two end nodes (consistent with the head node
+# sitting half a segment from the segment-0 body center).
+_CABLE_TAIL_NODE_42 = (-0.1882251501083374, 0.3453156650066376, -0.266216903924942)
+_CABLE_TAIL_NODE_43 = (-0.18807558715343475, 0.3453156650066376, -0.2473306804895401)
+
+# World position of the tail segment (``cable_anchor=-1``) body center: the cable
+# init pose plus the midpoint of nodes 42 and 43. The kinematic anchor sits here
+# so welding the segment center (``cable_local_pos=(0, 0, 0)``) pins it exactly.
+_ANCHOR_POS = tuple(
+    init + 0.5 * (n42 + n43) for init, n42, n43 in zip(_CABLE_INIT_POS, _CABLE_TAIL_NODE_42, _CABLE_TAIL_NODE_43)
+)
 
 ##
 # Scene
@@ -55,6 +82,57 @@ from ..lift_franka_soft import mdp
 @configclass
 class WaterhoseSceneCfg(InteractiveSceneCfg):
     """Minimal scene: a sky light and a ground plane. Manipulated assets are loaded externally."""
+
+    plug = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Plug",
+        spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(-0.38398558, 0.34585292, 0.5 - 0.36874688),
+            rot=(0.0, -0.57096256, 0.0, 0.8209761),
+        ),
+    )
+
+    # Kinematic anchor pinning the cable's tail (cable_anchor=-1) at its rest position.
+    anchor = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/Anchor",
+        spawn=sim_utils.SphereCfg(
+            radius=0.01,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
+    )
+
+    cable = CableObjectCfg(
+        prim_path="/World/envs/env_.*/Cable",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "cable001.usda"),
+            physics_material=NewtonCableMaterialCfg(
+                stretch_stiffness=1e3,
+                bend_stiffness=1e-4,
+                stretch_damping=1e-1,
+                bend_damping=1e-4,
+                density=100.0,
+            ),
+        ),
+        init_state=CableObjectCfg.InitialStateCfg(
+            pos=_CABLE_INIT_POS,
+        ),
+        attachments=[
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Plug",
+                cable_anchor=0,
+                cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
+            ),
+            CableAttachmentCfg(
+                target_prim_path="/World/envs/env_.*/Anchor",
+                cable_anchor=-1,
+                # Default cable_local_pos=(0, 0, 0): weld the tail segment's body
+                # center, which is exactly where the anchor is placed.
+            ),
+        ],
+    )
 
     sky_light = AssetBaseCfg(
         prim_path="/World/skyLight",
@@ -147,6 +225,7 @@ def dummy_obs(env) -> torch.Tensor:
     """
     return torch.zeros(env.num_envs, 1, device=env.device)
 
+
 @configclass
 class ObservationsCfg:
     """Policy observations for the cable plug task."""
@@ -206,7 +285,7 @@ class TerminationsCfg:
 class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
     """Waterhose environment reusing the cable-plug MDP on an externally loaded scene."""
 
-    scene: WaterhoseSceneCfg = WaterhoseSceneCfg(num_envs=8, env_spacing=2.5, replicate_physics=True)
+    scene: WaterhoseSceneCfg = WaterhoseSceneCfg(num_envs=8, env_spacing=0.5, replicate_physics=True)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
@@ -223,6 +302,7 @@ class WaterhoseEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, -9.81)
+        # self.sim.gravity = (0.0, 0.0, 0.0)
 
         view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
