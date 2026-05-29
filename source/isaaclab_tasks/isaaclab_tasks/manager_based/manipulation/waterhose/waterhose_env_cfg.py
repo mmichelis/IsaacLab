@@ -43,19 +43,19 @@ from ..lift_franka_soft import mdp
 
 WATERHOSE_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-# Anchor = segment-body center (midpoint of its two nodes) at the cable's fixed end.
-# cable001 fixes the tail (nodes 42, 43); cable002 fixes the head (nodes 0, 1).
+# add_rod_graph places each segment's body frame at the edge's start node u (edge
+# (u, v), +Z from u->v), so cable_local_pos=(0, 0, 0) welds at u. The anchor sits
+# at that start node: cable001's last segment is edge (42, 43) -> u=42; cable002's
+# first segment is edge (0, 1) -> u=0.
 _CABLE_INIT_POS = (0.0, 0.0, 0.5)
-_CABLE1_TAIL_NODE_42 = (-0.1882251501083374, 0.3453156650066376, -0.266216903924942)
+_CABLE1_TAIL_NODE_42 = (-0.18810473382472992, 0.3453156650066376, -0.25986239314079285)
 _CABLE1_TAIL_NODE_43 = (-0.18807558715343475, 0.3453156650066376, -0.2473306804895401)
 _CABLE2_HEAD_NODE_0 = (-0.18045400083065033, 0.3453156650066376, -0.24754305183887482)
 _CABLE2_HEAD_NODE_1 = (-0.18038532137870789, 0.3453156650066376, -0.25747784972190857)
-_ANCHOR_POS = tuple(
-    init + 0.5 * (a + b) for init, a, b in zip(_CABLE_INIT_POS, _CABLE1_TAIL_NODE_42, _CABLE1_TAIL_NODE_43)
-)
-_ANCHOR2_POS = tuple(
-    init + 0.5 * (a + b) for init, a, b in zip(_CABLE_INIT_POS, _CABLE2_HEAD_NODE_0, _CABLE2_HEAD_NODE_1)
-)
+_CABLE1_ANCHOR_NODE = _CABLE1_TAIL_NODE_42
+_CABLE2_ANCHOR_NODE = _CABLE2_HEAD_NODE_1
+_ANCHOR_POS = tuple(i + n for i, n in zip(_CABLE_INIT_POS, _CABLE1_ANCHOR_NODE))
+_ANCHOR2_POS = tuple(i + n for i, n in zip(_CABLE_INIT_POS, _CABLE2_ANCHOR_NODE))
 
 ##
 # Scene
@@ -110,7 +110,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
             ),
             CableAttachmentCfg(
                 target_prim_path="/World/envs/env_.*/Anchor1",
-                cable_anchor=-1,
+                cable_anchor=42,
             ),
         ],
     )
@@ -159,7 +159,7 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
             ),
             CableAttachmentCfg(
                 target_prim_path="/World/envs/env_.*/Anchor2",
-                cable_anchor=0,
+                cable_anchor=1,
             ),
         ],
     )
