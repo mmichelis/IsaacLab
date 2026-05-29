@@ -26,14 +26,11 @@ from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
 from isaaclab_visualizers.kit.kit_visualizer_cfg import KitVisualizerCfg
 from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCfg
 
-from pxr import Usd
-
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.envs.mdp.commands.commands_cfg import UniformPoseCommandCfg
-from isaaclab.envs.mdp.commands.pose_command import UniformPoseCommand
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -41,11 +38,8 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
-from isaaclab.sim import schemas
-from isaaclab.sim.spawners.spawner_cfg import RigidObjectSpawnerCfg
-from isaaclab.sim.utils import bind_visual_material, clone, create_prim, get_current_stage
 from isaaclab.utils.configclass import configclass
-from isaaclab.utils.math import combine_frame_transforms, quat_from_angle_axis
+from isaaclab.utils.math import quat_from_angle_axis
 
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
 from isaaclab_contrib.coupling import CoupledAdmmSolverCfg
@@ -96,98 +90,44 @@ _TARGET_HOLE_DEPTH = _PLUG_HEIGHT
 
 
 ##
-# Target-hole spawner: a single rigid body whose collision geometry is a square
-# socket built from four kinematic cuboid walls (compound shape). Modeling it as
-# one body keeps the scene cfg tidy: one ``target_hole`` entity instead of four
-# ``target_hole_{top,bottom,left,right}`` entries.
+# Target-hole geometry: four independent kinematic cuboid walls forming a square
+# socket. The opening faces -x; walls extend along +x by ``_TARGET_HOLE_DEPTH``.
+# Each wall is offset from the socket center by ``_WALL_OFFSET`` along its axis.
+# Modeled as four separate ``RigidObjectCfg`` entries — simpler than a custom
+# compound-shape spawner, and the per-step cost of writing four kinematic poses
+# instead of one is negligible.
 ##
 
+_WALL_SPAN = _TARGET_HOLE_INNER + 2.0 * _TARGET_HOLE_WALL_THICKNESS
+_WALL_OFFSET = (_TARGET_HOLE_INNER + _TARGET_HOLE_WALL_THICKNESS) / 2.0
 
-@clone
-def _spawn_target_hole(
-    prim_path: str,
-    cfg: TargetHoleCfg,
-    translation: tuple[float, float, float] | None = None,
-    orientation: tuple[float, float, float, float] | None = None,
-    **kwargs,
-) -> Usd.Prim:
-    """Spawn a square socket as one rigid body with four child cuboid collision shapes.
+# Per-wall size [m] (x, y, z). Top/bottom span y; left/right span z.
+_WALL_SIZE_TB = (_TARGET_HOLE_DEPTH, _WALL_SPAN, _TARGET_HOLE_WALL_THICKNESS)
+_WALL_SIZE_LR = (_TARGET_HOLE_DEPTH, _TARGET_HOLE_WALL_THICKNESS, _TARGET_HOLE_INNER)
 
-    The opening faces -x and the walls extend along +x by :attr:`TargetHoleCfg.depth`.
-    Rigid-body / mass APIs are applied to the parent Xform; each child cuboid contributes
-    a separate collision shape that shares the parent's body.
-    """
-    stage = get_current_stage()
-    if stage.GetPrimAtPath(prim_path).IsValid():
-        raise ValueError(f"A prim already exists at path: '{prim_path}'.")
-    create_prim(prim_path, prim_type="Xform", translation=translation, orientation=orientation, stage=stage)
+# Per-wall offset from socket center in the socket frame [m].
+_WALL_OFFSETS: dict[str, tuple[float, float, float]] = {
+    "target_hole_top": (0.0, 0.0, _WALL_OFFSET),
+    "target_hole_bottom": (0.0, 0.0, -_WALL_OFFSET),
+    "target_hole_left": (0.0, -_WALL_OFFSET, 0.0),
+    "target_hole_right": (0.0, _WALL_OFFSET, 0.0),
+}
 
-    inner = cfg.inner_size
-    thickness = cfg.wall_thickness
-    depth = cfg.depth
-    span = inner + 2.0 * thickness
-    offset = (inner + thickness) / 2.0
-    # (name, size_xyz, local_pos): opening faces -x.
-    walls = (
-        ("top", (depth, span, thickness), (0.0, 0.0, offset)),
-        ("bottom", (depth, span, thickness), (0.0, 0.0, -offset)),
-        ("left", (depth, thickness, inner), (0.0, -offset, 0.0)),
-        ("right", (depth, thickness, inner), (0.0, offset, 0.0)),
+
+def _wall_cfg(size: tuple[float, float, float], offset: tuple[float, float, float], prim_name: str) -> RigidObjectCfg:
+    """Kinematic cuboid wall offset from the socket center by ``offset``."""
+    return RigidObjectCfg(
+        prim_path=f"/World/envs/env_.*/{prim_name}",
+        spawn=sim_utils.CuboidCfg(
+            size=size,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=tuple(c + o for c, o in zip(_TARGET_HOLE_POS, offset)),
+        ),
     )
-
-    # Author the shared visual material once and bind it to every wall.
-    material_path: str | None = None
-    if cfg.visual_material is not None:
-        material_path = (
-            cfg.visual_material_path
-            if cfg.visual_material_path.startswith("/")
-            else f"{prim_path}/{cfg.visual_material_path}"
-        )
-        cfg.visual_material.func(material_path, cfg.visual_material)
-
-    for name, size, pos in walls:
-        wall_path = f"{prim_path}/{name}"
-        mesh_path = f"{wall_path}/geometry/mesh"
-        # Cube prims carry a single ``size``; per-axis dimensions come from the Xform scale.
-        unit = min(size)
-        scale = tuple(dim / unit for dim in size)
-        create_prim(wall_path, prim_type="Xform", translation=pos, stage=stage)
-        create_prim(mesh_path, prim_type="Cube", scale=scale, attributes={"size": unit}, stage=stage)
-        if cfg.collision_props is not None:
-            schemas.define_collision_properties(mesh_path, cfg.collision_props, stage=stage)
-        if material_path is not None:
-            bind_visual_material(mesh_path, material_path, stage=stage)
-
-    if cfg.mass_props is not None:
-        schemas.define_mass_properties(prim_path, cfg.mass_props, stage=stage)
-    if cfg.rigid_props is not None:
-        schemas.define_rigid_body_properties(prim_path, cfg.rigid_props, stage=stage)
-    return stage.GetPrimAtPath(prim_path)
-
-
-@configclass
-class TargetHoleCfg(RigidObjectSpawnerCfg):
-    """Spawn a square socket as one (kinematic) rigid body with four cuboid walls.
-
-    See :func:`_spawn_target_hole` for the geometry layout.
-    """
-
-    func: Callable = _spawn_target_hole
-
-    inner_size: float = MISSING
-    """Inner clear opening in the y-z plane [m]."""
-
-    wall_thickness: float = MISSING
-    """Wall thickness [m]."""
-
-    depth: float = MISSING
-    """Socket depth along x [m]."""
-
-    visual_material: sim_utils.VisualMaterialCfg | None = None
-    """Visual material shared by all four walls. If None, no material is bound."""
-
-    visual_material_path: str = "material"
-    """Path to the visual material prim, relative to the socket prim path."""
 
 
 ##
@@ -212,20 +152,14 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
     )
 
-    # Square socket built as one kinematic rigid body with four cuboid collision walls.
-    # The opening faces -x (toward the plug); walls extend along +x by _TARGET_HOLE_DEPTH.
-    target_hole: RigidObjectCfg = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/TargetHole",
-        spawn=TargetHoleCfg(
-            inner_size=_TARGET_HOLE_INNER,
-            wall_thickness=_TARGET_HOLE_WALL_THICKNESS,
-            depth=_TARGET_HOLE_DEPTH,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_TARGET_HOLE_POS),
+    # Square socket: four kinematic cuboid walls. Opening faces -x (toward the plug);
+    # walls extend along +x by _TARGET_HOLE_DEPTH.
+    target_hole_top: RigidObjectCfg = _wall_cfg(_WALL_SIZE_TB, _WALL_OFFSETS["target_hole_top"], "TargetHoleTop")
+    target_hole_bottom: RigidObjectCfg = _wall_cfg(
+        _WALL_SIZE_TB, _WALL_OFFSETS["target_hole_bottom"], "TargetHoleBottom"
     )
+    target_hole_left: RigidObjectCfg = _wall_cfg(_WALL_SIZE_LR, _WALL_OFFSETS["target_hole_left"], "TargetHoleLeft")
+    target_hole_right: RigidObjectCfg = _wall_cfg(_WALL_SIZE_LR, _WALL_OFFSETS["target_hole_right"], "TargetHoleRight")
 
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
@@ -289,49 +223,75 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
 ##
 
 
-class _UniformPoseCommandWithTarget(UniformPoseCommand):
-    """:class:`UniformPoseCommand` that drags a rigid scene asset along with the sampled command.
+# Lazily-built subclass of :class:`~isaaclab.envs.mdp.commands.pose_command.UniformPoseCommand`
+# that drags one or more rigid scene assets along with the sampled command.
+#
+# The class itself is constructed on first instantiation (env build time, after
+# ``SimulationApp`` is up) because importing ``UniformPoseCommand`` at module
+# load pulls in :class:`~isaaclab.assets.Articulation`, which loads
+# ``omni.kit.app`` C extensions and corrupts Kit's plugin loader.
+_uniform_pose_command_with_targets_cls: type | None = None
 
-    On every resample (reset or mid-episode), the named asset's root pose in the world
-    frame is written to ``command_pose + target_offset_b`` expressed in the robot's
-    root frame and then transformed to world. The asset's orientation is set to the
-    command's orientation. Useful when a fixture (e.g., an insertion socket) should
-    follow the sampled goal pose.
-    """
 
-    cfg: _UniformPoseCommandWithTargetCfg
+def _make_uniform_pose_command_with_targets(cfg, env):
+    """Build (once) and instantiate the multi-target pose command class."""
+    global _uniform_pose_command_with_targets_cls
+    if _uniform_pose_command_with_targets_cls is None:
+        from isaaclab.envs.mdp.commands.pose_command import UniformPoseCommand
+        from isaaclab.utils.math import combine_frame_transforms, quat_apply
 
-    def __init__(self, cfg: _UniformPoseCommandWithTargetCfg, env):
-        super().__init__(cfg, env)
-        self._target = env.scene[cfg.target_asset_name]
-        self._target_offset_b = torch.tensor(cfg.target_offset_b, device=self.device).view(1, 3)
+        class _UniformPoseCommandWithTargets(UniformPoseCommand):
+            """:class:`UniformPoseCommand` that drags a set of rigid scene assets along with the sampled command.
 
-    def _resample_command(self, env_ids):
-        super()._resample_command(env_ids)
-        target_pos_b = self.pose_command_b[env_ids, :3] + self._target_offset_b
-        target_quat_b = self.pose_command_b[env_ids, 3:]
-        target_pos_w, target_quat_w = combine_frame_transforms(
-            self.robot.data.root_pos_w.torch[env_ids],
-            self.robot.data.root_quat_w.torch[env_ids],
-            target_pos_b,
-            target_quat_b,
-        )
-        self._target.write_root_pose_to_sim_index(
-            root_pose=torch.cat([target_pos_w, target_quat_w], dim=-1), env_ids=env_ids
-        )
+            On every resample (reset or mid-episode), each named asset's root pose in the world
+            frame is written to ``command_pose + target_offset_b + R(command_quat) * local_offset``
+            expressed in the robot's root frame and then transformed to world. All assets share
+            the command's orientation. Useful for compound fixtures (e.g. a socket built from
+            several kinematic walls) that must follow a sampled goal pose together.
+            """
+
+            def __init__(self, cfg, env):
+                super().__init__(cfg, env)
+                self._targets = [env.scene[name] for name, _ in cfg.targets]
+                # Stack local offsets to shape (n_targets, 3) for batched rotation.
+                self._local_offsets = torch.tensor([offset for _, offset in cfg.targets], device=self.device)
+                self._target_offset_b = torch.tensor(cfg.target_offset_b, device=self.device).view(1, 3)
+
+            def _resample_command(self, env_ids):
+                super()._resample_command(env_ids)
+                # Socket center pose in the robot's root frame, then transform to world.
+                center_pos_b = self.pose_command_b[env_ids, :3] + self._target_offset_b
+                center_quat_b = self.pose_command_b[env_ids, 3:]
+                center_pos_w, center_quat_w = combine_frame_transforms(
+                    self.robot.data.root_pos_w.torch[env_ids],
+                    self.robot.data.root_quat_w.torch[env_ids],
+                    center_pos_b,
+                    center_quat_b,
+                )
+                # Write each wall's pose: position = center + R(center_quat) * local_offset;
+                # orientation = center orientation.
+                for target, local_offset in zip(self._targets, self._local_offsets):
+                    offset_w = quat_apply(center_quat_w, local_offset.expand_as(center_pos_w))
+                    wall_pos_w = center_pos_w + offset_w
+                    target.write_root_pose_to_sim_index(
+                        root_pose=torch.cat([wall_pos_w, center_quat_w], dim=-1), env_ids=env_ids
+                    )
+
+        _uniform_pose_command_with_targets_cls = _UniformPoseCommandWithTargets
+    return _uniform_pose_command_with_targets_cls(cfg, env)
 
 
 @configclass
-class _UniformPoseCommandWithTargetCfg(UniformPoseCommandCfg):
-    """Configuration for :class:`_UniformPoseCommandWithTarget`."""
+class _UniformPoseCommandWithTargetsCfg(UniformPoseCommandCfg):
+    """Configuration for the lazily-built multi-target pose command."""
 
-    class_type: type = _UniformPoseCommandWithTarget
+    class_type: Callable = _make_uniform_pose_command_with_targets
 
-    target_asset_name: str = MISSING
-    """Name of the scene asset whose root pose follows the command."""
+    targets: list[tuple[str, tuple[float, float, float]]] = MISSING
+    """Per-target ``(scene_asset_name, local_offset_from_socket_center [m])`` pairs."""
 
     target_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    """Offset added to the command position [m] in the robot root frame."""
+    """Offset added to the command position [m] in the robot root frame to locate the socket center."""
 
 
 @configclass
@@ -340,15 +300,16 @@ class CommandsCfg:
 
     Ranges are tightened compared to :class:`FrankaCableEnvCfg.CommandsCfg` to keep
     targets inside the half-sphere reachable by the plug while the cable is
-    anchored above the tabletop. The ``target_hole`` socket follows each sample,
-    shifted by :attr:`_UniformPoseCommandWithTargetCfg.target_offset_b` in +x so
-    the plug can be pushed into it.
+    anchored above the tabletop. The four target-hole walls follow each sample,
+    rigidly offset from the socket center, which is shifted by
+    :attr:`_UniformPoseCommandWithTargetsCfg.target_offset_b` in +x from the
+    command pose so the plug can be pushed into it.
     """
 
-    object_pose = _UniformPoseCommandWithTargetCfg(
+    object_pose = _UniformPoseCommandWithTargetsCfg(
         asset_name="robot",
         body_name="panda_hand",
-        target_asset_name="target_hole",
+        targets=[(name, offset) for name, offset in _WALL_OFFSETS.items()],
         target_offset_b=(0.1, 0.0, 0.0),
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
@@ -528,7 +489,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 10.0
+        self.episode_length_s = 1.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
@@ -555,7 +516,10 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
                 dst_bodies=[
                     SceneEntityCfg("object"),
                     SceneEntityCfg("anchor"),
-                    SceneEntityCfg("target_hole"),
+                    SceneEntityCfg("target_hole_top"),
+                    SceneEntityCfg("target_hole_bottom"),
+                    SceneEntityCfg("target_hole_left"),
+                    SceneEntityCfg("target_hole_right"),
                     SceneEntityCfg("cable"),
                 ],
                 iterations=5,
