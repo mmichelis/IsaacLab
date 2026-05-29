@@ -57,6 +57,9 @@ _CABLE2_ANCHOR_NODE = _CABLE2_HEAD_NODE_1
 _ANCHOR_POS = tuple(i + n for i, n in zip(_CABLE_INIT_POS, _CABLE1_ANCHOR_NODE))
 _ANCHOR2_POS = tuple(i + n for i, n in zip(_CABLE_INIT_POS, _CABLE2_ANCHOR_NODE))
 
+# Origin for the (split) static fridge pieces; all three load here to reassemble.
+_FRIDGE_POS = (0.5, 0.0, 0.0)
+
 ##
 # Scene
 ##
@@ -64,20 +67,9 @@ _ANCHOR2_POS = tuple(i + n for i, n in zip(_CABLE_INIT_POS, _CABLE2_ANCHOR_NODE)
 
 @configclass
 class WaterhoseSceneCfg(InteractiveSceneCfg):
-    """Cable + plug with the cable tail pinned to a kinematic anchor; sky light and ground."""
+    """Cable + plug with the cable tail pinned to static anchors; sky light and ground."""
 
     ### Cable 1
-    anchor1 = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/Anchor1",
-        spawn=sim_utils.SphereCfg(
-            radius=0.005,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
-    )
-
     plug1 = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug1",
         spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
@@ -108,25 +100,14 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
                 cable_anchor=0,
                 cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
             ),
-            CableAttachmentCfg(
-                target_prim_path="/World/envs/env_.*/Anchor1",
-                cable_anchor=42,
-            ),
+            # CableAttachmentCfg(
+            #     target_prim_path="/World/envs/env_.*/Anchor1",
+            #     cable_anchor=42,
+            # ),
         ],
     )
 
     ### Cable 2
-    anchor2 = RigidObjectCfg(
-        prim_path="/World/envs/env_.*/Anchor2",
-        spawn=sim_utils.SphereCfg(
-            radius=0.005,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.1, 0.1)),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR2_POS),
-    )
-
     plug2 = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug2",
         spawn=sim_utils.UsdFileCfg(usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "cable", "plug_mesh001.usda")),
@@ -157,10 +138,10 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
                 cable_anchor=-1,
                 cable_local_pos=(0.0, 0.0, 0.022),  # the head node is 22mm along +Z from the head body center
             ),
-            CableAttachmentCfg(
-                target_prim_path="/World/envs/env_.*/Anchor2",
-                cable_anchor=1,
-            ),
+            # CableAttachmentCfg(
+            #     target_prim_path="/World/envs/env_.*/Anchor2",
+            #     cable_anchor=1,
+            # ),
         ],
     )
 
@@ -176,6 +157,15 @@ class WaterhoseSceneCfg(InteractiveSceneCfg):
         prim_path="/World/GroundPlane",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0.0, 0.0, -1.05]),
         spawn=GroundPlaneCfg(),
+    )
+
+    ### Static fridge body
+    fridge = AssetBaseCfg(
+        prim_path="/World/envs/env_.*/Fridge",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=os.path.join(WATERHOSE_ASSETS_DIR, "fridge", "fridge.usd"),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=_FRIDGE_POS),
     )
 
 
