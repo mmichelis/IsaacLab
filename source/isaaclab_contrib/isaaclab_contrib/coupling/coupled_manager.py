@@ -195,6 +195,7 @@ class NewtonCoupledSolverManager(NewtonVBDManager):
                 joint_damping=float(solver_cfg.joint_damping),
                 joint_angular_stiffness=float(solver_cfg.joint_angular_stiffness),
                 joint_angular_damping=float(solver_cfg.joint_angular_damping),
+                rigid_contact_matching=solver_cfg.rigid_contact_matching,
                 contact_pairs=contact_pairs,
             ),
         )
