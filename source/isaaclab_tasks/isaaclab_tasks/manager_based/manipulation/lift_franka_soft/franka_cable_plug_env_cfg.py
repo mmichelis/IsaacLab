@@ -490,7 +490,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 1.0
+        self.episode_length_s = 6.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
