@@ -15,7 +15,7 @@ which dispatches to the matching Newton experimental coupled solver.
 from __future__ import annotations
 
 from dataclasses import MISSING
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from isaaclab_newton.physics import NewtonSolverCfg
 
@@ -150,3 +150,12 @@ class CoupledAdmmSolverCfg(CoupledSolverCfg):
 
     detection_margin: float | None = None
     """Per-pair detection margin override [m]. ``None`` uses Newton's default."""
+
+    rigid_contact_matching: Literal["disabled", "latest", "sticky"] = "disabled"
+    """Frame-to-frame matching mode for collision-detected rigid-rigid ADMM contacts.
+
+    ``"disabled"`` resets dynamic rigid contact state every refresh, ``"latest"``
+    warm-starts the ADMM dual state of matched contacts from the previous refresh,
+    and ``"sticky"`` additionally replays matched contact geometry. Warm-starting is
+    required for stable static grasps under few ADMM iterations.
+    """
