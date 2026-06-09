@@ -19,8 +19,6 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, ClassVar
 
-import numpy as np
-import warp as wp
 from isaaclab_newton.physics import (
     FeatherstoneSolverCfg,
     KaminoSolverCfg,
@@ -29,9 +27,9 @@ from isaaclab_newton.physics import (
     XPBDSolverCfg,
 )
 from isaaclab_newton.physics.newton_manager import NewtonManager
-from newton import CollisionPipeline, JointType, Model, ShapeFlags
+from newton import CollisionPipeline, Model, ShapeFlags
 from newton.solvers import SolverBase, SolverFeatherstone, SolverKamino, SolverMuJoCo, SolverVBD, SolverXPBD
-from newton.solvers.experimental.coupled import ModelView, SolverCoupled, SolverCoupledADMM, SolverCoupledProxy
+from newton.solvers.experimental.coupled import SolverCoupled, SolverCoupledADMM, SolverCoupledProxy
 
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.physics import PhysicsManager
