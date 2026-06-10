@@ -16,6 +16,8 @@ from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCf
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -120,17 +122,25 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    """7-dim arm joint position + 2-dim continuous gripper joint position."""
+    """7-dim absolute end-effector pose (xyz + quaternion) via differential IK + 1-dim binary gripper."""
 
-    arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
+    arm_action = DifferentialInverseKinematicsActionCfg(
+        asset_name="robot",
+        joint_names=["panda_joint.*"],
+        body_name="panda_hand",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.05},
+        ),
+        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
     )
-    gripper_action = mdp.JointPositionActionCfg(
+    gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_finger.*"],
-        scale=0.04,
-        use_default_offset=True,
-        clip={"panda_finger_.*": (0.0, 0.04)},
+        open_command_expr={"panda_finger_.*": 0.05},
+        close_command_expr={"panda_finger_.*": 0.0},
     )
 
 
