@@ -5,13 +5,10 @@
 
 """Reset events for the cable / cable+anchor+plug assembly.
 
-The cable and the (optional) anchor/plug rigid bodies sit on the VBD side of
-the proxy-coupled MJWarp+VBD solver. Their canonical state lives in
-``state.body_q``; on episode reset we re-seed that state (and the AVBD
-``body_q_prev`` / ``body_inertia_q`` companions) per env, applying a single
-rigid transform — a translation plus a yaw-only rotation — so the cable's
-fixed-joint attachments stay self-consistent and the solver sees zero
-constraint residual on the next step.
+The cable and (optional) anchor/plug bodies live on the VBD side of the
+proxy-coupled MJWarp+VBD solver. On reset we re-seed their ``state.body_q`` and
+AVBD companions (``body_q_prev`` / ``body_inertia_q``) per env via a single
+rigid transform, keeping fixed-joint attachments self-consistent.
 """
 
 from __future__ import annotations
@@ -104,20 +101,11 @@ def _scatter_reset_kernel(
 ) -> None:
     """Scatter per-body reset state into VBD's parent state and AVBD companions.
 
-    Parent state (``state.body_q``, ``state.body_qd``) is indexed by
-    ``global_ids``; the VBD sub-solver's ``body_q_prev`` / ``body_inertia_q``
-    may be sized to a compacted view and are indexed by ``local_ids``. A
-    negative ``local_ids[tid]`` skips the solver-side write.
-
-    For FREE-jointed bodies, ``free_q_starts[tid]`` gives the offset into
-    ``state_joint_q`` where the 7-float pose should be mirrored; a negative
-    value skips that write (e.g. for CABLE-jointed cable segments whose
-    ``joint_q`` uses a different layout). Without this writeback,
-    ``ArticulationView`` readers (and thus :attr:`RigidObjectData`) lag the
-    reset by one frame.
-
-    ``body_q_prev == body_q`` keeps AVBD's velocity finite-difference at zero
-    on the next step; ``body_inertia_q`` is zeroed to match solver init.
+    Parent state is indexed by ``global_ids``; the (possibly compacted) solver
+    buffers ``body_q_prev`` / ``body_inertia_q`` by ``local_ids`` (negative
+    skips). ``body_q_prev == body_q`` zeroes AVBD's velocity finite-difference.
+    ``free_q_starts[tid]`` mirrors the pose into ``state_joint_q`` for FREE
+    joints (negative skips, e.g. CABLE segments) so reader views don't lag.
     """
     tid = wp.tid()
     gid = global_ids[tid]
@@ -141,56 +129,59 @@ def _scatter_reset_kernel(
         state_joint_q[q0 + 6] = r[3]
 
 
-def _apply_transform(
+def _apply_and_reset(
     env: ManagerBasedEnv,
     body_ids: torch.Tensor,
-    delta_trans: torch.Tensor,
-    delta_yaw_quat: torch.Tensor,
+    delta_trans: torch.Tensor | None = None,
+    delta_yaw_quat: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Compose ``(delta_trans, delta_yaw_quat)`` with each body's rest pose and scatter.
+    """Scatter VBD reset state for ``body_ids`` and return their new world poses.
+
+    With a transform, the new pose is the build-time rest pose transformed by
+    ``(delta_trans, delta_yaw_quat)`` (cable / anchor / plug); with no transform,
+    it is the bodies' current ``state.body_q`` (proxy ``body_q_prev`` flush).
 
     Args:
-        body_ids: ``(n_envs, k)`` global Newton body ids. ``k=1`` for a rigid
-            body, ``k=n_segments`` for a cable.
-        delta_trans: ``(n_envs, 3)`` per-env translation [m].
-        delta_yaw_quat: ``(n_envs, 4)`` per-env yaw quaternion ``(x, y, z, w)``.
+        body_ids: Global Newton body ids, any shape (flattened internally).
+        delta_trans: Per-env translation [m], or ``None`` to keep the current pose.
+        delta_yaw_quat: Per-env yaw quaternion ``(x, y, z, w)``, or ``None``.
 
     Returns:
-        ``(n_envs, k, 7)`` per-body world poses in ``wp.transformf`` layout.
+        Per-body world poses in ``wp.transformf`` layout.
     """
     from newton import JointType
 
     from isaaclab_contrib.deformable.vbd_manager import NewtonVBDManager
 
-    # ``model.body_q`` is the immutable build-time rest pose (never mutated after
-    # ``start_simulation``), so a zero-copy ``wp.to_torch`` view suffices.
     model = NewtonVBDManager._model
+    state = NewtonVBDManager._state_0
     if model is None or model.body_q is None:
-        raise RuntimeError("Newton model is not initialized; cannot resolve rest pose.")
-    init_q = wp.to_torch(model.body_q).to(env.device)[body_ids]  # (n_envs, k, 7)
-    init_pos, init_quat = init_q[..., 0:3], init_q[..., 3:7]
-    yaw = delta_yaw_quat.unsqueeze(1).expand(-1, init_pos.shape[1], -1)
-    new_pos = quat_apply(yaw, init_pos) + delta_trans.unsqueeze(1)
-    new_quat = quat_mul(yaw, init_quat)
-    new_body_q = torch.cat([new_pos, new_quat], dim=-1)
+        raise RuntimeError("Newton model is not initialized; cannot resolve body poses.")
 
-    # Resolve the VBD sub-solver and its (optional) global→local body-id map.
-    # SolverCoupledProxy exposes sub-solvers via .solver(name) over a compacted
-    # ModelView whose body_q_prev / body_inertia_q are indexed by local ids;
-    # plain SolverVBD has model.body_count-sized arrays (local == global).
+    if delta_trans is None:
+        # Keep current pose -> scatter sets body_q_prev == body_q (zero proxy velocity).
+        new_body_q = wp.to_torch(state.body_q).to(env.device)[body_ids]
+    else:
+        init_q = wp.to_torch(model.body_q).to(env.device)[body_ids]  # build-time rest pose
+        init_pos, init_quat = init_q[..., 0:3], init_q[..., 3:7]
+        yaw = delta_yaw_quat.unsqueeze(1).expand(-1, init_pos.shape[1], -1)
+        new_pos = quat_apply(yaw, init_pos) + delta_trans.unsqueeze(1)
+        new_quat = quat_mul(yaw, init_quat)
+        new_body_q = torch.cat([new_pos, new_quat], dim=-1)
+
+    # SolverCoupledProxy indexes body_q_prev / body_inertia_q by compacted local ids
+    # (via .solver("dst")); plain SolverVBD has local == global.
     from newton.solvers import SolverVBD
 
     solver = NewtonVBDManager._solver
     if solver is None:
-        raise RuntimeError("VBD solver is not initialized; cannot reset cable state.")
-    state = NewtonVBDManager._state_0
-    body_count = int(NewtonVBDManager._model.body_count)
+        raise RuntimeError("VBD solver is not initialized; cannot reset body state.")
+    body_count = int(model.body_count)
 
     flat_global = body_ids.reshape(-1).to(dtype=torch.int32).contiguous()
     flat_q = new_body_q.reshape(-1, 7).contiguous()
 
-    # Per-body ``joint_q`` offset for FREE-jointed bodies (``-1`` otherwise, e.g.
-    # CABLE-jointed cable segments whose ``joint_q`` has a different layout).
+    # Per-body joint_q offset for FREE joints (-1 otherwise; e.g. CABLE segments).
     joint_type = wp.to_torch(model.joint_type).to(env.device)
     free = (joint_type == int(JointType.FREE)).nonzero(as_tuple=True)[0]
     body_to_q_start = torch.full((int(model.body_count),), -1, dtype=torch.int32, device=env.device)
@@ -199,11 +190,11 @@ def _apply_transform(
     )
     flat_q_starts = body_to_q_start[flat_global.long()].contiguous()
 
-    # Bounds-check globals: fail fast with a clear message instead of a CUDA assert.
+    # Bounds-check globals to fail fast instead of a CUDA assert.
     min_id, max_id = int(flat_global.min().item()), int(flat_global.max().item())
     if min_id < 0 or max_id >= body_count:
         raise IndexError(
-            f"reset_cable_*: body id out of range [0, {body_count}); got [{min_id}, {max_id}]."
+            f"reset body state: body id out of range [0, {body_count}); got [{min_id}, {max_id}]."
             " The cached `segment_body_indices` / rigid-body map is likely stale or wrong."
         )
 
@@ -211,7 +202,7 @@ def _apply_transform(
         vbd_solver = solver.solver("dst")
         if not isinstance(vbd_solver, SolverVBD):
             raise RuntimeError(
-                "reset_cable_*: destination entry of the coupled solver is"
+                "reset body state: destination entry of the coupled solver is"
                 f" {type(vbd_solver).__name__}, not `SolverVBD`. The cable reset path writes to"
                 " VBD-specific buffers (`body_q_prev`, `body_inertia_q`); configure"
                 " `CoupledProxySolverCfg.dst_solver_cfg` as a `VBDSolverCfg`."
@@ -222,14 +213,14 @@ def _apply_transform(
         if unowned.numel():
             bad = flat_global[unowned[:5]].tolist()
             raise RuntimeError(
-                "reset_cable_*: at least one body is not owned by the destination entry of the"
+                "reset body state: at least one body is not owned by the destination entry of the"
                 f" proxy-coupled solver (first few global ids: {bad}). Ensure cable/anchor/plug are"
                 " listed in `CoupledProxySolverCfg.dst_bodies`."
             )
     else:
         if not isinstance(solver, SolverVBD):
             raise RuntimeError(
-                f"reset_cable_*: active solver is {type(solver).__name__}, not `SolverVBD` or a"
+                f"reset body state: active solver is {type(solver).__name__}, not `SolverVBD` or a"
                 " coupled solver with a VBD destination entry. The cable reset path writes to"
                 " VBD-specific buffers (`body_q_prev`, `body_inertia_q`)."
             )
@@ -277,11 +268,43 @@ def reset_cable_uniform(
 
     delta_trans, delta_yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
     body_ids = _get_body_ids(env, cable_cfg, is_cable=True)[env_ids]  # (n_envs, n_seg)
-    _apply_transform(env, body_ids, delta_trans, delta_yaw_quat)
-    # Cable curve points are reconstructed from body_q in the per-render Fabric
-    # sync — flag the curve buffers dirty so the next render picks up the new
-    # pose without waiting for a sim step.
+    _apply_and_reset(env, body_ids, delta_trans, delta_yaw_quat)
+    # Flag curve buffers dirty so the next render rebuilds points from the new body_q.
     NewtonVBDManager._mark_curves_dirty()
+
+
+def reset_proxy_body_prev(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+) -> None:
+    """Snap proxy bodies' ``body_q_prev`` onto their post-reset pose.
+
+    The proxy-coupled solver drives ``(body_q - body_q_prev) / dt`` into the
+    cable each step, so a stale ``body_q_prev`` after the arm-joint reset
+    teleports the gripper flings the cable away. Must run after
+    ``reset_robot_joints``; no-op unless the solver is proxy-coupled.
+
+    Args:
+        env: The RL environment.
+        env_ids: Environment indices to reset.
+    """
+    from isaaclab_contrib.deformable.vbd_manager import NewtonVBDManager
+
+    solver = NewtonVBDManager._solver
+    mappings = getattr(solver, "_proxy_mappings", None)
+    if not mappings:  # not proxy-coupled, or no proxies configured
+        return
+
+    # Refresh body_q from the just-reset joint_q (eval_fk skips VBD-owned cable).
+    NewtonVBDManager.forward()
+    proxy_ids = torch.cat([wp.to_torch(m.src_body_ids) for m in mappings]).to(env.device).long()
+    # Scope to the reset envs (one world per env).
+    body_world = NewtonVBDManager._model.body_world
+    if body_world is not None:
+        world = wp.to_torch(body_world).to(env.device)[proxy_ids]
+        proxy_ids = proxy_ids[torch.isin(world, env_ids.to(env.device))]
+    if proxy_ids.numel():
+        _apply_and_reset(env, proxy_ids)
 
 
 def reset_cable_assembly_uniform(
@@ -311,11 +334,11 @@ def reset_cable_assembly_uniform(
 
     delta_trans, delta_yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
     cable_ids = _get_body_ids(env, cable_cfg, is_cable=True)[env_ids]  # (n_envs, n_seg)
-    _apply_transform(env, cable_ids, delta_trans, delta_yaw_quat)
+    _apply_and_reset(env, cable_ids, delta_trans, delta_yaw_quat)
     NewtonVBDManager._mark_curves_dirty()
     for rigid_cfg in (anchor_cfg, plug_cfg):
         rigid_ids = _get_body_ids(env, rigid_cfg, is_cable=False)[env_ids].unsqueeze(-1)  # (n_envs, 1)
-        new_q = _apply_transform(env, rigid_ids, delta_trans, delta_yaw_quat)
+        new_q = _apply_and_reset(env, rigid_ids, delta_trans, delta_yaw_quat)
         # Mirror the new pose into IsaacLab's RigidObjectData buffer so per-env
         # observations don't see one frame of stale pose.
         env.scene[rigid_cfg.name].write_root_link_pose_to_sim_index(

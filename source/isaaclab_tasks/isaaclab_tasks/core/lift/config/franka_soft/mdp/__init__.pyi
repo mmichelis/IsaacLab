@@ -15,11 +15,13 @@ __all__ = [
     "ObjectSampledPointsInRobotRootFrame",
     "reset_cable_assembly_uniform",
     "reset_cable_uniform",
+    "reset_proxy_body_prev",
 ]
 
 from .events import (
     reset_cable_assembly_uniform,
     reset_cable_uniform,
+    reset_proxy_body_prev,
 )
 from .observations import (
     ObjectSampledPointsInRobotRootFrame,
