@@ -188,6 +188,8 @@ class EventCfg:
             "cable_cfg": SceneEntityCfg("object"),
         },
     )
+    # Clear the proxy teleport velocity from the arm-joint reset above; must run after it.
+    reset_proxy_velocity = EventTerm(func=mdp.reset_proxy_body_prev, mode="reset")
 
 
 @configclass
