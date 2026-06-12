@@ -3,24 +3,18 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Franka Panda manipulating a Newton cable plug.
+"""Franka Panda grasping a Newton cable plug and inserting it into a socket.
 
-The cable is welded at one end to a kinematic anchor fixed above the tabletop
-and at the other end to a rigid plug body. The RL task is to bring the plug to
-a sampled target pose using the Franka end-effector.
-
-This environment inherits aggressively from :class:`FrankaCableEnvCfg`: it
-reuses the robot, actions, physics solver, and reward shape, and only adds the
-two attachment bodies plus rewires reward and observation terms from the cable
-to the plug.
+The cable is welded to a kinematic anchor above the tabletop at one end and to a
+rigid plug at the other. The RL task brings the plug to a sampled target pose.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import MISSING
 
-import math
 import torch
 from isaaclab_newton.physics import MJWarpSolverCfg
 from isaaclab_newton.sim.spawners.materials import NewtonCableMaterialCfg
@@ -43,7 +37,7 @@ from isaaclab.utils.configclass import configclass
 from isaaclab.utils.math import quat_from_angle_axis
 
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
-from isaaclab_contrib.coupling import CoupledAdmmSolverCfg
+from isaaclab_contrib.coupling import CoupledProxySolverCfg
 from isaaclab_contrib.deformable.newton_manager_cfg import (
     CoupledNewtonCfg,
     NewtonModelCfg,
@@ -59,54 +53,45 @@ from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
 # Cable / attachment geometry constants
 ##
 
-# Number of cable segments. Matches the parent cable env so the same physics tuning applies.
+# Cable: 28 segments x 0.02 m, 0.01 m wide (matches the parent cable env).
 _NUM_POINTS = 28
-
-# Per-segment length [m]. Matches the parent cable env.
 _SEGMENT_LENGTH = 0.02
-
-# Cable width [m].
 _CABLE_WIDTH = 0.01
 
-# Anchor pose in the env-local frame [m]. Positioned above the tabletop, in front of the robot.
+# Kinematic anchor, above the tabletop in front of the robot [m].
 _ANCHOR_POS = (0.15, 0.3, 0.2)
 
-# Plug body parameters. Mass is the midpoint of the demo's [0.005, 0.05] kg range.
+# Light plug so the grasp holds and cable tension stays low [m, m, kg].
 _PLUG_RADIUS = 0.01
 _PLUG_HEIGHT = 0.04
-_PLUG_MASS = 0.21
+_PLUG_MASS = 0.03
 
-# Plug rest pose [m]: directly below the anchor at the cable's natural extent.
-_PLUG_INIT_POS = (_ANCHOR_POS[0] + (_NUM_POINTS - 2) * _SEGMENT_LENGTH, _ANCHOR_POS[1], _ANCHOR_POS[2])
+# Taut plug reach from the anchor [m]; the plug spawns here and hangs taut under gravity.
+_CABLE_REACH = (_NUM_POINTS - 2) * _SEGMENT_LENGTH
+_PLUG_INIT_POS = (_ANCHOR_POS[0] + _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
-# Target-hole pose [m]: center of the socket. Placed in front of the plug's rest position;
-# the socket opens along -x so the plug (oriented along x) can be inserted by pushing in +x.
-_TARGET_HOLE_POS = (_PLUG_INIT_POS[0] - 0.15, _PLUG_INIT_POS[1] - 0.2, _PLUG_INIT_POS[2])
-# Inner clear opening in the y-z plane [m]: slightly larger than the plug diameter (2*_PLUG_RADIUS).
-_TARGET_HOLE_INNER = 0.03
-# Wall thickness [m].
+# Goal well inside the cable reach, so insertion slackens (not stretches) the cable [m].
+_GOAL_POS = (_ANCHOR_POS[0] + 0.20, _ANCHOR_POS[1] - 0.05, _ANCHOR_POS[2])
+
+# Socket, offset +x from the goal; opening faces -x so the plug inserts by pushing +x [m].
+_TARGET_HOLE_POS = (_GOAL_POS[0] + 0.1, _GOAL_POS[1], _GOAL_POS[2])
+_TARGET_HOLE_INNER = 0.03  # clear opening, > plug diameter
 _TARGET_HOLE_WALL_THICKNESS = 0.003
-# Socket depth along x [m]: matches the plug height so the plug can fully insert.
 _TARGET_HOLE_DEPTH = _PLUG_HEIGHT
 
 
 ##
-# Target-hole geometry: four independent kinematic cuboid walls forming a square
-# socket. The opening faces -x; walls extend along +x by ``_TARGET_HOLE_DEPTH``.
-# Each wall is offset from the socket center by ``_WALL_OFFSET`` along its axis.
-# Modeled as four separate ``RigidObjectCfg`` entries — simpler than a custom
-# compound-shape spawner, and the per-step cost of writing four kinematic poses
-# instead of one is negligible.
+# Socket: four kinematic cuboid walls forming a square opening that faces -x.
 ##
 
 _WALL_SPAN = _TARGET_HOLE_INNER + 2.0 * _TARGET_HOLE_WALL_THICKNESS
 _WALL_OFFSET = (_TARGET_HOLE_INNER + _TARGET_HOLE_WALL_THICKNESS) / 2.0
 
-# Per-wall size [m] (x, y, z). Top/bottom span y; left/right span z.
+# Per-wall size [m] (x, y, z): top/bottom span y, left/right span z.
 _WALL_SIZE_TB = (_TARGET_HOLE_DEPTH, _WALL_SPAN, _TARGET_HOLE_WALL_THICKNESS)
 _WALL_SIZE_LR = (_TARGET_HOLE_DEPTH, _TARGET_HOLE_WALL_THICKNESS, _TARGET_HOLE_INNER)
 
-# Per-wall offset from socket center in the socket frame [m].
+# Per-wall offset from the socket center [m].
 _WALL_OFFSETS: dict[str, tuple[float, float, float]] = {
     "target_hole_top": (0.0, 0.0, _WALL_OFFSET),
     "target_hole_bottom": (0.0, 0.0, -_WALL_OFFSET),
@@ -138,7 +123,7 @@ def _wall_cfg(size: tuple[float, float, float], offset: tuple[float, float, floa
 
 @configclass
 class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
-    """Scene for the MJWarp Franka environment grasping a rigid VBD body attached to a VBD cable."""
+    """Franka, anchor, plug, socket walls, and the cable joining anchor to plug."""
 
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
@@ -153,8 +138,6 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=_ANCHOR_POS),
     )
 
-    # Square socket: four kinematic cuboid walls. Opening faces -x (toward the plug);
-    # walls extend along +x by _TARGET_HOLE_DEPTH.
     target_hole_top: RigidObjectCfg = _wall_cfg(_WALL_SIZE_TB, _WALL_OFFSETS["target_hole_top"], "TargetHoleTop")
     target_hole_bottom: RigidObjectCfg = _wall_cfg(
         _WALL_SIZE_TB, _WALL_OFFSETS["target_hole_bottom"], "TargetHoleBottom"
@@ -167,8 +150,6 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
         spawn=sim_utils.CylinderCfg(
             radius=_PLUG_RADIUS,
             height=_PLUG_HEIGHT,
-            # spawn=sim_utils.CuboidCfg(
-            #     size=(2*_PLUG_RADIUS, 2*_PLUG_RADIUS, _PLUG_HEIGHT),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=_PLUG_MASS),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -210,10 +191,10 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.robot.spawn.rigid_props.disable_gravity = True
+        # World gravity with full gravity compensation, so the low-PD IK does not fight sag.
         self.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
-        # increase franka gripper stiffness
+        # Stiffer gripper.
         self.robot.actuators["panda_hand"].effort_limit_sim = 1500.0
         self.robot.actuators["panda_hand"].stiffness = 1500.0
         self.robot.actuators["panda_hand"].damping = 150.0
@@ -224,13 +205,8 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
 ##
 
 
-# Lazily-built subclass of :class:`~isaaclab.envs.mdp.commands.pose_command.UniformPoseCommand`
-# that drags one or more rigid scene assets along with the sampled command.
-#
-# The class itself is constructed on first instantiation (env build time, after
-# ``SimulationApp`` is up) because importing ``UniformPoseCommand`` at module
-# load pulls in :class:`~isaaclab.assets.Articulation`, which loads
-# ``omni.kit.app`` C extensions and corrupts Kit's plugin loader.
+# Built lazily on first use: importing UniformPoseCommand at module load pulls in
+# Articulation, whose Kit C-extensions corrupt the plugin loader before the app starts.
 _uniform_pose_command_with_targets_cls: type | None = None
 
 
@@ -242,25 +218,22 @@ def _make_uniform_pose_command_with_targets(cfg, env):
         from isaaclab.utils.math import combine_frame_transforms, quat_apply
 
         class _UniformPoseCommandWithTargets(UniformPoseCommand):
-            """:class:`UniformPoseCommand` that drags a set of rigid scene assets along with the sampled command.
+            """:class:`UniformPoseCommand` that moves rigid assets with the sampled command.
 
-            On every resample (reset or mid-episode), each named asset's root pose in the world
-            frame is written to ``command_pose + target_offset_b + R(command_quat) * local_offset``
-            expressed in the robot's root frame and then transformed to world. All assets share
-            the command's orientation. Useful for compound fixtures (e.g. a socket built from
-            several kinematic walls) that must follow a sampled goal pose together.
+            On each resample, every target is placed at ``command + target_offset_b +
+            R(command_quat) * local_offset`` and shares the command orientation, so the socket
+            walls follow the goal pose together.
             """
 
             def __init__(self, cfg, env):
                 super().__init__(cfg, env)
                 self._targets = [env.scene[name] for name, _ in cfg.targets]
-                # Stack local offsets to shape (n_targets, 3) for batched rotation.
                 self._local_offsets = torch.tensor([offset for _, offset in cfg.targets], device=self.device)
                 self._target_offset_b = torch.tensor(cfg.target_offset_b, device=self.device).view(1, 3)
 
             def _resample_command(self, env_ids):
                 super()._resample_command(env_ids)
-                # Socket center pose in the robot's root frame, then transform to world.
+                # Socket center in robot frame, then to world.
                 center_pos_b = self.pose_command_b[env_ids, :3] + self._target_offset_b
                 center_quat_b = self.pose_command_b[env_ids, 3:]
                 center_pos_w, center_quat_w = combine_frame_transforms(
@@ -269,8 +242,7 @@ def _make_uniform_pose_command_with_targets(cfg, env):
                     center_pos_b,
                     center_quat_b,
                 )
-                # Write each wall's pose: position = center + R(center_quat) * local_offset;
-                # orientation = center orientation.
+                # Place each wall at center + R(center_quat) * local_offset.
                 for target, local_offset in zip(self._targets, self._local_offsets):
                     offset_w = quat_apply(center_quat_w, local_offset.expand_as(center_pos_w))
                     wall_pos_w = center_pos_w + offset_w
@@ -297,15 +269,7 @@ class _UniformPoseCommandWithTargetsCfg(UniformPoseCommandCfg):
 
 @configclass
 class CommandsCfg:
-    """Plug goal pose sampled in the robot root frame.
-
-    Ranges are tightened compared to :class:`FrankaCableEnvCfg.CommandsCfg` to keep
-    targets inside the half-sphere reachable by the plug while the cable is
-    anchored above the tabletop. The four target-hole walls follow each sample,
-    rigidly offset from the socket center, which is shifted by
-    :attr:`_UniformPoseCommandWithTargetsCfg.target_offset_b` in +x from the
-    command pose so the plug can be pushed into it.
-    """
+    """Plug goal pose (robot root frame); the socket walls follow it, offset +x."""
 
     object_pose = _UniformPoseCommandWithTargetsCfg(
         asset_name="robot",
@@ -315,9 +279,9 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(_PLUG_INIT_POS[0] - 0.1, _PLUG_INIT_POS[0] + 0.0),
-            pos_y=(_PLUG_INIT_POS[1] - 0.05, _PLUG_INIT_POS[1] + 0.05),
-            pos_z=(_PLUG_INIT_POS[2] - 0.05, _PLUG_INIT_POS[2] + 0.05),
+            pos_x=(_GOAL_POS[0] - 0.03, _GOAL_POS[0] + 0.03),
+            pos_y=(_GOAL_POS[1] - 0.05, _GOAL_POS[1] + 0.05),
+            pos_z=(_GOAL_POS[2] - 0.03, _GOAL_POS[2] + 0.03),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -363,7 +327,9 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.005},
+        # Just under the plug half-width (0.01 m): pinches the faces without driving through
+        # the plug under the lagged proxy contact, which would let it slip.
+        close_command_expr={"panda_finger_.*": 0.007},
     )
 
 
@@ -403,7 +369,7 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {
-                "x": (-0.05, 0.05),
+                "x": (-0.05, 0.0),
                 "y": (-0.02, 0.02),
                 "z": (-0.02, 0.02),
                 "yaw": (-math.pi / 18.0, math.pi / 18.0),
@@ -413,6 +379,8 @@ class EventCfg:
             "plug_cfg": SceneEntityCfg("object"),
         },
     )
+    # Clear the proxy teleport velocity from the arm-joint reset above; must run after it.
+    reset_proxy_velocity = EventTerm(func=mdp.reset_proxy_body_prev, mode="reset")
 
 
 @configclass
@@ -463,9 +431,15 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
-    """Time-out only; the cable is anchored so the plug cannot escape the workspace."""
+    """Time-out plus a velocity-divergence guard that resets blown-up envs."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+
+    # Thresholds well above the worst seen under extreme random actions (~30 rad/s, ~5 m/s).
+    velocity_divergence = DoneTerm(
+        func=mdp.assembly_velocity_out_of_bounds,
+        params={"max_joint_vel": 50.0, "max_body_vel": 20.0},
+    )
 
 
 ##
@@ -500,12 +474,11 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
         view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
 
-        # The proxy-coupled solver from FrankaCableEnvCfg is reused. Both the kinematic anchor
-        # and the rigid plug are connected to the cable via VBD attachments, so the solver
-        # needs to know about them on the VBD side.
+        # Proxy-coupled solver (mirrors FrankaCableEnvCfg): arm in MJWarp, plug/anchor/walls/cable
+        # in VBD, gripper fingers exposed as VBD proxies so VBD's contact/friction grasps the plug.
         self.sim.physics = CoupledNewtonCfg(
             scene_cfg=self.scene,
-            solver_cfg=CoupledAdmmSolverCfg(
+            solver_cfg=CoupledProxySolverCfg(
                 src_solver_cfg=MJWarpSolverCfg(
                     cone="elliptic",
                     ls_parallel=True,
@@ -523,11 +496,11 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
                     SceneEntityCfg("target_hole_right"),
                     SceneEntityCfg("cable"),
                 ],
-                iterations=5,
-                rho=30.0,
-                gamma=0.1,
-                baumgarte=0.005,
-                contact_distance=0.003,
+                proxy_bodies=[
+                    SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
+                ],
+                # More relaxation passes tighten the proxy grip on the plug.
+                proxy_iterations=4,
             ),
             model_cfg=NewtonModelCfg(
                 shape_material_ke=1e5,
