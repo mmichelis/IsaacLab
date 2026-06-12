@@ -188,25 +188,26 @@ def plug_inserted(
     env: ManagerBasedRLEnv,
     depth_tol: float,
     radius: float,
-    min_axis_cos: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     socket_cfgs: tuple[SceneEntityCfg, ...] = _SOCKET_CFGS,
 ) -> torch.Tensor:
-    """Sparse success: ``1`` when the plug is centered, seated, and coaxial within tolerances.
+    """Sparse success: ``1`` when the plug center is inside the socket bore.
+
+    Orientation is not checked: the plug center being within the bore (``|axial| < depth_tol``
+    along the bore axis and ``lateral < radius`` from it) is sufficient.
 
     Args:
         env: The environment instance.
-        depth_tol: Max ``|axial|`` distance from the bore center to count as seated [m].
-        radius: Max radial offset from the bore axis [m].
-        min_axis_cos: Min ``|cos|`` between the plug and bore axes.
+        depth_tol: Max ``|axial|`` distance from the bore center, i.e. the bore half-depth [m].
+        radius: Max radial offset from the bore axis, i.e. the bore radius [m].
         asset_cfg: The plug entity.
         socket_cfgs: The four socket wall entities.
 
     Returns:
         Reward tensor with shape ``(num_envs,)``.
     """
-    axial, lateral, axis_cos = _plug_in_socket(env, asset_cfg, socket_cfgs)
-    return ((axial.abs() < depth_tol) & (lateral < radius) & (axis_cos > min_axis_cos)).float()
+    axial, lateral, _ = _plug_in_socket(env, asset_cfg, socket_cfgs)
+    return ((axial.abs() < depth_tol) & (lateral < radius)).float()
 
 
 def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:
