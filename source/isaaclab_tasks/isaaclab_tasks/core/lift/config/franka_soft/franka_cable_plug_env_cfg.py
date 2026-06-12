@@ -282,7 +282,7 @@ class CommandsCfg:
         ranges=mdp.UniformPoseCommandCfg.Ranges(
             pos_x=(_GOAL_POS[0] - 0.1, _GOAL_POS[0] + 0.1),
             pos_y=(_GOAL_POS[1] - 0.25, _GOAL_POS[1] + 0.25),
-            pos_z=(_GOAL_POS[2] - 0.1, _GOAL_POS[2] + 0.15),
+            pos_z=(_GOAL_POS[2] - 0.05, _GOAL_POS[2] + 0.2),
             roll=(0.0, 0.0),
             pitch=(-math.pi / 4, math.pi / 4),
             yaw=(-math.pi / 2, math.pi / 2),
@@ -299,27 +299,17 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    """7-dim absolute end-effector pose (xyz + quaternion) via differential IK + 1-dim binary gripper."""
+    """7-dim arm joint position + 2-dim continuous gripper joint position."""
 
-    arm_action = DifferentialInverseKinematicsActionCfg(
-        asset_name="robot",
-        joint_names=["panda_joint.*"],
-        body_name="panda_hand",
-        controller=DifferentialIKControllerCfg(
-            command_type="pose",
-            use_relative_mode=False,
-            ik_method="dls",
-            ik_params={"lambda_val": 0.05},
-        ),
-        body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+    arm_action = mdp.JointPositionActionCfg(
+        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
     )
-    gripper_action = mdp.BinaryJointPositionActionCfg(
+    gripper_action = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.05},
-        # Just under the plug half-width (0.01 m): pinches the faces without driving through
-        # the plug under the lagged proxy contact, which would let it slip.
-        close_command_expr={"panda_finger_.*": 0.007},
+        scale=0.04,
+        use_default_offset=True,
+        clip={"panda_finger_.*": (0.007, 0.04)},
     )
 
 
@@ -400,16 +390,6 @@ class RewardsCfg:
             "asset_cfg": SceneEntityCfg("object"),
         },
         weight=16.0,
-    )
-    plug_goal_tracking_fine_grained = RewTerm(
-        func=mdp.object_com_goal_distance,
-        params={
-            "std": 0.05,
-            "minimal_height": 0.05,
-            "command_name": "object_pose",
-            "asset_cfg": SceneEntityCfg("object"),
-        },
-        weight=5.0,
     )
 
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
