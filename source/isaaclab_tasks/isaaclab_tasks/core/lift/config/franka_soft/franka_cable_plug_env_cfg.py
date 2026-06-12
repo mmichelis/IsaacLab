@@ -23,8 +23,6 @@ from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCf
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
-from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.envs.mdp.commands.commands_cfg import UniformPoseCommandCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -65,7 +63,7 @@ _ANCHOR_POS = (0.15, 0.0, 0.2)
 # Light plug so the grasp holds and cable tension stays low [m, m, kg].
 _PLUG_RADIUS = 0.01
 _PLUG_HEIGHT = 0.04
-_PLUG_MASS = 0.03
+_PLUG_MASS = 0.05
 
 # Taut plug reach from the anchor [m]; the plug spawns here and hangs taut under gravity.
 _CABLE_REACH = (_NUM_POINTS - 2) * _SEGMENT_LENGTH
@@ -302,7 +300,7 @@ class ActionsCfg:
     """7-dim arm joint position + 2-dim continuous gripper joint position."""
 
     arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
+        asset_name="robot", joint_names=["panda_joint.*"], scale=0.2, use_default_offset=True
     )
     gripper_action = mdp.JointPositionActionCfg(
         asset_name="robot",
@@ -391,10 +389,10 @@ class RewardsCfg:
         },
         weight=16.0,
     )
-    # Sparse bonus for a fully seated, coaxial plug.
+    # Sparse bonus when the plug center is inside the socket bore.
     plug_inserted = RewTerm(
         func=mdp.plug_inserted,
-        params={"depth_tol": 0.01, "radius": 0.006, "min_axis_cos": 0.98},
+        params={"depth_tol": _TARGET_HOLE_DEPTH / 2.0, "radius": _TARGET_HOLE_INNER / 2.0},
         weight=10.0,
     )
 
@@ -450,7 +448,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 1.0
+        self.episode_length_s = 10.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0

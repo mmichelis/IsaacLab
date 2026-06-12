@@ -162,10 +162,17 @@ def _apply_and_reset(
         # Keep current pose -> scatter sets body_q_prev == body_q (zero proxy velocity).
         new_body_q = wp.to_torch(state.body_q).to(env.device)[body_ids]
     else:
-        init_q = wp.to_torch(model.body_q).to(env.device)[body_ids]  # build-time rest pose
+        init_q = wp.to_torch(model.body_q).to(env.device)[body_ids]  # build-time rest pose (world frame)
         init_pos, init_quat = init_q[..., 0:3], init_q[..., 3:7]
+        # body_q is in absolute world coords, so yaw must rotate about each env's origin, not
+        # the world origin -- otherwise non-origin envs get flung away by (R - I) * env_origin.
+        body_world = model.body_world
+        if body_world is not None:
+            origins = env.scene.env_origins[wp.to_torch(body_world).to(env.device)[body_ids].long()]
+        else:
+            origins = torch.zeros_like(init_pos)
         yaw = delta_yaw_quat.unsqueeze(1).expand(-1, init_pos.shape[1], -1)
-        new_pos = quat_apply(yaw, init_pos) + delta_trans.unsqueeze(1)
+        new_pos = origins + quat_apply(yaw, init_pos - origins) + delta_trans.unsqueeze(1)
         new_quat = quat_mul(yaw, init_quat)
         new_body_q = torch.cat([new_pos, new_quat], dim=-1)
 
