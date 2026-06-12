@@ -195,7 +195,10 @@ def apply_cable_attachments_to_builder(
         body_label = builder.body_label
         body_world = builder.body_world
         target_body_idx = -1
-        for body_idx in range(len(body_label)):
+        # Scan from the tail: this world's bodies were just appended, so the match is near the
+        # end. A forward scan rescans every prior world's bodies, making the build O(num_envs**2).
+        # Reverse also prefers world-specific bodies (tail) over global ``-1`` bodies (head).
+        for body_idx in range(len(body_label) - 1, -1, -1):
             label = body_label[body_idx]
             if label != expanded_target_path and not target_re.fullmatch(label):
                 continue
