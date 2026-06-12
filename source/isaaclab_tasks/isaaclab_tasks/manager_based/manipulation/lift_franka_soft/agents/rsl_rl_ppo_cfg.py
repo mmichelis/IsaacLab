@@ -12,7 +12,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class FrankaDeformablePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 50000
-    save_interval = 50
+    save_interval = 10
     experiment_name = "franka_deformable"
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
