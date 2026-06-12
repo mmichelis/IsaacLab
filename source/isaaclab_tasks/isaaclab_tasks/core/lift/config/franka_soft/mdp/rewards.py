@@ -92,7 +92,9 @@ def object_ee_distance(
     points_w = _points_w(asset)
     ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
     distance = torch.linalg.norm(points_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
-    return 1.0 - torch.tanh(distance / std)
+    # A diverged solve can make the EE/asset pose non-finite; treat it as "not reaching" (0) so a
+    # single blown-up step cannot poison the episodic reward log before the divergence guard resets.
+    return torch.nan_to_num(1.0 - torch.tanh(distance / std), nan=0.0, posinf=0.0, neginf=0.0)
 
 
 def object_com_goal_distance(
@@ -315,14 +317,17 @@ def assembly_velocity_out_of_bounds(
     max_body_vel: float,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     asset_cfgs: tuple[SceneEntityCfg, ...] = (SceneEntityCfg("object"), SceneEntityCfg("cable")),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Termination signal when the arm or the manipulated assembly diverges.
 
     A divergence guard for RL: a blown-up coupled solve sends joint and body velocities far
     past normal manipulation speeds, and can jump straight to NaN/Inf. The magnitude check
-    alone cannot catch the latter (``NaN > x`` is ``False``), so the arm and assembly state is
-    also tested for finiteness. Resetting the offending env stops a single unstable env from
-    spreading NaNs through the shared solver state and poisoning the batch.
+    alone cannot catch the latter (``NaN > x`` is ``False``), so every quantity the rewards
+    and observations read is also tested for finiteness: the arm joints, root, and body poses,
+    the end-effector frame (read by the reaching reward), and the assembly bodies. Resetting
+    the offending env stops a single unstable env from spreading NaNs through the shared solver
+    state and poisoning the batch.
 
     Args:
         env: The environment instance.
@@ -330,15 +335,25 @@ def assembly_velocity_out_of_bounds(
         max_body_vel: Maximum allowed assembly body speed [m/s].
         robot_cfg: The arm articulation.
         asset_cfgs: Assembly assets (e.g. plug, cable) whose body speeds are bounded.
+        ee_frame_cfg: The end-effector frame transformer read by the reaching reward.
 
     Returns:
         Boolean tensor with shape ``(num_envs,)``.
     """
     robot: Articulation = env.scene[robot_cfg.name]
     diverged = robot.data.joint_vel.torch.abs().amax(dim=-1) > max_joint_vel
-    # NaN/Inf escape the magnitude tests, so flag the arm state (also drives the obs) explicitly.
-    for arm_state in (robot.data.joint_pos, robot.data.joint_vel, robot.data.root_pos_w, robot.data.root_quat_w):
+    # NaN/Inf escape the magnitude tests, so flag the arm state explicitly. Body poses are
+    # included because they feed the EE frame even when joints/root stay finite.
+    for arm_state in (
+        robot.data.joint_pos,
+        robot.data.joint_vel,
+        robot.data.root_pos_w,
+        robot.data.root_quat_w,
+        robot.data.body_pos_w,
+        robot.data.body_quat_w,
+    ):
         diverged = diverged | _nonfinite(arm_state.torch)
+    diverged = diverged | _nonfinite(wp.to_torch(env.scene[ee_frame_cfg.name].data.target_pos_w))
     for cfg in asset_cfgs:
         data = env.scene[cfg.name].data
         body_vel = data.body_lin_vel_w.torch.reshape(env.num_envs, -1, 3)
