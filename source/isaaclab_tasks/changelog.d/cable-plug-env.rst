@@ -9,5 +9,9 @@ Added
   :class:`~isaaclab_contrib.cable.CableAttachmentCfg` endpoints.
 * Added :func:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.assembly_velocity_out_of_bounds`,
   a termination that resets an environment whose arm-joint or assembly-body velocity exceeds a
-  bound, guarding RL training against solver divergence.
+  bound or whose arm/assembly state becomes non-finite (NaN/Inf), guarding RL training against
+  solver divergence.
 * Added a termination that resets an environment when the plug drops below the tabletop.
+* Added ``FrankaCablePlugEnv``, the environment class behind ``Isaac-Lift-CablePlug-Franka-v0``,
+  which zeros non-finite rewards (computed before the divergence reset) so a diverged coupled
+  solve never propagates NaNs to the learner.
