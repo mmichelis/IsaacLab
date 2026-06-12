@@ -304,6 +304,11 @@ def ee_below_minimum(
     return ee_z < minimum_height
 
 
+def _nonfinite(tensor: torch.Tensor) -> torch.Tensor:
+    """Per-env mask, ``True`` where any element (over all but the first dim) is NaN or Inf."""
+    return ~torch.isfinite(tensor).reshape(tensor.shape[0], -1).all(dim=1)
+
+
 def assembly_velocity_out_of_bounds(
     env: ManagerBasedRLEnv,
     max_joint_vel: float,
@@ -311,11 +316,13 @@ def assembly_velocity_out_of_bounds(
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     asset_cfgs: tuple[SceneEntityCfg, ...] = (SceneEntityCfg("object"), SceneEntityCfg("cable")),
 ) -> torch.Tensor:
-    """Termination signal when the arm or the manipulated assembly moves implausibly fast.
+    """Termination signal when the arm or the manipulated assembly diverges.
 
     A divergence guard for RL: a blown-up coupled solve sends joint and body velocities far
-    past normal manipulation speeds. Resetting the offending env stops a single unstable env
-    from spreading NaNs through the shared solver state and poisoning the batch.
+    past normal manipulation speeds, and can jump straight to NaN/Inf. The magnitude check
+    alone cannot catch the latter (``NaN > x`` is ``False``), so the arm and assembly state is
+    also tested for finiteness. Resetting the offending env stops a single unstable env from
+    spreading NaNs through the shared solver state and poisoning the batch.
 
     Args:
         env: The environment instance.
@@ -329,7 +336,12 @@ def assembly_velocity_out_of_bounds(
     """
     robot: Articulation = env.scene[robot_cfg.name]
     diverged = robot.data.joint_vel.torch.abs().amax(dim=-1) > max_joint_vel
+    # NaN/Inf escape the magnitude tests, so flag the arm state (also drives the obs) explicitly.
+    for arm_state in (robot.data.joint_pos, robot.data.joint_vel, robot.data.root_pos_w, robot.data.root_quat_w):
+        diverged = diverged | _nonfinite(arm_state.torch)
     for cfg in asset_cfgs:
-        body_vel = env.scene[cfg.name].data.body_lin_vel_w.torch.reshape(env.num_envs, -1, 3)
+        data = env.scene[cfg.name].data
+        body_vel = data.body_lin_vel_w.torch.reshape(env.num_envs, -1, 3)
         diverged = diverged | (torch.linalg.norm(body_vel, dim=-1).amax(dim=-1) > max_body_vel)
+        diverged = diverged | _nonfinite(body_vel) | _nonfinite(data.body_pos_w.torch)
     return diverged

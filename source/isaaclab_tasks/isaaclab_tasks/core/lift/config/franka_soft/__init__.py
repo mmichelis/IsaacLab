@@ -43,7 +43,7 @@ gym.register(
 
 gym.register(
     id="Isaac-Lift-CablePlug-Franka-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    entry_point=f"{__name__}.franka_cable_plug_env:FrankaCablePlugEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugEnvCfg",
