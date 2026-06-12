@@ -64,9 +64,6 @@ def _build_cable_prototype(builder, entry: CableRegistryEntry, cable_idx: int) -
         The prototype builder and the rod-segment body indices within it.
     """
     proto = newton.ModelBuilder(up_axis=builder.up_axis, gravity=builder.gravity)
-    # MuJoCo attribute columns for consistency under MuJoCo-coupled solvers (`finalize`
-    # fills any missing ones with defaults regardless).
-    newton.solvers.SolverMuJoCo.register_custom_attributes(proto)
 
     shape_cfg = newton.ModelBuilder.ShapeConfig()
     shape_cfg.density = float(entry.density)
@@ -85,12 +82,6 @@ def _build_cable_prototype(builder, entry: CableRegistryEntry, cable_idx: int) -
         bend_damping=entry.bend_damping,
         label="cable",
     )
-    # Anchor the chain root with a free joint + articulation: :meth:`add_rod_graph` leaves it
-    # an orphan body that breaks :class:`SolverMuJoCo` topology walks (``KeyError`` on parent).
-    # NOTE: removable once the mujoco solver stops parsing (unsolvable) cable bodies.
-    if rod_body_indices:
-        root_joint_id = proto.add_joint_free(child=int(rod_body_indices[0]), label="cable_root_free")
-        proto.add_articulation([root_joint_id], label="cable_root_articulation")
     return proto, list(rod_body_indices)
 
 
