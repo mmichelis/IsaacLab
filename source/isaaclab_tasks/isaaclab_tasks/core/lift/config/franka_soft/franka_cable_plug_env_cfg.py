@@ -33,6 +33,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
+from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.utils.configclass import configclass
 from isaaclab.utils.math import quat_from_angle_axis
 
@@ -59,7 +60,7 @@ _SEGMENT_LENGTH = 0.02
 _CABLE_WIDTH = 0.01
 
 # Kinematic anchor, above the tabletop in front of the robot [m].
-_ANCHOR_POS = (0.15, 0.3, 0.2)
+_ANCHOR_POS = (0.15, 0.0, 0.2)
 
 # Light plug so the grasp holds and cable tension stays low [m, m, kg].
 _PLUG_RADIUS = 0.01
@@ -71,10 +72,9 @@ _CABLE_REACH = (_NUM_POINTS - 2) * _SEGMENT_LENGTH
 _PLUG_INIT_POS = (_ANCHOR_POS[0] + _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
 # Goal well inside the cable reach, so insertion slackens (not stretches) the cable [m].
-_GOAL_POS = (_ANCHOR_POS[0] + 0.20, _ANCHOR_POS[1] - 0.05, _ANCHOR_POS[2])
+_GOAL_POS = (_ANCHOR_POS[0] + 0.5 * _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2] - 0.05)
 
-# Socket, offset +x from the goal; opening faces -x so the plug inserts by pushing +x [m].
-_TARGET_HOLE_POS = (_GOAL_POS[0] + 0.1, _GOAL_POS[1], _GOAL_POS[2])
+# Socket dimensions [m]. Its pose follows the goal at runtime (offset +x; see CommandsCfg).
 _TARGET_HOLE_INNER = 0.03  # clear opening, > plug diameter
 _TARGET_HOLE_WALL_THICKNESS = 0.003
 _TARGET_HOLE_DEPTH = _PLUG_HEIGHT
@@ -101,7 +101,7 @@ _WALL_OFFSETS: dict[str, tuple[float, float, float]] = {
 
 
 def _wall_cfg(size: tuple[float, float, float], offset: tuple[float, float, float], prim_name: str) -> RigidObjectCfg:
-    """Kinematic cuboid wall offset from the socket center by ``offset``."""
+    """Kinematic cuboid wall at ``offset`` from the socket center (the command repositions it)."""
     return RigidObjectCfg(
         prim_path=f"/World/envs/env_.*/{prim_name}",
         spawn=sim_utils.CuboidCfg(
@@ -110,9 +110,7 @@ def _wall_cfg(size: tuple[float, float, float], offset: tuple[float, float, floa
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.6, 0.2)),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=tuple(c + o for c, o in zip(_TARGET_HOLE_POS, offset)),
-        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=offset),
     )
 
 
@@ -173,7 +171,7 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
                 stretch_damping=1.0e-1,
                 bend_stiffness=5.0e-2,
                 bend_damping=5.0e-4,
-                density=1.0,
+                density=10.0,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(),
         ),
@@ -220,9 +218,10 @@ def _make_uniform_pose_command_with_targets(cfg, env):
         class _UniformPoseCommandWithTargets(UniformPoseCommand):
             """:class:`UniformPoseCommand` that moves rigid assets with the sampled command.
 
-            On each resample, every target is placed at ``command + target_offset_b +
-            R(command_quat) * local_offset`` and shares the command orientation, so the socket
-            walls follow the goal pose together.
+            On each resample, every target is placed at ``command +
+            R(command_quat) * (target_offset_b + local_offset)`` and shares the command
+            orientation, so the socket walls follow the goal pose together. The socket offset is
+            applied in the goal's local frame, so it points along the sampled goal's x axis.
             """
 
             def __init__(self, cfg, env):
@@ -233,9 +232,11 @@ def _make_uniform_pose_command_with_targets(cfg, env):
 
             def _resample_command(self, env_ids):
                 super()._resample_command(env_ids)
-                # Socket center in robot frame, then to world.
-                center_pos_b = self.pose_command_b[env_ids, :3] + self._target_offset_b
+                # Socket center in robot frame (offset applied in the goal's local frame), then to world.
                 center_quat_b = self.pose_command_b[env_ids, 3:]
+                center_pos_b = self.pose_command_b[env_ids, :3] + quat_apply(
+                    center_quat_b, self._target_offset_b.expand(len(env_ids), 3)
+                )
                 center_pos_w, center_quat_w = combine_frame_transforms(
                     self.robot.data.root_pos_w.torch[env_ids],
                     self.robot.data.root_quat_w.torch[env_ids],
@@ -264,7 +265,7 @@ class _UniformPoseCommandWithTargetsCfg(UniformPoseCommandCfg):
     """Per-target ``(scene_asset_name, local_offset_from_socket_center [m])`` pairs."""
 
     target_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    """Offset added to the command position [m] in the robot root frame to locate the socket center."""
+    """Offset to the socket center [m], applied in the sampled goal's local frame."""
 
 
 @configclass
@@ -279,30 +280,19 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(_GOAL_POS[0] - 0.03, _GOAL_POS[0] + 0.03),
-            pos_y=(_GOAL_POS[1] - 0.05, _GOAL_POS[1] + 0.05),
-            pos_z=(_GOAL_POS[2] - 0.03, _GOAL_POS[2] + 0.03),
+            pos_x=(_GOAL_POS[0] - 0.1, _GOAL_POS[0] + 0.1),
+            pos_y=(_GOAL_POS[1] - 0.25, _GOAL_POS[1] + 0.25),
+            pos_z=(_GOAL_POS[2] - 0.1, _GOAL_POS[2] + 0.15),
             roll=(0.0, 0.0),
-            pitch=(0.0, 0.0),
-            yaw=(0.0, 0.0),
+            pitch=(-math.pi / 4, math.pi / 4),
+            yaw=(-math.pi / 2, math.pi / 2),
         ),
-        goal_pose_visualizer_cfg=VisualizationMarkersCfg(
-            prim_path="/Visuals/Command/goal_pose",
-            markers={
-                "sphere": sim_utils.SphereCfg(
-                    radius=0.0,
-                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.9, 0.2), opacity=0.4),
-                ),
-            },
+        goal_pose_visualizer_cfg=FRAME_MARKER_CFG.replace(prim_path="/Visuals/Command/goal_pose").replace(
+            markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.05, 0.05, 0.05))}
         ),
         current_pose_visualizer_cfg=VisualizationMarkersCfg(
             prim_path="/Visuals/Command/body_pose",
-            markers={
-                "sphere": sim_utils.SphereCfg(
-                    radius=1e-6,
-                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 0.0), opacity=0.0),
-                ),
-            },
+            markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.1, 0.1, 0.1))},
         ),
     )
 
@@ -369,10 +359,10 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {
-                "x": (-0.05, 0.0),
-                "y": (-0.02, 0.02),
-                "z": (-0.02, 0.02),
-                "yaw": (-math.pi / 18.0, math.pi / 18.0),
+                "x": (-0.05, 0.05),
+                "y": (-0.3, 0.3),
+                "z": (-0.05, 0.05),
+                "yaw": (-math.pi / 3.0, math.pi / 3.0),
             },
             "cable_cfg": SceneEntityCfg("cable"),
             "anchor_cfg": SceneEntityCfg("anchor"),
@@ -435,6 +425,12 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
+    # Plug dropped below the tabletop.
+    plug_below_table = DoneTerm(
+        func=mdp.object_com_below_minimum,
+        params={"minimum_height": 0.0, "asset_cfg": SceneEntityCfg("object")},
+    )
+
     # Thresholds well above the worst seen under extreme random actions (~30 rad/s, ~5 m/s).
     velocity_divergence = DoneTerm(
         func=mdp.assembly_velocity_out_of_bounds,
@@ -464,7 +460,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 6.0
+        self.episode_length_s = 1.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
@@ -505,7 +501,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
             model_cfg=NewtonModelCfg(
                 shape_material_ke=1e5,
                 shape_material_kd=1e-2,
-                shape_material_mu=1.0,
+                shape_material_mu=10.0,
             ),
-            num_substeps=10,
+            num_substeps=8,
         )
