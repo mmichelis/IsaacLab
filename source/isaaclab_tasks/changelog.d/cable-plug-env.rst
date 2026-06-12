@@ -10,3 +10,4 @@ Added
 * Added :func:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.assembly_velocity_out_of_bounds`,
   a termination that resets an environment whose arm-joint or assembly-body velocity exceeds a
   bound, guarding RL training against solver divergence.
+* Added a termination that resets an environment when the plug drops below the tabletop.
