@@ -47,6 +47,52 @@ class CableRegistryEntry:
     # indexed by ``world_idx``, inner indexed by ``CableAttachmentCfg.cable_anchor``.
     segment_body_indices: list[list[int]] = field(default_factory=list)
 
+    # Prototype built once and cloned per-env via ``ModelBuilder.add_builder`` instead of
+    # rebuilding the rod each env. ``proto_rod_body_indices`` map clone offsets to segments.
+    proto_builder: newton.ModelBuilder | None = None
+    proto_rod_body_indices: list[int] = field(default_factory=list)
+
+
+def _build_cable_prototype(builder, entry: CableRegistryEntry, cable_idx: int) -> tuple[object, list[int]]:
+    """Build one canonical cable into a standalone prototype builder for per-env cloning.
+
+    Built at :attr:`entry.node_positions`; the per-env transform is applied later by
+    :meth:`ModelBuilder.add_builder`. Up-axis and gravity match ``builder`` so cloning
+    preserves world gravity.
+
+    Returns:
+        The prototype builder and the rod-segment body indices within it.
+    """
+    proto = newton.ModelBuilder(up_axis=builder.up_axis, gravity=builder.gravity)
+    # MuJoCo attribute columns for consistency under MuJoCo-coupled solvers (`finalize`
+    # fills any missing ones with defaults regardless).
+    newton.solvers.SolverMuJoCo.register_custom_attributes(proto)
+
+    shape_cfg = newton.ModelBuilder.ShapeConfig()
+    shape_cfg.density = float(entry.density)
+    # Unique negative group disables segment-vs-segment self-collision (Newton
+    # filters same-negative pairs) while keeping negative-vs-positive collisions.
+    shape_cfg.collision_group = -(1 + cable_idx)
+
+    rod_body_indices, _rod_joint_indices = proto.add_rod_graph(
+        node_positions=entry.node_positions,
+        edges=entry.edges,
+        radius=entry.radius,
+        cfg=shape_cfg,
+        stretch_stiffness=entry.stretch_stiffness,
+        stretch_damping=entry.stretch_damping,
+        bend_stiffness=entry.bend_stiffness,
+        bend_damping=entry.bend_damping,
+        label="cable",
+    )
+    # Anchor the chain root with a free joint + articulation: :meth:`add_rod_graph` leaves it
+    # an orphan body that breaks :class:`SolverMuJoCo` topology walks (``KeyError`` on parent).
+    # NOTE: removable once the mujoco solver stops parsing (unsolvable) cable bodies.
+    if rod_body_indices:
+        root_joint_id = proto.add_joint_free(child=int(rod_body_indices[0]), label="cable_root_free")
+        proto.add_articulation([root_joint_id], label="cable_root_articulation")
+    return proto, list(rod_body_indices)
+
 
 def add_cable_entry_to_builder(
     builder,
@@ -57,6 +103,9 @@ def add_cable_entry_to_builder(
     cable_idx: int = 0,
 ) -> None:
     """Add one cable to a Newton ``ModelBuilder`` for one environment.
+
+    Built once into a prototype (``env_idx == 0``) and cloned per environment via
+    :meth:`ModelBuilder.add_builder`, avoiding a per-env :meth:`add_rod_graph` rebuild.
 
     Args:
         builder: The Newton ``ModelBuilder``.
@@ -69,7 +118,9 @@ def add_cable_entry_to_builder(
     if env_idx == 0:
         entry.body_offsets.clear()
         entry.segment_body_indices.clear()
-        entry.last_edge_length = 0.0
+        u, v = entry.edges[-1]
+        entry.last_edge_length = float(wp.length(entry.node_positions[v] - entry.node_positions[u]))
+        entry.proto_builder, entry.proto_rod_body_indices = _build_cable_prototype(builder, entry, cable_idx)
 
     env_pos = wp.vec3(float(env_position[0]), float(env_position[1]), float(env_position[2]))
     env_rot = wp.quat(
@@ -89,48 +140,17 @@ def add_cable_entry_to_builder(
     composed_pos = env_pos + wp.quat_rotate(env_rot, init_pos)
     composed_rot = env_rot * init_rot
 
-    world_nodes: list[wp.vec3] = []
-    for node in entry.node_positions:
-        rotated = wp.quat_rotate(composed_rot, node)
-        world_nodes.append(composed_pos + rotated)
-
-    shape_cfg = newton.ModelBuilder.ShapeConfig()
-    shape_cfg.density = float(entry.density)
-    # Unique negative group disables segment-vs-segment self-collision (Newton
-    # filters same-negative pairs) while keeping negative-vs-positive collisions.
-    shape_cfg.collision_group = -(1 + cable_idx)
-
-    # Pre-expand ``env_.*`` here: the cloner's ``_rename_builder_labels`` does
-    # not visit builder-hook bodies, so we must produce the per-env label ourselves.
+    # ``_rename_builder_labels`` skips builder-hook bodies, so expand the per-env label
+    # here via ``add_builder``'s prefix.
     expanded_prim_path = entry.prim_path.replace("env_.*", f"env_{env_idx}")
-    entry.body_offsets.append(builder.body_count)
-    # :meth:`add_rod_graph` only joins adjacent segments, leaving the chain root as an
-    # orphan body that breaks :class:`SolverMuJoCo` topological walks (``KeyError`` on
-    # ``body_mapping[parent]``). Anchor it with a free joint in its own articulation.
-    rod_body_indices, _rod_joint_indices = builder.add_rod_graph(
-        node_positions=world_nodes,
-        edges=entry.edges,
-        radius=entry.radius,
-        cfg=shape_cfg,
-        stretch_stiffness=entry.stretch_stiffness,
-        stretch_damping=entry.stretch_damping,
-        bend_stiffness=entry.bend_stiffness,
-        bend_damping=entry.bend_damping,
-        label=f"{expanded_prim_path}/cable",
+    start = builder.body_count
+    entry.body_offsets.append(start)
+    builder.add_builder(
+        entry.proto_builder,
+        xform=wp.transform(composed_pos, composed_rot),
+        label_prefix=expanded_prim_path,
     )
-    # NOTE: if statement below can be removed once mujoco solver stops parsing cable bodies
-    # even though it cannot solve cable joint.
-    if rod_body_indices:
-        root_joint_id = builder.add_joint_free(
-            child=int(rod_body_indices[0]),
-            label=f"{expanded_prim_path}/cable_root_free",
-        )
-        builder.add_articulation([root_joint_id], label=f"{expanded_prim_path}/cable_root_articulation")
-
-    entry.segment_body_indices.append(list(rod_body_indices))
-    if env_idx == 0:
-        u, v = entry.edges[-1]
-        entry.last_edge_length = float(wp.length(entry.node_positions[v] - entry.node_positions[u]))
+    entry.segment_body_indices.append([start + i for i in entry.proto_rod_body_indices])
 
 
 def add_registered_cables_to_builder(
