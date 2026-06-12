@@ -7,6 +7,7 @@
 
 import math
 
+import newton
 import numpy as np
 import pytest
 import warp as wp
@@ -80,21 +81,24 @@ def test_add_registered_cables_iterates_registry(monkeypatch):
 
 
 class _FakeBuilder:
-    """Records the arguments passed to add_rod_graph for assertion."""
+    """Mocks the main ModelBuilder: records the per-env ``add_builder`` clone calls."""
+
+    up_axis = "Z"
+    gravity = -9.81
 
     def __init__(self):
-        self.calls = []
         self.body_count = 0
+        self.clones = []  # list of (proto, xform, label_prefix)
 
-    def add_rod_graph(self, **kwargs):
-        self.calls.append(kwargs)
-        self.body_count += len(kwargs.get("edges", []))
+    def add_builder(self, proto, xform=None, label_prefix=None):
+        self.clones.append((proto, xform, label_prefix))
+        self.body_count += proto.body_count
 
 
 @pytest.mark.parametrize(
     "env_rotation, env_position, init_pos, init_rot, expected_np0, expected_np1",
     [
-        # Identity case (was test 4): verifies field-forwarding + translation composition.
+        # Identity case: verifies field-forwarding + translation composition.
         (
             [0.0, 0.0, 0.0, 1.0],  # env identity
             [1.0, 0.0, 0.0],  # env_t = (1, 0, 0)
@@ -103,7 +107,7 @@ class _FakeBuilder:
             (1.0, 0.0, 1.0),  # node[0] world = env_t + init_t = (1, 0, 1)
             (1.1, 0.0, 1.0),  # node[1] world = (1.1, 0, 1)
         ),
-        # 90° CCW about Z (was test 5): verifies composed rotation.
+        # 90° CCW about Z: verifies composed rotation.
         (
             [0.0, 0.0, math.sqrt(2.0) / 2.0, math.sqrt(2.0) / 2.0],
             [0.0, 0.0, 0.0],
@@ -115,9 +119,21 @@ class _FakeBuilder:
     ],
     ids=["identity", "env_rotation_z90"],
 )
-def test_add_cable_entry_to_builder(env_rotation, env_position, init_pos, init_rot, expected_np0, expected_np1):
-    """add_cable_entry_to_builder transforms positions correctly and forwards
-    all material/geometry params to add_rod_graph."""
+def test_add_cable_entry_to_builder(
+    monkeypatch, env_rotation, env_position, init_pos, init_rot, expected_np0, expected_np1
+):
+    """The prototype is built from canonical node positions with all material/geometry params
+    forwarded to ``add_rod_graph``; the per-env world transform is applied via the
+    ``add_builder`` xform (not baked into the node positions)."""
+    rod_calls = []
+    real_add_rod_graph = newton.ModelBuilder.add_rod_graph
+
+    def _spy_add_rod_graph(self, **kwargs):
+        rod_calls.append(kwargs)
+        return real_add_rod_graph(self, **kwargs)
+
+    monkeypatch.setattr(newton.ModelBuilder, "add_rod_graph", _spy_add_rod_graph)
+
     entry = CableRegistryEntry(
         prim_path="/World/Cable",
         node_positions=[wp.vec3(0.0, 0.0, 0.0), wp.vec3(0.1, 0.0, 0.0)],
@@ -134,37 +150,44 @@ def test_add_cable_entry_to_builder(env_rotation, env_position, init_pos, init_r
     builder = _FakeBuilder()
     add_cable_entry_to_builder(builder, entry, env_idx=0, env_position=env_position, env_rotation=env_rotation)
 
-    assert len(builder.calls) == 1
-    call = builder.calls[0]
+    # add_rod_graph runs once on the prototype with CANONICAL (untransformed) node positions.
+    assert len(rod_calls) == 1
+    call = rod_calls[0]
+    assert [tuple(round(float(c), 6) for c in p) for p in call["node_positions"]] == [(0.0, 0.0, 0.0), (0.1, 0.0, 0.0)]
 
-    np0 = call["node_positions"][0]
-    np1 = call["node_positions"][1]
-    assert float(np0[0]) == pytest.approx(expected_np0[0], abs=1e-5)
-    assert float(np0[1]) == pytest.approx(expected_np0[1], abs=1e-5)
-    assert float(np0[2]) == pytest.approx(expected_np0[2], abs=1e-5)
-    assert float(np1[0]) == pytest.approx(expected_np1[0], abs=1e-5)
-    assert float(np1[1]) == pytest.approx(expected_np1[1], abs=1e-5)
-    assert float(np1[2]) == pytest.approx(expected_np1[2], abs=1e-5)
-
-    # Field forwarding (only need to assert once; same across all rows).
+    # Field forwarding to add_rod_graph.
     assert call["edges"] == [(0, 1)]
     assert call["radius"] == pytest.approx(0.005)
     assert call["stretch_stiffness"] == pytest.approx(2.0e9)
     assert call["bend_stiffness"] == pytest.approx(1.0e-3)
     assert call["bend_damping"] == pytest.approx(1.0e-4)
-    assert call["label"] == "/World/Cable/cable"
+    assert call["label"] == "cable"
     assert float(call["cfg"].density) == pytest.approx(1200.0)
+
+    # The per-env transform is applied via the add_builder xform + per-env label prefix.
+    assert len(builder.clones) == 1
+    _proto, xform, label_prefix = builder.clones[0]
+    assert label_prefix == "/World/Cable"
+    # World node positions = xform applied to the canonical nodes.
+    for node, expected in zip(entry.node_positions, (expected_np0, expected_np1)):
+        world = xform.p + wp.quat_rotate(xform.q, node)
+        assert float(world[0]) == pytest.approx(expected[0], abs=1e-5)
+        assert float(world[1]) == pytest.approx(expected[1], abs=1e-5)
+        assert float(world[2]) == pytest.approx(expected[2], abs=1e-5)
 
 
 def test_add_cable_entry_populates_body_offsets_and_last_edge_length():
     """``add_cable_entry_to_builder`` records per-env body offsets and the last edge length."""
 
-    class _BodyCountingBuilder:
+    class _CloneCountingBuilder:
+        up_axis = "Z"
+        gravity = -9.81
+
         def __init__(self):
             self.body_count = 0
 
-        def add_rod_graph(self, *, edges, **_kwargs):
-            self.body_count += len(edges)
+        def add_builder(self, proto, xform=None, label_prefix=None):
+            self.body_count += proto.body_count
 
     entry = CableRegistryEntry(
         prim_path="/World/Cable",
@@ -172,7 +195,7 @@ def test_add_cable_entry_populates_body_offsets_and_last_edge_length():
         edges=[(0, 1), (1, 2), (2, 3)],
         radius=0.005,
     )
-    builder = _BodyCountingBuilder()
+    builder = _CloneCountingBuilder()
     builder.body_count = 7
     add_cable_entry_to_builder(builder, entry, env_idx=0, env_position=[0, 0, 0], env_rotation=[0, 0, 0, 1])
     builder.body_count += 5
@@ -273,17 +296,12 @@ def test_cable_replicate_body_count():
 
 
 def test_forward_preserves_cable_body_q():
-    """Regression test for the eval_fk cable patch (commit fd115a500f6).
+    """Regression test: :meth:`NewtonVBDManager.forward` must not corrupt cable ``body_q``.
 
-    Newton's ``eval_fk`` has no case for :attr:`newton.JointType.CABLE`, so
-    without the patch any FK pass would collapse cable rod segments onto their
-    parent anchors. :meth:`NewtonVBDManager.forward` builds an articulation
-    mask in :meth:`start_simulation` that excludes cable articulations.
-
-    To verify the test fails without the fix, force the mask to ``None`` after
-    ``start_simulation`` and observe that the new defensive check in
-    :meth:`forward` raises ``RuntimeError``; previously, the unmasked
-    ``eval_fk`` call would silently mutate ``body_q``.
+    Newton's ``eval_fk`` has no case for :attr:`newton.JointType.CABLE`, so an unmasked FK
+    pass collapses cable rod segments onto their parent anchors. ``forward`` lazily builds
+    :attr:`~NewtonVBDManager._fk_mask` (via :meth:`~NewtonVBDManager._build_fk_mask`) to
+    exclude CABLE/FREE articulations so VBD-owned ``body_q`` is preserved bit-identically.
     """
     cable_spawn = sim_utils.CableCfg(
         positions=[(0.0, 0.0, 0.0), (0.1, 0.0, 0.0), (0.2, 0.0, 0.0)],
@@ -303,21 +321,18 @@ def test_forward_preserves_cable_body_q():
     with build_simulation_context(device="cuda:0", sim_cfg=newton_sim_cfg, auto_add_lighting=True) as sim:
         sim._app_control_on_stop_handle = None
         InteractiveScene(_SceneCfg())
-        sim.reset()  # triggers replicate + start_simulation + _build_non_cable_articulation_mask
-
-        # The mask must have been built since cables are registered.
-        assert NewtonVBDManager._non_cable_articulation_mask is not None, (
-            "Expected _non_cable_articulation_mask to be built when cables are registered."
-        )
+        sim.reset()  # triggers replicate + start_simulation
 
         body_q_before = NewtonVBDManager._state_0.body_q.numpy().copy()
 
-        # forward() is what Kit-style visualizers invoke each render. With the
-        # patch, cable articulations are excluded from the FK pass and body_q
-        # is bit-identical. Without the patch, JointType.CABLE relative
-        # transforms fall through to identity, snapping each rod segment onto
-        # its parent anchor.
+        # forward() is what Kit-style visualizers invoke each render; it lazily builds the
+        # FK mask. With the mask, cable articulations are excluded from the FK pass and body_q
+        # is bit-identical. Without it, JointType.CABLE relative transforms fall through to
+        # identity, snapping each rod segment onto its parent anchor.
         NewtonVBDManager.forward()
+
+        # The mask must have been built since cables are registered.
+        assert NewtonVBDManager._fk_mask is not None, "Expected _fk_mask to be built when cables are registered."
 
         body_q_after = NewtonVBDManager._state_0.body_q.numpy()
         np.testing.assert_array_equal(
@@ -392,10 +407,10 @@ def test_start_simulation_preserves_curved_cable_body_q():
 
 
 def test_cable_object_reset_restores_body_state():
-    """``CableObject.reset()`` snaps the cable's body slice back to the rest pose.
+    """``NewtonVBDManager.reset(soft=True)`` snaps cable bodies back to the rest pose.
 
-    Steps the sim to drift the cable away from its spawn pose, calls
-    :meth:`CableObject.reset`, and verifies that:
+    Steps the sim to drift the cable away from its spawn pose, calls the soft VBD
+    reset, and verifies that:
 
     1. ``state.body_q`` matches ``model.body_q`` for the cable's bodies.
     2. ``state.body_qd`` is zero for the cable's bodies.
@@ -444,7 +459,7 @@ def test_cable_object_reset_restores_body_state():
             "Sim did not advance: cable body_q matches model.body_q without stepping."
         )
 
-        cable.reset()
+        NewtonVBDManager.reset(soft=True)
 
         body_q_after = NewtonVBDManager._state_0.body_q.numpy()[body_indices]
         body_qd_after = NewtonVBDManager._state_0.body_qd.numpy()[body_indices]
@@ -454,22 +469,22 @@ def test_cable_object_reset_restores_body_state():
         np.testing.assert_allclose(
             body_q_after,
             body_q_model,
-            err_msg="state.body_q was not restored to model.body_q after CableObject.reset().",
+            err_msg="state.body_q was not restored to model.body_q after NewtonVBDManager.reset(soft=True).",
         )
         np.testing.assert_array_equal(
             body_qd_after,
             np.zeros_like(body_qd_after),
-            err_msg="state.body_qd was not zeroed after CableObject.reset().",
+            err_msg="state.body_qd was not zeroed after NewtonVBDManager.reset(soft=True).",
         )
         np.testing.assert_allclose(
             body_q_prev_after,
             body_q_model,
-            err_msg="solver.body_q_prev was not refreshed to model.body_q after CableObject.reset().",
+            err_msg="solver.body_q_prev was not refreshed to model.body_q after NewtonVBDManager.reset(soft=True).",
         )
         np.testing.assert_array_equal(
             body_inertia_q_after,
             np.zeros_like(body_inertia_q_after),
-            err_msg="solver.body_inertia_q was not zeroed after CableObject.reset().",
+            err_msg="solver.body_inertia_q was not zeroed after NewtonVBDManager.reset(soft=True).",
         )
 
         # One step of free-fall should add at most ~g*dt = ~0.1 m/s. A failure
@@ -477,104 +492,3 @@ def test_cable_object_reset_restores_body_state():
         sim.step()
         max_speed = float(np.abs(NewtonVBDManager._state_0.body_qd.numpy()[body_indices]).max())
         assert max_speed < 1.0, f"body_qd exploded after first post-reset step: |body_qd|_max={max_speed}"
-
-
-def test_cable_object_reset_partial_envs_and_body_q_prev():
-    """``CableObject.reset(env_ids=...)`` restores only the requested envs and
-    refreshes ``solver.body_q_prev`` (not just ``state.body_q``).
-
-    Sets up 4 envs, then writes a known non-rest perturbation into
-    ``state.body_q`` *and* ``solver.body_q_prev`` for every cable body across
-    all envs. Calls ``reset(env_ids=[0, 2])`` and asserts:
-
-    - Envs 0 and 2: both buffers restored bit-for-bit to ``model.body_q``.
-    - Envs 1 and 3: both buffers retain the perturbed values.
-
-    This catches three regressions the existing
-    :func:`test_cable_object_reset_restores_body_state` would miss:
-
-    1. Off-by-one indexing into ``body_offsets`` when ``env_ids`` selects a
-       subset of envs — exercising only ``num_envs=1`` cannot detect this.
-    2. A reset that ignores ``env_ids`` and snaps all envs — exposed by the
-       envs 1/3 retention assertions.
-    3. Dropping the ``wp.copy(dest=solver.body_q_prev, ...)`` line — exposed
-       by tight equality against a known perturbation, with no dependency on
-       sim drift dynamics. Verified by commenting out that line and observing
-       the envs 0/2 ``body_q_prev`` assertion fail.
-    """
-    cable_spawn = sim_utils.CableCfg(
-        positions=[(0.0, 0.0, 0.0), (0.05, 0.0, 0.0), (0.1, 0.0, 0.0)],
-        width=0.01,
-        physics_material=NewtonCableMaterialCfg(),
-        collision_props=sim_utils.CollisionPropertiesCfg(),
-    )
-
-    @configclass
-    class _SceneCfg(InteractiveSceneCfg):
-        num_envs: int = 4
-        env_spacing: float = 1.0
-        cable: CableObjectCfg = CableObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Cable",
-            spawn=cable_spawn,
-            init_state=CableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.5)),
-        )
-
-    newton_sim_cfg = SimulationCfg(physics=NewtonCfg(solver_cfg=VBDSolverCfg()), dt=0.01)
-
-    with build_simulation_context(device="cuda:0", sim_cfg=newton_sim_cfg, auto_add_lighting=True) as sim:
-        sim._app_control_on_stop_handle = None
-        scene = InteractiveScene(_SceneCfg())
-        sim.reset()
-
-        cable = scene["cable"]
-        entry = cable._registry_entry
-        n = len(entry.edges)
-        body_offsets = list(entry.body_offsets)
-        assert len(body_offsets) == 4, f"expected 4 envs, got {len(body_offsets)}"
-
-        state = NewtonVBDManager._state_0
-        solver = NewtonVBDManager._solver
-
-        # Perturb every cable body's z position by a value far outside any
-        # plausible solver noise floor, so tight equality is unambiguous.
-        all_cable_indices = [offset + i for offset in body_offsets for i in range(n)]
-        perturbed_q = state.body_q.numpy().copy()
-        perturbed_q[all_cable_indices, 2] += 17.0
-        perturbed_src = wp.array(perturbed_q, dtype=state.body_q.dtype, device=state.body_q.device)
-        wp.copy(dest=state.body_q, src=perturbed_src)
-        wp.copy(dest=solver.body_q_prev, src=perturbed_src)
-
-        cable.reset(env_ids=[0, 2])
-
-        body_q_after = state.body_q.numpy()
-        body_q_prev_after = solver.body_q_prev.numpy()
-        body_q_model = NewtonVBDManager._model.body_q.numpy()
-
-        for env_idx in (0, 2):
-            slc = list(range(body_offsets[env_idx], body_offsets[env_idx] + n))
-            np.testing.assert_array_equal(
-                body_q_after[slc],
-                body_q_model[slc],
-                err_msg=f"env {env_idx}: state.body_q not restored to model.body_q after reset.",
-            )
-            np.testing.assert_array_equal(
-                body_q_prev_after[slc],
-                body_q_model[slc],
-                err_msg=(
-                    f"env {env_idx}: solver.body_q_prev not restored after reset."
-                    " AVBD implicit velocity (body_q - body_q_prev)/dt blows up on the next step."
-                ),
-            )
-
-        for env_idx in (1, 3):
-            slc = list(range(body_offsets[env_idx], body_offsets[env_idx] + n))
-            np.testing.assert_array_equal(
-                body_q_after[slc],
-                perturbed_q[slc],
-                err_msg=f"env {env_idx}: state.body_q reset despite env not being in env_ids.",
-            )
-            np.testing.assert_array_equal(
-                body_q_prev_after[slc],
-                perturbed_q[slc],
-                err_msg=f"env {env_idx}: solver.body_q_prev reset despite env not being in env_ids.",
-            )
