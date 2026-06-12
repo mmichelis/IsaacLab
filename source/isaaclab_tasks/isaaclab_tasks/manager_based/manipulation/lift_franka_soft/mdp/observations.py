@@ -45,6 +45,30 @@ def object_com_in_robot_root_frame(
     return com_b
 
 
+def body_poses_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Per-body poses of the asset in the robot's root frame.
+
+    Each body contributes ``[x, y, z, qw, qx, qy, qz]`` [m, -]. A single-body rigid object
+    (e.g. the plug) yields one pose; a cable articulation yields one per segment.
+
+    Returns:
+        Flattened tensor of shape ``(num_envs, 7 * num_bodies)``.
+    """
+    asset = env.scene[asset_cfg.name]
+    robot: Articulation = env.scene[robot_cfg.name]
+    pos_w = asset.data.body_pos_w.torch
+    quat_w = asset.data.body_quat_w.torch
+    num_bodies = pos_w.shape[1]
+    root_pos_w = robot.data.root_pos_w.torch.unsqueeze(1).expand(-1, num_bodies, -1).reshape(-1, 3)
+    root_quat_w = robot.data.root_quat_w.torch.unsqueeze(1).expand(-1, num_bodies, -1).reshape(-1, 4)
+    pos_b, quat_b = subtract_frame_transforms(root_pos_w, root_quat_w, pos_w.reshape(-1, 3), quat_w.reshape(-1, 4))
+    return torch.cat([pos_b, quat_b], dim=-1).reshape(env.num_envs, -1)
+
+
 class ObjectSampledPointsInRobotRootFrame(ManagerTermBase):
     """Sampled asset point positions expressed in the robot's root frame.
 

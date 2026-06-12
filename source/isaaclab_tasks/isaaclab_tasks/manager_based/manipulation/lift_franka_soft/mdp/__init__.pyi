@@ -5,6 +5,7 @@
 
 __all__ = [
     "assembly_velocity_out_of_bounds",
+    "body_poses_in_robot_root_frame",
     "ee_below_minimum",
     "gripper_close_action",
     "object_com_below_minimum",
@@ -26,6 +27,7 @@ from .events import (
 )
 from .observations import (
     ObjectSampledPointsInRobotRootFrame,
+    body_poses_in_robot_root_frame,
     object_com_in_robot_root_frame,
 )
 from .rewards import (

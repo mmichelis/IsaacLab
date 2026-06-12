@@ -331,9 +331,13 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        plug_position = ObsTerm(
-            func=mdp.object_com_in_robot_root_frame,
+        plug_pose = ObsTerm(
+            func=mdp.body_poses_in_robot_root_frame,
             params={"asset_cfg": SceneEntityCfg("object")},
+        )
+        cable_poses = ObsTerm(
+            func=mdp.body_poses_in_robot_root_frame,
+            params={"asset_cfg": SceneEntityCfg("cable")},
         )
         target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "object_pose"})
         actions = ObsTerm(func=mdp.last_action)
