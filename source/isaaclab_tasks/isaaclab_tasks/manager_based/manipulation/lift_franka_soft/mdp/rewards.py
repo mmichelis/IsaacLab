@@ -20,7 +20,7 @@ import torch
 import warp as wp
 
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.utils.math import combine_frame_transforms
+from isaaclab.utils.math import combine_frame_transforms, quat_apply, subtract_frame_transforms
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, DeformableObject
@@ -120,6 +120,95 @@ def object_com_goal_distance(
     return (com_w[:, 2] > minimal_height) * (1.0 - torch.tanh(distance / std))
 
 
+_SOCKET_CFGS = (
+    SceneEntityCfg("target_hole_top"),
+    SceneEntityCfg("target_hole_bottom"),
+    SceneEntityCfg("target_hole_left"),
+    SceneEntityCfg("target_hole_right"),
+)
+
+
+def _plug_in_socket(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    socket_cfgs: tuple[SceneEntityCfg, ...],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Plug pose relative to the socket bore, shape ``(num_envs,)`` each.
+
+    The socket frame is the mean of the four wall positions with their shared orientation;
+    its x axis is the bore (insertion) axis. The plug's long axis is its body z axis.
+
+    Returns:
+        ``(axial, lateral, axis_cos)``: signed depth along the bore axis [m], radial offset from
+        the axis [m], and ``|cos|`` between the plug and bore axes (1 = coaxial).
+    """
+    asset = env.scene[asset_cfg.name]
+    plug_pos_w = _com_w(asset)
+    plug_quat_w = asset.data.root_quat_w.torch
+    walls = [env.scene[cfg.name] for cfg in socket_cfgs]
+    socket_pos_w = torch.stack([w.data.root_pos_w.torch for w in walls], dim=0).mean(dim=0)
+    socket_quat_w = walls[0].data.root_quat_w.torch
+
+    plug_pos_s, _ = subtract_frame_transforms(socket_pos_w, socket_quat_w, plug_pos_w)
+    axial = plug_pos_s[:, 0]
+    lateral = torch.linalg.norm(plug_pos_s[:, 1:], dim=1)
+
+    z_hat = torch.tensor([0.0, 0.0, 1.0], device=env.device).expand_as(plug_pos_w)
+    x_hat = torch.tensor([1.0, 0.0, 0.0], device=env.device).expand_as(plug_pos_w)
+    axis_cos = (quat_apply(plug_quat_w, z_hat) * quat_apply(socket_quat_w, x_hat)).sum(dim=1).abs()
+    return axial, lateral, axis_cos
+
+
+def plug_socket_insertion(
+    env: ManagerBasedRLEnv,
+    std: float,
+    depth: float,
+    radius: float,
+    min_axis_cos: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    socket_cfgs: tuple[SceneEntityCfg, ...] = _SOCKET_CFGS,
+) -> torch.Tensor:
+    """Dense peg-in-hole shaping: center the plug on the bore, align it, then seat it.
+
+    Sums lateral centering (tanh kernel, scale ``std`` [m]), coaxial alignment, and an axial
+    depth term that only credits once the plug is within ``radius`` [m] of the axis and aligned
+    above ``min_axis_cos``. Depth is normalized by the bore ``depth`` [m] (seated at the center).
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
+    axial, lateral, axis_cos = _plug_in_socket(env, asset_cfg, socket_cfgs)
+    centering = 1.0 - torch.tanh(lateral / std)
+    seated = (1.0 - axial.abs() / depth).clamp(0.0, 1.0)
+    gate = (lateral < radius) & (axis_cos > min_axis_cos)
+    return centering + axis_cos + gate.float() * seated
+
+
+def plug_inserted(
+    env: ManagerBasedRLEnv,
+    depth_tol: float,
+    radius: float,
+    min_axis_cos: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    socket_cfgs: tuple[SceneEntityCfg, ...] = _SOCKET_CFGS,
+) -> torch.Tensor:
+    """Sparse success: ``1`` when the plug is centered, seated, and coaxial within tolerances.
+
+    Args:
+        env: The environment instance.
+        depth_tol: Max ``|axial|`` distance from the bore center to count as seated [m].
+        radius: Max radial offset from the bore axis [m].
+        min_axis_cos: Min ``|cos|`` between the plug and bore axes.
+        asset_cfg: The plug entity.
+        socket_cfgs: The four socket wall entities.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
+    axial, lateral, axis_cos = _plug_in_socket(env, asset_cfg, socket_cfgs)
+    return ((axial.abs() < depth_tol) & (lateral < radius) & (axis_cos > min_axis_cos)).float()
+
+
 def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:
     """Penalty signal for commanding the gripper to close.
 
@@ -136,6 +225,24 @@ def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_act
     """
     gripper_action = env.action_manager.get_term(action_name).raw_actions
     return torch.any(gripper_action < 0.0, dim=1).float()
+
+
+def gripper_close_amount(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:
+    """Penalty proportional to how far the gripper is commanded to close.
+
+    For a continuous joint-position gripper action with an open-position offset, a negative raw
+    action closes the fingers. Returns the mean commanded closing depth across the gripper joints,
+    so the penalty grows with grip tightness and is zero when fully open.
+
+    Args:
+        env: The environment instance.
+        action_name: Name of the gripper action term.
+
+    Returns:
+        Tensor with shape ``(num_envs,)``; larger values mean a tighter commanded grasp.
+    """
+    gripper_action = env.action_manager.get_term(action_name).raw_actions
+    return torch.clamp(-gripper_action, min=0.0).mean(dim=1)
 
 
 def object_com_below_minimum(

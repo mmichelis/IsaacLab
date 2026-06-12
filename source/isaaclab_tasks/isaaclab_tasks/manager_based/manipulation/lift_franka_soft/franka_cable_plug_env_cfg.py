@@ -391,14 +391,20 @@ class RewardsCfg:
         },
         weight=16.0,
     )
+    # Sparse bonus for a fully seated, coaxial plug.
+    plug_inserted = RewTerm(
+        func=mdp.plug_inserted,
+        params={"depth_tol": 0.01, "radius": 0.006, "min_axis_cos": 0.98},
+        weight=10.0,
+    )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
     gripper_close = RewTerm(
-        func=mdp.gripper_close_action,
+        func=mdp.gripper_close_amount,
         params={"action_name": "gripper_action"},
         weight=-1.0,
     )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-2)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
     joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-4)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
 
