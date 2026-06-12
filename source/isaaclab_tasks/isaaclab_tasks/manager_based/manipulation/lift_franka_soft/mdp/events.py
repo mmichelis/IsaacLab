@@ -26,13 +26,18 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
+# Per-(model, prim_path) cache of resolved rigid body ids; the build-time label->id map is
+# static, so resolving once avoids an O(num_bodies) regex scan on every episode reset.
+_RIGID_BODY_ID_CACHE: dict[tuple[int, str], torch.Tensor] = {}
+
+
 def _get_body_ids(env: ManagerBasedEnv, cfg: SceneEntityCfg, *, is_cable: bool) -> torch.Tensor:
     """Resolve a scene asset to its per-env Newton body ids.
 
     Cables come straight from the cable registry as ``(num_envs, num_segments)``;
     rigid assets are resolved by matching their per-env prim path against
-    ``model.body_label`` and returned as ``(num_envs,)``. Resolved fresh each
-    call — resets are per-episode so the cost is negligible.
+    ``model.body_label`` and returned as ``(num_envs,)``, cached per
+    ``(model, prim_path)`` since the mapping is static after the build.
     """
     if is_cable:
         entry = env.scene[cfg.name]._registry_entry
@@ -47,6 +52,11 @@ def _get_body_ids(env: ManagerBasedEnv, cfg: SceneEntityCfg, *, is_cable: bool) 
 
     model = NewtonVBDManager._model
     prim_path = env.scene[cfg.name].cfg.prim_path  # e.g. "/World/envs/env_.*/Plug"
+    cache_key = (id(model), prim_path)
+    cached = _RIGID_BODY_ID_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     pattern = prim_path.replace("env_.*", r"env_(\d+)")
     asset_re = re.compile(rf"^{pattern}$")
     num_envs = env.scene.num_envs
@@ -61,7 +71,9 @@ def _get_body_ids(env: ManagerBasedEnv, cfg: SceneEntityCfg, *, is_cable: bool) 
             f"Could not resolve Newton body for asset '{cfg.name}' (prim_path={prim_path!r})"
             f" in envs {missing[:5]}{'...' if len(missing) > 5 else ''}."
         )
-    return torch.tensor(body_ids, dtype=torch.long, device=env.device)
+    resolved = torch.tensor(body_ids, dtype=torch.long, device=env.device)
+    _RIGID_BODY_ID_CACHE[cache_key] = resolved
+    return resolved
 
 
 def _sample_rigid_transform(
