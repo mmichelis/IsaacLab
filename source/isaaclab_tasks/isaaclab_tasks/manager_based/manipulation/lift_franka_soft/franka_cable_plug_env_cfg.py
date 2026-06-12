@@ -300,7 +300,7 @@ class ActionsCfg:
     """7-dim arm joint position + 2-dim continuous gripper joint position."""
 
     arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.2, use_default_offset=True
+        asset_name="robot", joint_names=["panda_joint.*"], scale=0.5, use_default_offset=True
     )
     gripper_action = mdp.JointPositionActionCfg(
         asset_name="robot",
@@ -396,15 +396,15 @@ class RewardsCfg:
         weight=10.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    # action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
     gripper_close = RewTerm(
         func=mdp.gripper_close_amount,
         params={"action_name": "gripper_action"},
         weight=-1.0,
     )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
-    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-4)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
+    # joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
+    # joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-4)
+    # joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-4)
 
 
 @configclass
@@ -448,7 +448,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 10.0
+        self.episode_length_s = 6.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
