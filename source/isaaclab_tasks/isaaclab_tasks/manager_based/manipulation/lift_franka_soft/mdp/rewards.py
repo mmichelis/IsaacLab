@@ -194,3 +194,34 @@ def ee_below_minimum(
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     ee_z = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, 2] - env.scene.env_origins[:, 2]
     return ee_z < minimum_height
+
+
+def assembly_velocity_out_of_bounds(
+    env: ManagerBasedRLEnv,
+    max_joint_vel: float,
+    max_body_vel: float,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfgs: tuple[SceneEntityCfg, ...] = (SceneEntityCfg("object"), SceneEntityCfg("cable")),
+) -> torch.Tensor:
+    """Termination signal when the arm or the manipulated assembly moves implausibly fast.
+
+    A divergence guard for RL: a blown-up coupled solve sends joint and body velocities far
+    past normal manipulation speeds. Resetting the offending env stops a single unstable env
+    from spreading NaNs through the shared solver state and poisoning the batch.
+
+    Args:
+        env: The environment instance.
+        max_joint_vel: Maximum allowed arm joint speed [rad/s].
+        max_body_vel: Maximum allowed assembly body speed [m/s].
+        robot_cfg: The arm articulation.
+        asset_cfgs: Assembly assets (e.g. plug, cable) whose body speeds are bounded.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    diverged = robot.data.joint_vel.torch.abs().amax(dim=-1) > max_joint_vel
+    for cfg in asset_cfgs:
+        body_vel = env.scene[cfg.name].data.body_lin_vel_w.torch.reshape(env.num_envs, -1, 3)
+        diverged = diverged | (torch.linalg.norm(body_vel, dim=-1).amax(dim=-1) > max_body_vel)
+    return diverged

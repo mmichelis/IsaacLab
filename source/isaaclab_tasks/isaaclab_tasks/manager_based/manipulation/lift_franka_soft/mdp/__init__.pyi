@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 __all__ = [
+    "assembly_velocity_out_of_bounds",
     "ee_below_minimum",
     "gripper_close_action",
     "object_com_below_minimum",
@@ -28,6 +29,7 @@ from .observations import (
     object_com_in_robot_root_frame,
 )
 from .rewards import (
+    assembly_velocity_out_of_bounds,
     ee_below_minimum,
     gripper_close_action,
     object_com_below_minimum,
