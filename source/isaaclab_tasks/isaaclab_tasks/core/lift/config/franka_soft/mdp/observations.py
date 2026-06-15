@@ -69,6 +69,16 @@ def body_poses_in_robot_root_frame(
     return torch.cat([pos_b, quat_b], dim=-1).reshape(env.num_envs, -1)
 
 
+def zero_body_poses(env: ManagerBasedRLEnv, num_bodies: int) -> torch.Tensor:
+    """Zero placeholder for absent per-body poses, shape ``(num_envs, 7 * num_bodies)`` [m, -].
+
+    Mirrors the shape of :func:`body_poses_in_robot_root_frame` for an asset with ``num_bodies``
+    bodies. Used by the no-cable variant so its observation space matches the cable env, letting a
+    policy trained there deploy directly on the cable task.
+    """
+    return torch.zeros(env.num_envs, 7 * num_bodies, device=env.device)
+
+
 class ObjectSampledPointsInRobotRootFrame(ManagerTermBase):
     """Sampled asset point positions expressed in the robot's root frame.
 

@@ -16,3 +16,8 @@ Added
 * Added ``FrankaCablePlugEnv``, the environment class behind ``Isaac-Lift-CablePlug-Franka-v0``,
   which zeros non-finite rewards (computed before the divergence reset) so a diverged coupled
   solve never propagates NaNs to the learner.
+* Added a no-cable variant ``Isaac-Lift-Plug-Franka-v0`` (config
+  :class:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.franka_cable_plug_env_cfg.FrankaCablePlugNoCableEnvCfg`,
+  toggled by ``with_cable=False``) that drops the cable and anchor and manipulates the free rigid
+  plug alone. Its observation and action spaces match the cable env, so a policy trained without
+  the cable can be deployed directly on the cable task.

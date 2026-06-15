@@ -56,6 +56,19 @@ _NUM_POINTS = 28
 _SEGMENT_LENGTH = 0.02
 _CABLE_WIDTH = 0.01
 
+# Newton rigid bodies the cable resolves to -- fewer than the _NUM_POINTS=28 control points, per the
+# rod builder's internal mapping. The no-cable variant emits a zero cable_poses slot of this size so
+# its observation space matches the cable env. test_cable_plug_nocable_parity pins it to the live cable.
+_CABLE_NUM_BODIES = 26
+
+# Per-episode reset transform applied to the plug (and, with the cable, the whole assembly).
+_RESET_POSE_RANGE = {
+    "x": (-0.05, 0.05),
+    "y": (-0.3, 0.3),
+    "z": (-0.05, 0.05),
+    "yaw": (-math.pi / 3.0, math.pi / 3.0),
+}
+
 # Kinematic anchor, above the tabletop in front of the robot [m].
 _ANCHOR_POS = (0.15, 0.0, 0.2)
 
@@ -367,17 +380,14 @@ class EventCfg:
         func=mdp.reset_cable_assembly_uniform,
         mode="reset",
         params={
-            "pose_range": {
-                "x": (-0.05, 0.05),
-                "y": (-0.3, 0.3),
-                "z": (-0.05, 0.05),
-                "yaw": (-math.pi / 3.0, math.pi / 3.0),
-            },
+            "pose_range": _RESET_POSE_RANGE,
             "cable_cfg": SceneEntityCfg("cable"),
             "anchor_cfg": SceneEntityCfg("anchor"),
             "plug_cfg": SceneEntityCfg("object"),
         },
     )
+    # Plug-only reset, populated by the no-cable variant (mutually exclusive with reset_assembly).
+    reset_plug: EventTerm | None = None
     # Sample the goal pose (robot frame) and place the kinematic socket walls in front of it.
     reset_socket = EventTerm(
         func=mdp.reset_socket_pose_uniform,
@@ -468,6 +478,11 @@ class TerminationsCfg:
 class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
     """Franka Panda manipulating a cable with a fixed anchor and a rigid plug."""
 
+    with_cable: bool = True
+    """If ``False``, drop the cable and anchor and manipulate the free rigid plug alone. The
+    observation and action spaces are unchanged (the absent cable poses become zeros), so a policy
+    trained without the cable can be deployed directly on the cable task."""
+
     scene: _FrankaCablePlugSceneCfg = _FrankaCablePlugSceneCfg(num_envs=1024, env_spacing=2.5, replicate_physics=True)
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
@@ -475,6 +490,24 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
+
+    def _disable_cable(self) -> None:
+        """Remove the cable and anchor; manipulate the free plug, keeping the observation space."""
+        self.scene.cable = None
+        self.scene.anchor = None
+        # Reset the plug alone, with the same transform distribution as the cable assembly.
+        self.events.reset_assembly = None
+        self.events.reset_plug = EventTerm(
+            func=mdp.reset_plug_uniform,
+            mode="reset",
+            params={"pose_range": _RESET_POSE_RANGE, "plug_cfg": SceneEntityCfg("object")},
+        )
+        # Keep the cable_poses slot (zeros) so the observation space matches the cable env.
+        self.observations.policy.cable_poses = ObsTerm(
+            func=mdp.zero_body_poses, params={"num_bodies": _CABLE_NUM_BODIES}
+        )
+        # The divergence guard no longer has a cable to bound; check the plug alone.
+        self.terminations.velocity_divergence.params["asset_cfgs"] = (SceneEntityCfg("object"),)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -491,8 +524,24 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
         view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
 
-        # Proxy-coupled solver (mirrors FrankaCableEnvCfg): arm in MJWarp, plug/anchor/walls/cable
-        # in VBD, gripper fingers exposed as VBD proxies so VBD's contact/friction grasps the plug.
+        # Reconfigure scene/events/observations before building the solver so dst_bodies is correct.
+        if not self.with_cable:
+            self._disable_cable()
+
+        # VBD-side bodies: plug + walls always; anchor + cable only when the cable is present.
+        dst_bodies = [
+            SceneEntityCfg("object"),
+            SceneEntityCfg("target_hole_top"),
+            SceneEntityCfg("target_hole_bottom"),
+            SceneEntityCfg("target_hole_left"),
+            SceneEntityCfg("target_hole_right"),
+        ]
+        if self.with_cable:
+            dst_bodies += [SceneEntityCfg("anchor"), SceneEntityCfg("cable")]
+
+        # Proxy-coupled solver (mirrors FrankaCableEnvCfg): arm in MJWarp, plug/walls (and the
+        # cable assembly when present) in VBD, gripper fingers as VBD proxies so VBD's
+        # contact/friction grasps the plug.
         self.sim.physics = CoupledNewtonCfg(
             scene_cfg=self.scene,
             solver_cfg=CoupledProxySolverCfg(
@@ -504,15 +553,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
                 ),
                 dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
                 src_bodies=[SceneEntityCfg("robot")],
-                dst_bodies=[
-                    SceneEntityCfg("object"),
-                    SceneEntityCfg("anchor"),
-                    SceneEntityCfg("target_hole_top"),
-                    SceneEntityCfg("target_hole_bottom"),
-                    SceneEntityCfg("target_hole_left"),
-                    SceneEntityCfg("target_hole_right"),
-                    SceneEntityCfg("cable"),
-                ],
+                dst_bodies=dst_bodies,
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
                 ],
@@ -526,3 +567,14 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
             ),
             num_substeps=8,
         )
+
+
+@configclass
+class FrankaCablePlugNoCableEnvCfg(FrankaCablePlugEnvCfg):
+    """Cable-plug task without the cable: only the free rigid plug and socket are simulated.
+
+    Keeps the observation and action spaces of :class:`FrankaCablePlugEnvCfg`, so a policy trained
+    here can be deployed directly on the cable env.
+    """
+
+    with_cable: bool = False

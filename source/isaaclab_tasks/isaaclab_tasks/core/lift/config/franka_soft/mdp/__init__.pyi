@@ -17,9 +17,11 @@ __all__ = [
     "object_outside_table_bounds",
     "plug_inserted",
     "plug_socket_insertion",
+    "zero_body_poses",
     "ObjectSampledPointsInRobotRootFrame",
     "reset_cable_assembly_uniform",
     "reset_cable_uniform",
+    "reset_plug_uniform",
     "reset_proxy_body_prev",
     "reset_socket_pose_uniform",
 ]
@@ -27,6 +29,7 @@ __all__ = [
 from .events import (
     reset_cable_assembly_uniform,
     reset_cable_uniform,
+    reset_plug_uniform,
     reset_proxy_body_prev,
     reset_socket_pose_uniform,
 )
@@ -34,6 +37,7 @@ from .observations import (
     ObjectSampledPointsInRobotRootFrame,
     body_poses_in_robot_root_frame,
     object_com_in_robot_root_frame,
+    zero_body_poses,
 )
 from .rewards import (
     assembly_velocity_out_of_bounds,

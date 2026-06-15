@@ -365,6 +365,31 @@ def reset_cable_assembly_uniform(
         )
 
 
+def reset_plug_uniform(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    plug_cfg: SceneEntityCfg,
+) -> None:
+    """Reset a free rigid plug (VBD body) with a per-env rigid transform.
+
+    The no-cable counterpart of :func:`reset_cable_assembly_uniform`: it re-seeds only the plug's
+    VBD state (no cable/anchor) from the build-time rest pose, using the same ``pose_range`` so the
+    plug's start distribution matches the cable task.
+
+    Args:
+        env: The RL environment.
+        env_ids: Environment indices to reset.
+        pose_range: Per-axis uniform ranges; see :func:`reset_cable_uniform`.
+        plug_cfg: Scene-entity reference to the rigid plug :class:`RigidObject`.
+    """
+    delta_trans, delta_yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
+    rigid_ids = _get_body_ids(env, plug_cfg, is_cable=False)[env_ids].unsqueeze(-1)  # (n_envs, 1)
+    new_q = _apply_and_reset(env, rigid_ids, delta_trans, delta_yaw_quat)
+    # Mirror the new pose into IsaacLab's RigidObjectData buffer so observations don't lag a frame.
+    env.scene[plug_cfg.name].write_root_link_pose_to_sim_index(root_pose=new_q.squeeze(1).contiguous(), env_ids=env_ids)
+
+
 def reset_socket_pose_uniform(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
