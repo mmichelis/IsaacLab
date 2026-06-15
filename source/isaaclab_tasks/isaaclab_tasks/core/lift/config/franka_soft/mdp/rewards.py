@@ -231,21 +231,20 @@ def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_act
 
 
 def gripper_close_amount(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:
-    """Penalty proportional to how far the gripper is commanded to close.
+    """Penalty for commanding the binary gripper to close.
 
-    For a continuous joint-position gripper action with an open-position offset, a negative raw
-    action closes the fingers. Returns the mean commanded closing depth across the gripper joints,
-    so the penalty grows with grip tightness and is zero when fully open.
+    For a binary gripper action, a negative raw action closes the fingers. Returns 1.0 when the
+    gripper is commanded closed and 0.0 when open.
 
     Args:
         env: The environment instance.
         action_name: Name of the gripper action term.
 
     Returns:
-        Tensor with shape ``(num_envs,)``; larger values mean a tighter commanded grasp.
+        Tensor with shape ``(num_envs,)``; 1.0 when a close is commanded, else 0.0.
     """
     gripper_action = env.action_manager.get_term(action_name).raw_actions
-    return torch.clamp(-gripper_action, min=0.0).mean(dim=1)
+    return (gripper_action < 0.0).float().mean(dim=1)
 
 
 def object_com_below_minimum(

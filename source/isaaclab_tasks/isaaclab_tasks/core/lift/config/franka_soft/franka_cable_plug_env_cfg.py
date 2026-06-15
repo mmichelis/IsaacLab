@@ -297,17 +297,16 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    """7-dim arm joint position + 2-dim continuous gripper joint position."""
+    """7-dim arm joint position + 1-dim binary gripper command."""
 
     arm_action = mdp.JointPositionActionCfg(
         asset_name="robot", joint_names=["panda_joint.*"], scale=0.5, use_default_offset=True
     )
-    gripper_action = mdp.JointPositionActionCfg(
+    gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_finger.*"],
-        scale=0.04,
-        use_default_offset=True,
-        clip={"panda_finger_.*": (0.007, 0.04)},
+        open_command_expr={"panda_finger_.*": 0.05},
+        close_command_expr={"panda_finger_.*": 0.007},
     )
 
 
@@ -453,7 +452,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 60.0
         self.sim.render_interval = self.decimation
-        self.sim.gravity = (0.0, 0.0, -9.81)
+        self.sim.gravity = (0.0, 0.0, 0.0)
 
         view = dict(eye=(1.4, 1.0, 0.6), lookat=(0.35, 0.0, 0.1), window_width=1600, window_height=1600)
         self.sim.visualizer_cfgs = [KitVisualizerCfg(**view), NewtonVisualizerCfg(**view)]
