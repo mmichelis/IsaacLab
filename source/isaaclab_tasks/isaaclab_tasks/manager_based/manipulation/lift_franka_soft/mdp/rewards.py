@@ -104,10 +104,15 @@ def object_com_goal_distance(
     command_name: str,
     asset_cfg: SceneEntityCfg,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    held_distance: float | None = None,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Reward tracking of the goal position by the asset's COM (tanh kernel).
 
     Only credits when the COM is above ``minimal_height`` (i.e. the object is lifted).
+    If ``held_distance`` is set, also requires the end-effector to be within that
+    distance [m] of the asset, so the reward only accrues while the object is actually
+    held (prevents farming the goal reward with an ungrasped, drifting object).
     The command is interpreted as ``[x, y, z, qw, qx, qy, qz]`` in the robot's root frame.
     """
     robot: Articulation = env.scene[robot_cfg.name]
@@ -119,7 +124,107 @@ def object_com_goal_distance(
     )
     com_w = _com_w(asset)
     distance = torch.linalg.norm(des_pos_w - com_w, dim=1)
-    return (com_w[:, 2] > minimal_height) * (1.0 - torch.tanh(distance / std))
+    reward = (com_w[:, 2] > minimal_height) * (1.0 - torch.tanh(distance / std))
+    if held_distance is not None:
+        ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+        ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
+        ee_dist = torch.linalg.norm(_points_w(asset) - ee_w.unsqueeze(1), dim=2).min(dim=1).values
+        reward = reward * (ee_dist < held_distance)
+    return reward
+
+
+def object_goal_orientation(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    minimal_height: float = 0.05,
+    held_distance: float | None = None,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Reward aligning the plug's long axis with the goal frame's bore (x) axis.
+
+    For a cylindrical plug only the long-axis direction matters (roll about it is irrelevant),
+    so this rewards ``|cos|`` between the plug body-z axis and the goal x axis (1 when coaxial,
+    which is also the insertion axis). This is smooth with gradient everywhere, unlike a
+    full-quaternion match which saturates and over-constrains the symmetric axis. Gated like
+    :func:`object_com_goal_distance`: credits only when the asset is lifted above
+    ``minimal_height`` [m] and (if ``held_distance`` is set) held within that distance [m] of
+    the end-effector. The command orientation is the goal pose's quaternion in the robot frame.
+
+    Args:
+        env: The environment instance.
+        command_name: Name of the pose command.
+        asset_cfg: The plug entity.
+        robot_cfg: The robot articulation.
+        minimal_height: Minimum COM height to credit [m].
+        held_distance: If set, require the end-effector within this distance of the asset [m].
+        ee_frame_cfg: The end-effector frame entity.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    asset = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    _, des_quat_w = combine_frame_transforms(
+        wp.to_torch(robot.data.root_pos_w), wp.to_torch(robot.data.root_quat_w), command[:, :3], command[:, 3:7]
+    )
+    z_hat = torch.tensor([0.0, 0.0, 1.0], device=env.device).expand(env.num_envs, 3)
+    x_hat = torch.tensor([1.0, 0.0, 0.0], device=env.device).expand(env.num_envs, 3)
+    axis_cos = (quat_apply(asset.data.root_quat_w.torch, z_hat) * quat_apply(des_quat_w, x_hat)).sum(dim=1).abs()
+    com_w = _com_w(asset)
+    reward = (com_w[:, 2] > minimal_height) * axis_cos
+    if held_distance is not None:
+        ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+        ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
+        ee_dist = torch.linalg.norm(_points_w(asset) - ee_w.unsqueeze(1), dim=2).min(dim=1).values
+        reward = reward * (ee_dist < held_distance)
+    return reward
+
+
+def object_near_goal(
+    env: ManagerBasedRLEnv,
+    threshold: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    minimal_height: float = 0.05,
+    held_distance: float | None = None,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Sparse bonus when the asset COM is within ``threshold`` [m] of the goal position.
+
+    Gated like :func:`object_com_goal_distance` (lifted, and optionally held near the EE), it
+    sharpens the final approach that the dense goal-tracking kernels only weakly reward.
+
+    Args:
+        env: The environment instance.
+        threshold: Maximum COM-to-goal distance to credit [m].
+        command_name: Name of the pose command.
+        asset_cfg: The plug entity.
+        robot_cfg: The robot articulation.
+        minimal_height: Minimum COM height to credit [m].
+        held_distance: If set, require the end-effector within this distance of the asset [m].
+        ee_frame_cfg: The end-effector frame entity.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
+    robot: Articulation = env.scene[robot_cfg.name]
+    asset = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    des_pos_w, _ = combine_frame_transforms(
+        wp.to_torch(robot.data.root_pos_w), wp.to_torch(robot.data.root_quat_w), command[:, :3]
+    )
+    com_w = _com_w(asset)
+    reward = (com_w[:, 2] > minimal_height) & (torch.linalg.norm(des_pos_w - com_w, dim=1) < threshold)
+    if held_distance is not None:
+        ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+        ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
+        ee_dist = torch.linalg.norm(_points_w(asset) - ee_w.unsqueeze(1), dim=2).min(dim=1).values
+        reward = reward & (ee_dist < held_distance)
+    return reward.float()
 
 
 _SOCKET_CFGS = (
@@ -246,6 +351,40 @@ def gripper_close_amount(env: ManagerBasedRLEnv, action_name: str = "gripper_act
     """
     gripper_action = env.action_manager.get_term(action_name).raw_actions
     return torch.clamp(-gripper_action, min=0.0).mean(dim=1)
+
+
+def grasp_plug(
+    env: ManagerBasedRLEnv,
+    std: float,
+    action_name: str = "gripper_action",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Reward closing the gripper while the end-effector is near the plug.
+
+    The commanded closing depth is gated by a tanh proximity kernel on the EE-to-plug
+    distance, so the policy is credited for clamping the fingers only once positioned to
+    grasp (and for holding the grasp while carrying the plug).
+
+    Args:
+        env: The environment instance.
+        std: Proximity kernel standard deviation [m].
+        action_name: Name of the gripper action term.
+        asset_cfg: The plug entity.
+        ee_frame_cfg: The end-effector frame entity.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
+    asset = env.scene[asset_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    points_w = _points_w(asset)
+    ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
+    distance = torch.linalg.norm(points_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
+    proximity = 1.0 - torch.tanh(distance / std)
+    gripper_action = env.action_manager.get_term(action_name).raw_actions
+    closing = torch.clamp(-gripper_action, min=0.0, max=1.0).mean(dim=1)
+    return torch.nan_to_num(proximity * closing, nan=0.0, posinf=0.0, neginf=0.0)
 
 
 def object_com_below_minimum(

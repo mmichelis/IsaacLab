@@ -67,6 +67,7 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument("--eval_steps", type=int, default=0, help="If >0, run a deterministic eval for N steps and print metrics.")
 parser.add_argument("--external_callback", default=None, help="Fully qualified path to an externally defined callback.")
 cli_args.add_rsl_rl_args(parser)
 add_launcher_args(parser)
@@ -201,6 +202,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # reset environment
         obs = env.get_observations()
         timestep = 0
+        eval_steps = args_cli.eval_steps
+        eval_warmup = 150
+        pe_hist, oe_hist, jv_hist = [], [], []
         # simulate environment
         try:
             while True:
@@ -216,6 +220,31 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                         policy.reset(dones)
                     else:
                         policy_nn.reset(dones)
+                if eval_steps > 0:
+                    m = env.unwrapped.command_manager.get_term("object_pose").metrics
+                    pe_hist.append(m["position_error"].clone())
+                    oe_hist.append(m["orientation_error"].clone())
+                    jv = env.unwrapped.scene["robot"].data.joint_vel
+                    jv = getattr(jv, "torch", jv)  # Newton arrays expose .torch
+                    jv_hist.append(jv[:, :7].abs().mean(dim=1).clone())  # mean |speed| over 7 arm joints
+                    timestep += 1
+                    if timestep >= eval_steps:
+                        pe = torch.stack(pe_hist[eval_warmup:])
+                        oe = torch.stack(oe_hist[eval_warmup:])
+                        jv = torch.stack(jv_hist[eval_warmup:])
+                        print(f"\n=== DETERMINISTIC EVAL ({pe.shape[0]} steps x {pe.shape[1]} envs) ===")
+                        print(
+                            f"position_error[m]: mean={pe.mean():.4f} median={pe.median():.4f}"
+                            f" p10={pe.quantile(0.1):.4f} min={pe.min():.4f}"
+                        )
+                        print(f"orientation_error[rad]: mean={oe.mean():.4f} median={oe.median():.4f} min={oe.min():.4f}")
+                        print(
+                            f"arm_joint_speed[rad/s]: mean={jv.mean():.4f} median={jv.median():.4f}"
+                            f" p90={jv.quantile(0.9):.4f} max={jv.max():.4f}"
+                        )
+                        for thr in (0.2, 0.15, 0.1, 0.05, 0.03):
+                            print(f"frac (step,env) with pos_err<{thr}: {(pe < thr).float().mean():.3f}")
+                        break
                 if args_cli.video:
                     timestep += 1
                     if timestep == args_cli.video_length:

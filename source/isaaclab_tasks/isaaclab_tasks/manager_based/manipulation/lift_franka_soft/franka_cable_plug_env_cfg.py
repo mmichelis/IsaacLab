@@ -275,22 +275,22 @@ class CommandsCfg:
         body_name="panda_hand",
         targets=[(name, offset) for name, offset in _WALL_OFFSETS.items()],
         target_offset_b=(0.1, 0.0, 0.0),
-        resampling_time_range=(5.0, 5.0),
+        resampling_time_range=(10.0, 10.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(_GOAL_POS[0] - 0.1, _GOAL_POS[0] + 0.1),
-            pos_y=(_GOAL_POS[1] - 0.25, _GOAL_POS[1] + 0.25),
-            pos_z=(_GOAL_POS[2] - 0.05, _GOAL_POS[2] + 0.2),
+            pos_x=(_GOAL_POS[0] - 0.03, _GOAL_POS[0] + 0.07),
+            pos_y=(_GOAL_POS[1] - 0.1, _GOAL_POS[1] + 0.1),
+            pos_z=(_GOAL_POS[2] + 0.0, _GOAL_POS[2] + 0.15),
             roll=(0.0, 0.0),
-            pitch=(-math.pi / 4, math.pi / 4),
-            yaw=(-math.pi / 2, math.pi / 2),
+            pitch=(-math.pi / 9, math.pi / 9),
+            yaw=(-math.pi / 4, math.pi / 4),
         ),
         goal_pose_visualizer_cfg=FRAME_MARKER_CFG.replace(prim_path="/Visuals/Command/goal_pose").replace(
             markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.05, 0.05, 0.05))}
         ),
-        current_pose_visualizer_cfg=VisualizationMarkersCfg(
-            prim_path="/Visuals/Command/body_pose",
-            markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.1, 0.1, 0.1))},
+        # Shrink the current-pose (EE) frame to ~invisible so only the goal frame is shown.
+        current_pose_visualizer_cfg=FRAME_MARKER_CFG.replace(prim_path="/Visuals/Command/body_pose").replace(
+            markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.001, 0.001, 0.001))}
         ),
     )
 
@@ -367,18 +367,21 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Reach-and-track reward shaping for the rigid plug."""
+    """Reach-grasp-and-track reward shaping for the rigid plug."""
 
     reaching_plug = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("object")},
-        weight=5.0,
+        weight=8.0,
     )
-    lifting_plug = RewTerm(
-        func=mdp.object_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("object")},
-        weight=5.0,
+    # Reward closing the gripper only when the EE is near the plug (bootstraps grasping).
+    grasp_plug = RewTerm(
+        func=mdp.grasp_plug,
+        params={"std": 0.05, "action_name": "gripper_action", "asset_cfg": SceneEntityCfg("object")},
+        weight=4.0,
     )
+    # Track the goal only while the plug is held near the EE (else the reward is farmable).
+    # Coarse kernel: far-field gradient that pulls the held plug toward the goal.
     plug_goal_tracking = RewTerm(
         func=mdp.object_com_goal_distance,
         params={
@@ -386,8 +389,42 @@ class RewardsCfg:
             "minimal_height": 0.05,
             "command_name": "object_pose",
             "asset_cfg": SceneEntityCfg("object"),
+            "held_distance": 0.08,
         },
-        weight=16.0,
+        weight=12.0,
+    )
+    # Fine kernel: sharp near-goal peak that rewards closing the last few cm.
+    plug_goal_tracking_fine = RewTerm(
+        func=mdp.object_com_goal_distance,
+        params={
+            "std": 0.08,
+            "minimal_height": 0.05,
+            "command_name": "object_pose",
+            "asset_cfg": SceneEntityCfg("object"),
+            "held_distance": 0.08,
+        },
+        weight=18.0,
+    )
+    # Align the plug orientation with the goal orientation (held gate).
+    plug_goal_orientation = RewTerm(
+        func=mdp.object_goal_orientation,
+        params={
+            "command_name": "object_pose",
+            "asset_cfg": SceneEntityCfg("object"),
+            "held_distance": 0.08,
+        },
+        weight=12.0,
+    )
+    # Sparse bonus for bringing the held plug within 5 cm of the goal position.
+    plug_near_goal = RewTerm(
+        func=mdp.object_near_goal,
+        params={
+            "threshold": 0.05,
+            "command_name": "object_pose",
+            "asset_cfg": SceneEntityCfg("object"),
+            "held_distance": 0.08,
+        },
+        weight=5.0,
     )
     # Sparse bonus when the plug center is inside the socket bore.
     plug_inserted = RewTerm(
@@ -396,15 +433,11 @@ class RewardsCfg:
         weight=10.0,
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
-    gripper_close = RewTerm(
-        func=mdp.gripper_close_amount,
-        params={"action_name": "gripper_action"},
-        weight=-1.0,
-    )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
+    # Stronger motion penalties for a slower, smoother arm (less cable clipping).
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1.5e-3)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-2e-3)
     joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-6)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-6)
+    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1.5e-4)
 
 
 @configclass
@@ -422,7 +455,7 @@ class TerminationsCfg:
     # Thresholds well above the worst seen under extreme random actions (~30 rad/s, ~5 m/s).
     velocity_divergence = DoneTerm(
         func=mdp.assembly_velocity_out_of_bounds,
-        params={"max_joint_vel": 50.0, "max_body_vel": 20.0},
+        params={"max_joint_vel": 25.0, "max_body_vel": 10.0},
     )
 
 
