@@ -146,17 +146,20 @@ def _apply_and_reset(
     body_ids: torch.Tensor,
     delta_trans: torch.Tensor | None = None,
     delta_yaw_quat: torch.Tensor | None = None,
+    abs_body_q: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Scatter VBD reset state for ``body_ids`` and return their new world poses.
 
-    With a transform, the new pose is the build-time rest pose transformed by
-    ``(delta_trans, delta_yaw_quat)`` (cable / anchor / plug); with no transform,
-    it is the bodies' current ``state.body_q`` (proxy ``body_q_prev`` flush).
+    With ``abs_body_q``, the new pose is taken verbatim (absolute placement, e.g.
+    the gripper-centered plug); with a transform, it is the build-time rest pose
+    transformed by ``(delta_trans, delta_yaw_quat)`` (cable / anchor / plug); with
+    neither, it is the bodies' current ``state.body_q`` (proxy ``body_q_prev`` flush).
 
     Args:
         body_ids: Global Newton body ids, any shape (flattened internally).
         delta_trans: Per-env translation [m], or ``None`` to keep the current pose.
         delta_yaw_quat: Per-env yaw quaternion ``(x, y, z, w)``, or ``None``.
+        abs_body_q: Absolute target poses ``(..., 7)`` matching ``body_ids``, or ``None``.
 
     Returns:
         Per-body world poses in ``wp.transformf`` layout.
@@ -170,7 +173,9 @@ def _apply_and_reset(
     if model is None or model.body_q is None:
         raise RuntimeError("Newton model is not initialized; cannot resolve body poses.")
 
-    if delta_trans is None:
+    if abs_body_q is not None:
+        new_body_q = abs_body_q
+    elif delta_trans is None:
         # Keep current pose -> scatter sets body_q_prev == body_q (zero proxy velocity).
         new_body_q = wp.to_torch(state.body_q).to(env.device)[body_ids]
     else:
@@ -370,22 +375,51 @@ def reset_plug_uniform(
     env_ids: torch.Tensor,
     pose_range: dict[str, tuple[float, float]],
     plug_cfg: SceneEntityCfg,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    grasp_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.1034),
 ) -> None:
-    """Reset a free rigid plug (VBD body) with a per-env rigid transform.
+    """Reset a free rigid plug (VBD body) centered on the gripper's grasp point.
 
     The no-cable counterpart of :func:`reset_cable_assembly_uniform`: it re-seeds only the plug's
-    VBD state (no cable/anchor) from the build-time rest pose, using the same ``pose_range`` so the
-    plug's start distribution matches the cable task.
+    VBD state (no cable/anchor) at the post-reset grasp point, so with a zero ``pose_range`` the arm
+    only has to close its fingers to hold the plug. The plug keeps its build-time orientation (long
+    axis along the socket bore, matching the cable task); the sampled translation is applied in the
+    gripper frame and the yaw about world Z.
+
+    Must run after the arm-joint reset: the grasp point is read from the robot articulation, whose
+    forward kinematics recompute lazily from the just-reset joint positions.
 
     Args:
         env: The RL environment.
         env_ids: Environment indices to reset.
-        pose_range: Per-axis uniform ranges; see :func:`reset_cable_uniform`.
+        pose_range: Per-axis uniform ranges; see :func:`reset_cable_uniform`. ``"x"``/``"y"``/``"z"``
+            are gripper-frame offsets [m] from the grasp point; ``"yaw"`` is about world Z [rad].
         plug_cfg: Scene-entity reference to the rigid plug :class:`RigidObject`.
+        robot_cfg: The robot articulation providing the gripper frame.
+        grasp_offset_b: Grasp point offset from ``panda_hand`` [m], in the hand frame (matches the
+            ``ee_frame`` sensor offset).
     """
-    delta_trans, delta_yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
-    rigid_ids = _get_body_ids(env, plug_cfg, is_cable=False)[env_ids].unsqueeze(-1)  # (n_envs, 1)
-    new_q = _apply_and_reset(env, rigid_ids, delta_trans, delta_yaw_quat)
+    from isaaclab_contrib.deformable.vbd_manager import NewtonVBDManager
+
+    # Grasp point: panda_hand link pose + offset (matches the ``ee_frame`` sensor). The articulation
+    # recomputes FK from the just-reset joint positions, so this reflects the post-reset arm.
+    robot = env.scene[robot_cfg.name]
+    hand_idx = robot.find_bodies("panda_hand")[0][0]
+    hand_pos = robot.data.body_link_pos_w.torch[env_ids, hand_idx]
+    hand_quat = robot.data.body_link_quat_w.torch[env_ids, hand_idx]
+    offset_b = torch.tensor(grasp_offset_b, device=env.device).expand_as(hand_pos)
+    grasp_pos = hand_pos + quat_apply(hand_quat, offset_b)
+
+    # Plug at the grasp point + gripper-frame offset; build-time orientation perturbed by world-Z yaw.
+    trans, yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
+    model = NewtonVBDManager._model
+    rigid_ids = _get_body_ids(env, plug_cfg, is_cable=False)[env_ids]  # (n_envs,)
+    rest_quat = wp.to_torch(model.body_q).to(env.device)[rigid_ids][:, 3:7]
+    plug_pos = grasp_pos + quat_apply(hand_quat, trans)
+    plug_quat = quat_mul(yaw_quat, rest_quat)
+    abs_body_q = torch.cat([plug_pos, plug_quat], dim=-1).unsqueeze(1)  # (n_envs, 1, 7)
+
+    new_q = _apply_and_reset(env, rigid_ids.unsqueeze(-1), abs_body_q=abs_body_q)
     # Mirror the new pose into IsaacLab's RigidObjectData buffer so observations don't lag a frame.
     env.scene[plug_cfg.name].write_root_link_pose_to_sim_index(root_pose=new_q.squeeze(1).contiguous(), env_ids=env_ids)
 

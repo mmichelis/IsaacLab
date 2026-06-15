@@ -24,6 +24,15 @@ class FrankaCablePlugEnv(ManagerBasedRLEnv):
     subclass zeros those non-finite rewards so no NaN reaches the learner.
     """
 
+    def __init__(self, cfg, *args, **kwargs):
+        super().__init__(cfg, *args, **kwargs)
+        # The no-cable reset places the plug at the gripper, read from the articulation's forward
+        # kinematics (see ``reset_plug_uniform``). FK is only live after the simulation's first
+        # ``forward``, so a throwaway reset here warms it and the first user reset places the plug
+        # at the gripper rather than at the (arm-up) spawn pose.
+        if not cfg.with_cable:
+            self.reset()
+
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         obs, reward, terminated, time_outs, extras = super().step(action)
         # The diverged env is reset by the divergence termination, but its reward was computed

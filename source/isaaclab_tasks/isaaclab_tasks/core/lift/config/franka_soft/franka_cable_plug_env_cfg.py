@@ -61,12 +61,20 @@ _CABLE_WIDTH = 0.01
 # its observation space matches the cable env. test_cable_plug_nocable_parity pins it to the live cable.
 _CABLE_NUM_BODIES = 26
 
-# Per-episode reset transform applied to the plug (and, with the cable, the whole assembly).
+# Per-episode reset transform applied to the cable assembly (cable + anchor + plug).
 _RESET_POSE_RANGE = {
     "x": (-0.05, 0.05),
     "y": (-0.3, 0.3),
     "z": (-0.05, 0.05),
     "yaw": (-math.pi / 3.0, math.pi / 3.0),
+}
+
+# No-cable plug reset: gripper-frame jitter about the grasp point, so the arm only closes to grab.
+_PLUG_GRASP_RANGE = {
+    "x": (-0.005, 0.005),
+    "y": (-0.005, 0.005),
+    "z": (-0.005, 0.005),
+    "yaw": (-math.radians(5.0), math.radians(5.0)),
 }
 
 # Kinematic anchor, above the tabletop in front of the robot [m].
@@ -495,12 +503,15 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
         """Remove the cable and anchor; manipulate the free plug, keeping the observation space."""
         self.scene.cable = None
         self.scene.anchor = None
-        # Reset the plug alone, with the same transform distribution as the cable assembly.
+        # Spawn the plug at the gripper, so a zero-offset reset only needs the fingers to close. The
+        # arm must therefore reset to its default config (a zero default-offset action holds it
+        # there); otherwise it would drift off the spawned plug before the fingers close.
+        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.reset_assembly = None
         self.events.reset_plug = EventTerm(
             func=mdp.reset_plug_uniform,
             mode="reset",
-            params={"pose_range": _RESET_POSE_RANGE, "plug_cfg": SceneEntityCfg("object")},
+            params={"pose_range": _PLUG_GRASP_RANGE, "plug_cfg": SceneEntityCfg("object")},
         )
         # Keep the cable_poses slot (zeros) so the observation space matches the cable env.
         self.observations.policy.cable_poses = ObsTerm(
