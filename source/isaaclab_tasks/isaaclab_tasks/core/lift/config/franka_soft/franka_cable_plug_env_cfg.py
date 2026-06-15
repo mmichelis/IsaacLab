@@ -12,7 +12,6 @@ rigid plug at the other. The RL task brings the plug to a sampled target pose.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
 from dataclasses import MISSING
 
 import torch
@@ -23,17 +22,16 @@ from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCf
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
-from isaaclab.envs.mdp.commands.commands_cfg import UniformPoseCommandCfg
+from isaaclab.managers import CommandTerm, CommandTermCfg, SceneEntityCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.utils.configclass import configclass
-from isaaclab.utils.math import quat_from_angle_axis
+from isaaclab.utils.math import quat_apply, quat_from_angle_axis, subtract_frame_transforms
 
 from isaaclab_contrib.cable.cable_object_cfg import CableAttachmentCfg, CableObjectCfg
 from isaaclab_contrib.coupling import CoupledProxySolverCfg
@@ -47,6 +45,7 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
 from . import mdp
 from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
+from .mdp.rewards import _SOCKET_CFGS, _socket_frame_w
 
 ##
 # Cable / attachment geometry constants
@@ -72,10 +71,15 @@ _PLUG_INIT_POS = (_ANCHOR_POS[0] + _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 # Goal well inside the cable reach, so insertion slackens (not stretches) the cable [m].
 _GOAL_POS = (_ANCHOR_POS[0] + 0.5 * _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2] - 0.05)
 
-# Socket dimensions [m]. Its pose follows the goal at runtime (offset +x; see CommandsCfg).
+# Socket dimensions [m]. Its pose is sampled per episode in a reset event (see EventCfg).
 _TARGET_HOLE_INNER = 0.03  # clear opening, > plug diameter
 _TARGET_HOLE_WALL_THICKNESS = 0.003
 _TARGET_HOLE_DEPTH = _PLUG_HEIGHT
+
+# Socket center relative to the sampled goal, in the goal's local frame [m]: the goal (the staging
+# point the plug tracks) sits one offset in front of the socket opening (which faces -x).
+_SOCKET_OFFSET_B = (0.1, 0.0, 0.0)
+_STAGING_OFFSET = tuple(-v for v in _SOCKET_OFFSET_B)  # goal relative to socket center, in the bore frame
 
 
 ##
@@ -99,7 +103,7 @@ _WALL_OFFSETS: dict[str, tuple[float, float, float]] = {
 
 
 def _wall_cfg(size: tuple[float, float, float], offset: tuple[float, float, float], prim_name: str) -> RigidObjectCfg:
-    """Kinematic cuboid wall at ``offset`` from the socket center (the command repositions it)."""
+    """Kinematic cuboid wall at ``offset`` from the socket center (a reset event repositions it)."""
     return RigidObjectCfg(
         prim_path=f"/World/envs/env_.*/{prim_name}",
         spawn=sim_utils.CuboidCfg(
@@ -201,96 +205,110 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
 ##
 
 
-# Built lazily on first use: importing UniformPoseCommand at module load pulls in
-# Articulation, whose Kit C-extensions corrupt the plugin loader before the app starts.
-_uniform_pose_command_with_targets_cls: type | None = None
+class _SocketPoseCommand(CommandTerm):
+    """Goal pose (robot root frame) read back from the socket walls placed by the reset event.
 
+    The socket is sampled and built once per episode in
+    :func:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.reset_socket_pose_uniform`,
+    so this command samples nothing. Each step it reads the four walls and exposes the staging point
+    (one offset in front of the opening, which faces -x) as the goal the plug tracks, letting the
+    stock command-based observation and reward terms apply unchanged. Subclasses
+    :class:`~isaaclab.managers.CommandTerm` directly to avoid importing :class:`UniformPoseCommand`,
+    whose :class:`~isaaclab.assets.Articulation` import corrupts the Kit loader before app start.
+    """
 
-def _make_uniform_pose_command_with_targets(cfg, env):
-    """Build (once) and instantiate the multi-target pose command class."""
-    global _uniform_pose_command_with_targets_cls
-    if _uniform_pose_command_with_targets_cls is None:
-        from isaaclab.envs.mdp.commands.pose_command import UniformPoseCommand
-        from isaaclab.utils.math import combine_frame_transforms, quat_apply
+    cfg: _SocketPoseCommandCfg
 
-        class _UniformPoseCommandWithTargets(UniformPoseCommand):
-            """:class:`UniformPoseCommand` that moves rigid assets with the sampled command.
+    def __init__(self, cfg: _SocketPoseCommandCfg, env) -> None:
+        super().__init__(cfg, env)
+        self.robot = env.scene[cfg.asset_name]
+        self.object = env.scene[cfg.object_name]
+        self._staging_offset = torch.tensor(cfg.staging_offset, device=self.device)
+        # commands: (x, y, z, qx, qy, qz, qw) in the robot root frame; mirror in world for markers.
+        self.pose_command_b = torch.zeros(self.num_envs, 7, device=self.device)
+        self.pose_command_b[:, 3] = 1.0
+        self.pose_command_w = torch.zeros_like(self.pose_command_b)
+        self.metrics["position_error"] = torch.zeros(self.num_envs, device=self.device)
 
-            On each resample, every target is placed at ``command +
-            R(command_quat) * (target_offset_b + local_offset)`` and shares the command
-            orientation, so the socket walls follow the goal pose together. The socket offset is
-            applied in the goal's local frame, so it points along the sampled goal's x axis.
-            """
+    @property
+    def command(self) -> torch.Tensor:
+        return self.pose_command_b
 
-            def __init__(self, cfg, env):
-                super().__init__(cfg, env)
-                self._targets = [env.scene[name] for name, _ in cfg.targets]
-                self._local_offsets = torch.tensor([offset for _, offset in cfg.targets], device=self.device)
-                self._target_offset_b = torch.tensor(cfg.target_offset_b, device=self.device).view(1, 3)
+    def _refresh(self) -> None:
+        socket_pos_w, socket_quat_w = _socket_frame_w(self._env, _SOCKET_CFGS)
+        self.pose_command_w[:, :3] = socket_pos_w + quat_apply(
+            socket_quat_w, self._staging_offset.expand_as(socket_pos_w)
+        )
+        self.pose_command_w[:, 3:] = socket_quat_w
+        self.pose_command_b[:, :3], self.pose_command_b[:, 3:] = subtract_frame_transforms(
+            self.robot.data.root_pos_w.torch,
+            self.robot.data.root_quat_w.torch,
+            self.pose_command_w[:, :3],
+            self.pose_command_w[:, 3:],
+        )
 
-            def _resample_command(self, env_ids):
-                super()._resample_command(env_ids)
-                # Socket center in robot frame (offset applied in the goal's local frame), then to world.
-                center_quat_b = self.pose_command_b[env_ids, 3:]
-                center_pos_b = self.pose_command_b[env_ids, :3] + quat_apply(
-                    center_quat_b, self._target_offset_b.expand(len(env_ids), 3)
-                )
-                center_pos_w, center_quat_w = combine_frame_transforms(
-                    self.robot.data.root_pos_w.torch[env_ids],
-                    self.robot.data.root_quat_w.torch[env_ids],
-                    center_pos_b,
-                    center_quat_b,
-                )
-                # Place each wall at center + R(center_quat) * local_offset.
-                for target, local_offset in zip(self._targets, self._local_offsets):
-                    offset_w = quat_apply(center_quat_w, local_offset.expand_as(center_pos_w))
-                    wall_pos_w = center_pos_w + offset_w
-                    target.write_root_pose_to_sim_index(
-                        root_pose=torch.cat([wall_pos_w, center_quat_w], dim=-1), env_ids=env_ids
-                    )
+    def _update_metrics(self) -> None:
+        self.metrics["position_error"] = torch.linalg.norm(
+            self.pose_command_w[:, :3] - self.object.data.root_pos_w.torch, dim=-1
+        )
 
-        _uniform_pose_command_with_targets_cls = _UniformPoseCommandWithTargets
-    return _uniform_pose_command_with_targets_cls(cfg, env)
+    def _resample_command(self, env_ids) -> None:
+        self._refresh()  # socket is fixed per episode; the reset event already placed the walls
+
+    def _update_command(self) -> None:
+        self._refresh()
+
+    def _set_debug_vis_impl(self, debug_vis: bool) -> None:
+        from isaaclab.markers import VisualizationMarkers  # lazy: avoid pulling Kit at module load
+
+        if debug_vis:
+            if not hasattr(self, "goal_pose_visualizer"):
+                self.goal_pose_visualizer = VisualizationMarkers(self.cfg.goal_pose_visualizer_cfg)
+                self.current_pose_visualizer = VisualizationMarkers(self.cfg.current_pose_visualizer_cfg)
+            self.goal_pose_visualizer.set_visibility(True)
+            self.current_pose_visualizer.set_visibility(True)
+        elif hasattr(self, "goal_pose_visualizer"):
+            self.goal_pose_visualizer.set_visibility(False)
+            self.current_pose_visualizer.set_visibility(False)
+
+    def _debug_vis_callback(self, event) -> None:
+        if not self.robot.is_initialized:
+            return
+        self.goal_pose_visualizer.visualize(self.pose_command_w[:, :3], self.pose_command_w[:, 3:])
+        self.current_pose_visualizer.visualize(self.object.data.root_pos_w.torch, self.object.data.root_quat_w.torch)
 
 
 @configclass
-class _UniformPoseCommandWithTargetsCfg(UniformPoseCommandCfg):
-    """Configuration for the lazily-built multi-target pose command."""
+class _SocketPoseCommandCfg(CommandTermCfg):
+    """Configuration for the socket-derived goal pose command."""
 
-    class_type: Callable = _make_uniform_pose_command_with_targets
-
-    targets: list[tuple[str, tuple[float, float, float]]] = MISSING
-    """Per-target ``(scene_asset_name, local_offset_from_socket_center [m])`` pairs."""
-
-    target_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    """Offset to the socket center [m], applied in the sampled goal's local frame."""
+    class_type: type = _SocketPoseCommand
+    asset_name: str = MISSING
+    """Robot entity providing the root frame."""
+    object_name: str = MISSING
+    """Plug entity, drawn by the current-pose marker and used for the tracking metric."""
+    staging_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Goal offset from the socket center [m], in the bore frame."""
+    goal_pose_visualizer_cfg: VisualizationMarkersCfg = MISSING
+    current_pose_visualizer_cfg: VisualizationMarkersCfg = MISSING
 
 
 @configclass
 class CommandsCfg:
-    """Plug goal pose (robot root frame); the socket walls follow it, offset +x."""
+    """Plug goal pose (robot root frame), read from the socket walls placed by the reset event."""
 
-    object_pose = _UniformPoseCommandWithTargetsCfg(
+    object_pose = _SocketPoseCommandCfg(
         asset_name="robot",
-        body_name="panda_hand",
-        targets=[(name, offset) for name, offset in _WALL_OFFSETS.items()],
-        target_offset_b=(0.1, 0.0, 0.0),
-        resampling_time_range=(5.0, 5.0),
+        object_name="object",
+        staging_offset=_STAGING_OFFSET,
+        resampling_time_range=(1.0e9, 1.0e9),  # fixed per episode; the reset event sets the socket
         debug_vis=True,
-        ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(_GOAL_POS[0] - 0.1, _GOAL_POS[0] + 0.1),
-            pos_y=(_GOAL_POS[1] - 0.25, _GOAL_POS[1] + 0.25),
-            pos_z=(_GOAL_POS[2] - 0.05, _GOAL_POS[2] + 0.2),
-            roll=(0.0, 0.0),
-            pitch=(-math.pi / 4, math.pi / 4),
-            yaw=(-math.pi / 2, math.pi / 2),
-        ),
         goal_pose_visualizer_cfg=FRAME_MARKER_CFG.replace(prim_path="/Visuals/Command/goal_pose").replace(
             markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.05, 0.05, 0.05))}
         ),
         current_pose_visualizer_cfg=VisualizationMarkersCfg(
             prim_path="/Visuals/Command/body_pose",
-            markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.1, 0.1, 0.1))},
+            markers={"frame": FRAME_MARKER_CFG.markers["frame"].replace(scale=(0.001, 0.001, 0.001))},
         ),
     )
 
@@ -358,6 +376,22 @@ class EventCfg:
             "cable_cfg": SceneEntityCfg("cable"),
             "anchor_cfg": SceneEntityCfg("anchor"),
             "plug_cfg": SceneEntityCfg("object"),
+        },
+    )
+    # Sample the goal pose (robot frame) and place the kinematic socket walls in front of it.
+    reset_socket = EventTerm(
+        func=mdp.reset_socket_pose_uniform,
+        mode="reset",
+        params={
+            "pose_range": {
+                "x": (_GOAL_POS[0] - 0.1, _GOAL_POS[0] + 0.1),
+                "y": (_GOAL_POS[1] - 0.25, _GOAL_POS[1] + 0.25),
+                "z": (_GOAL_POS[2] - 0.05, _GOAL_POS[2] + 0.2),
+                "pitch": (-math.pi / 4, math.pi / 4),
+                "yaw": (-math.pi / 2, math.pi / 2),
+            },
+            "socket_offset_b": _SOCKET_OFFSET_B,
+            "wall_offsets": _WALL_OFFSETS,
         },
     )
     # Clear the proxy teleport velocity from the arm-joint reset above; must run after it.

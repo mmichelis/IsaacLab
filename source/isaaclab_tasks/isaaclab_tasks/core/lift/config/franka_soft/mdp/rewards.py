@@ -130,6 +130,17 @@ _SOCKET_CFGS = (
 )
 
 
+def _socket_frame_w(
+    env: ManagerBasedRLEnv,
+    socket_cfgs: tuple[SceneEntityCfg, ...],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Socket bore frame in world: mean of the four wall positions [m] with their shared orientation."""
+    walls = [env.scene[cfg.name] for cfg in socket_cfgs]
+    socket_pos_w = torch.stack([w.data.root_pos_w.torch for w in walls], dim=0).mean(dim=0)
+    socket_quat_w = walls[0].data.root_quat_w.torch
+    return socket_pos_w, socket_quat_w
+
+
 def _plug_in_socket(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
@@ -147,9 +158,7 @@ def _plug_in_socket(
     asset = env.scene[asset_cfg.name]
     plug_pos_w = _com_w(asset)
     plug_quat_w = asset.data.root_quat_w.torch
-    walls = [env.scene[cfg.name] for cfg in socket_cfgs]
-    socket_pos_w = torch.stack([w.data.root_pos_w.torch for w in walls], dim=0).mean(dim=0)
-    socket_quat_w = walls[0].data.root_quat_w.torch
+    socket_pos_w, socket_quat_w = _socket_frame_w(env, socket_cfgs)
 
     plug_pos_s, _ = subtract_frame_transforms(socket_pos_w, socket_quat_w, plug_pos_w)
     axial = plug_pos_s[:, 0]

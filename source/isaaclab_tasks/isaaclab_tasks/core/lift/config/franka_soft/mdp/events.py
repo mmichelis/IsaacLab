@@ -20,7 +20,7 @@ import torch
 import warp as wp
 
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.utils.math import quat_apply, quat_mul
+from isaaclab.utils.math import combine_frame_transforms, quat_apply, quat_from_euler_xyz, quat_mul
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -362,4 +362,55 @@ def reset_cable_assembly_uniform(
         # observations don't see one frame of stale pose.
         env.scene[rigid_cfg.name].write_root_link_pose_to_sim_index(
             root_pose=new_q.squeeze(1).contiguous(), env_ids=env_ids
+        )
+
+
+def reset_socket_pose_uniform(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    socket_offset_b: tuple[float, float, float],
+    wall_offsets: dict[str, tuple[float, float, float]],
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> None:
+    """Place the kinematic socket walls at a per-env goal pose sampled in the robot frame.
+
+    A goal pose is sampled uniformly per axis in the robot's root frame; the socket center sits at
+    ``goal + R(goal_quat) * socket_offset_b`` (offset in the goal's local frame). Each wall is then
+    written to ``socket_center + R(socket_quat) * wall_offset`` with the shared socket orientation,
+    so the four walls form one rigid socket. The walls are kinematic, so a direct pose write holds.
+
+    Args:
+        env: The RL environment.
+        env_ids: Environment indices to reset.
+        pose_range: Per-axis uniform ranges for the goal pose. Keys ``"x"``, ``"y"``, ``"z"`` give
+            translation [m]; ``"roll"``, ``"pitch"``, ``"yaw"`` give rotation [rad]. Missing keys
+            default to ``(0.0, 0.0)``.
+        socket_offset_b: Offset from the goal to the socket center [m], in the goal's local frame.
+        wall_offsets: Per-wall ``scene_asset_name -> offset_from_socket_center [m]`` pairs.
+        robot_cfg: The robot entity providing the reference frame.
+    """
+    num = env_ids.shape[0]
+
+    def _uniform(key: str) -> torch.Tensor:
+        lo, hi = pose_range.get(key, (0.0, 0.0))
+        return torch.empty(num, device=env.device).uniform_(float(lo), float(hi))
+
+    pos_b = torch.stack([_uniform("x"), _uniform("y"), _uniform("z")], dim=-1)
+    quat_b = quat_from_euler_xyz(_uniform("roll"), _uniform("pitch"), _uniform("yaw"))
+
+    # Socket center in the robot frame (offset applied in the goal's local frame), then to world.
+    offset_b = torch.tensor(socket_offset_b, device=env.device).expand(num, 3)
+    center_b = pos_b + quat_apply(quat_b, offset_b)
+    robot = env.scene[robot_cfg.name]
+    center_pos_w, center_quat_w = combine_frame_transforms(
+        robot.data.root_pos_w.torch[env_ids], robot.data.root_quat_w.torch[env_ids], center_b, quat_b
+    )
+
+    # Place each wall at center + R(center_quat) * local_offset.
+    for name, local_offset in wall_offsets.items():
+        offset_w = quat_apply(center_quat_w, torch.tensor(local_offset, device=env.device).expand(num, 3))
+        wall_pos_w = center_pos_w + offset_w
+        env.scene[name].write_root_pose_to_sim_index(
+            root_pose=torch.cat([wall_pos_w, center_quat_w], dim=-1), env_ids=env_ids
         )

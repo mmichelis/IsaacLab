@@ -52,7 +52,7 @@ def body_poses_in_robot_root_frame(
 ) -> torch.Tensor:
     """Per-body poses of the asset in the robot's root frame.
 
-    Each body contributes ``[x, y, z, qw, qx, qy, qz]`` [m, -]. A single-body rigid object
+    Each body contributes ``[x, y, z, qx, qy, qz, qw]`` [m, -]. A single-body rigid object
     (e.g. the plug) yields one pose; a cable articulation yields one per segment.
 
     Returns:
