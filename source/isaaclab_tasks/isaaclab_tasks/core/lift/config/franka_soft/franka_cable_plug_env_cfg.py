@@ -435,7 +435,7 @@ class TerminationsCfg:
 class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
     """Franka Panda manipulating a cable with a fixed anchor and a rigid plug."""
 
-    scene: _FrankaCablePlugSceneCfg = _FrankaCablePlugSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
+    scene: _FrankaCablePlugSceneCfg = _FrankaCablePlugSceneCfg(num_envs=1024, env_spacing=2.5, replicate_physics=True)
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     commands: CommandsCfg = CommandsCfg()

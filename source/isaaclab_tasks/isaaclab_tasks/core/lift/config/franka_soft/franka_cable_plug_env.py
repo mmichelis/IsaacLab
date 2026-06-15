@@ -29,4 +29,8 @@ class FrankaCablePlugEnv(ManagerBasedRLEnv):
         # The diverged env is reset by the divergence termination, but its reward was computed
         # before that reset; zero any non-finite values so the policy update stays well-defined.
         torch.nan_to_num_(reward, nan=0.0, posinf=0.0, neginf=0.0)
+        # Guard observations too: a non-finite obs that slips past the divergence reset would
+        # poison the policy/critic gradients (and the action std) and crash the learner.
+        for group in obs.values():
+            torch.nan_to_num_(group, nan=0.0, posinf=0.0, neginf=0.0)
         return obs, reward, terminated, time_outs, extras
