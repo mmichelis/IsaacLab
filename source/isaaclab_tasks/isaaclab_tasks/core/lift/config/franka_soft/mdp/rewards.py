@@ -97,6 +97,67 @@ def object_ee_distance(
     return torch.nan_to_num(1.0 - torch.tanh(distance / std), nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def _gripper_finger_force(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Per-env ``[left, right]`` finger contact-force magnitudes [N], shape ``[num_envs, 2]``.
+
+    The proxy gripper fingers and the plug are simulated by the coupled solver's destination
+    (VBD) sub-solver, whose ``body_forces`` holds the net contact wrench per body [N] in world
+    frame. The finger body indices are a per-env constant, so they are resolved once and cached.
+    """
+    cache = getattr(env, "_grasp_finger_force_cache", None)
+    if cache is None:
+        coupled = env.sim.physics_manager._solver
+        if coupled is None or not callable(getattr(coupled, "solver", None)):
+            raise RuntimeError(
+                "object_grasped requires a coupled solver with a `dst` VBD entry exposing"
+                " `body_forces`; configure the scene with a `CoupledProxySolverCfg`."
+            )
+        solver = coupled.solver("dst")
+        labels = list(coupled.view("dst").body_label)
+        left = [i for i, label in enumerate(labels) if label.endswith("leftfinger")]
+        right = [i for i, label in enumerate(labels) if label.endswith("rightfinger")]
+        idx = torch.tensor([left, right], dtype=torch.long, device=env.device).t().contiguous()
+        cache = (solver, idx)
+        env._grasp_finger_force_cache = cache
+    solver, idx = cache
+    return wp.to_torch(solver.body_forces)[idx].norm(dim=-1)
+
+
+def object_grasped(
+    env: ManagerBasedRLEnv,
+    force_threshold: float,
+    reach_threshold: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Fixed reward when the gripper has grasped the plug.
+
+    A grasp requires that both fingers exert a contact force above ``force_threshold`` [N] (so the
+    plug is pinched -- equal and opposite forces act on the plug and the gripper) and that the
+    end-effector is within ``reach_threshold`` [m] of the plug's nearest point. Contact forces are
+    read from the coupled solver via :func:`_gripper_finger_force`.
+
+    Args:
+        env: The environment instance.
+        force_threshold: Minimum per-finger contact force for a grasp [N].
+        reach_threshold: Maximum end-effector distance to the plug [m].
+        asset_cfg: The plug entity.
+        ee_frame_cfg: The end-effector frame entity.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``; ``1`` when grasped, else ``0``.
+    """
+    grasped = (_gripper_finger_force(env) > force_threshold).all(dim=1)
+
+    asset = env.scene[asset_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    points_w = _points_w(asset)
+    ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
+    distance = torch.linalg.norm(points_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
+    # A non-finite distance from a diverged solve fails the comparison (-> not grasped, 0).
+    return (grasped & (distance < reach_threshold)).float()
+
+
 def object_com_goal_distance(
     env: ManagerBasedRLEnv,
     std: float,

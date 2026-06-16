@@ -425,9 +425,9 @@ class RewardsCfg:
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("object")},
         weight=5.0,
     )
-    lifting_plug = RewTerm(
-        func=mdp.object_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("object")},
+    grasping_plug = RewTerm(
+        func=mdp.object_grasped,
+        params={"force_threshold": 1.0, "reach_threshold": 0.03, "asset_cfg": SceneEntityCfg("object")},
         weight=5.0,
     )
     plug_goal_tracking = RewTerm(
@@ -451,7 +451,7 @@ class RewardsCfg:
     gripper_close = RewTerm(
         func=mdp.gripper_close_amount,
         params={"action_name": "gripper_action"},
-        weight=-1.0,
+        weight=-1e-2,
     )
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
     joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-6)

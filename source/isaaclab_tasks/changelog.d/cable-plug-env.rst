@@ -19,5 +19,11 @@ Added
 * Added a no-cable variant ``Isaac-Lift-Plug-Franka-v0`` (config
   :class:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.franka_cable_plug_env_cfg.FrankaCablePlugNoCableEnvCfg`,
   toggled by ``with_cable=False``) that drops the cable and anchor and manipulates the free rigid
-  plug alone. Its observation and action spaces match the cable env, so a policy trained without
-  the cable can be deployed directly on the cable task.
+  plug alone. The plug spawns centered on the gripper, aligned with it and rotated 90 deg about the
+  gripper y axis (long axis across the approach axis), so closing the fingers grasps it. Its
+  observation and action spaces match the cable env, so a policy trained without the cable can be
+  deployed directly on the cable task.
+* Added :func:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.object_grasped`, a
+  reward that grants a fixed bonus once both gripper fingers exert a contact force on the plug (read
+  from the coupled solver) and the end-effector has reached it. It replaces the lift bonus in the
+  cable-plug reward so the task rewards grasping rather than raising the plug.
