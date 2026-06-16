@@ -380,10 +380,11 @@ def reset_plug_uniform(
     """Reset a free rigid plug (VBD body) centered on the gripper's grasp point.
 
     The no-cable counterpart of :func:`reset_cable_assembly_uniform`: it re-seeds only the plug's
-    VBD state (no cable/anchor) at the gripper grasp point, so with a zero ``pose_range`` the arm
-    only has to close its fingers to hold the plug. The plug keeps its build-time orientation (long
-    axis along the socket bore, matching the cable task); the sampled translation is applied in the
-    gripper frame and the yaw about world Z.
+    VBD state (no cable/anchor) at the gripper grasp point, aligned with the gripper and rotated
+    90 deg about the gripper y axis, so the long axis lies across the approach axis (perpendicular
+    to the finger-closing direction). With a zero ``pose_range`` the arm only has to close its
+    fingers to hold the plug. The sampled translation is applied in the gripper frame and the yaw
+    about world Z.
 
     The arm always resets to its default joints, so the grasp frame is a per-env constant cached by
     the env (``plug_grasp_hand_*_w``); using it avoids reading the arm FK, which the coupled solver
@@ -398,8 +399,6 @@ def reset_plug_uniform(
         grasp_offset_b: Grasp point offset from ``panda_hand`` [m], in the hand frame (matches the
             ``ee_frame`` sensor offset).
     """
-    from isaaclab_contrib.deformable.vbd_manager import NewtonVBDManager
-
     # Grasp point: cached panda_hand pose at the default arm config + offset (matches the ``ee_frame``
     # sensor). Cached because the coupled solver does not refresh the arm FK during a reset event.
     hand_pos = env.plug_grasp_hand_pos_w[env_ids]
@@ -407,13 +406,15 @@ def reset_plug_uniform(
     offset_b = torch.tensor(grasp_offset_b, device=env.device).expand_as(hand_pos)
     grasp_pos = hand_pos + quat_apply(hand_quat, offset_b)
 
-    # Plug at the grasp point + gripper-frame offset; build-time orientation perturbed by world-Z yaw.
+    # Plug at the grasp point + gripper-frame offset, oriented with the gripper but rotated 90 deg
+    # about the gripper y axis so the long axis (plug local z) lies across the approach, perpendicular
+    # to the finger-closing axis. Perturbed by a small world-Z yaw.
     trans, yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
-    model = NewtonVBDManager._model
     rigid_ids = _get_body_ids(env, plug_cfg, is_cable=False)[env_ids]  # (n_envs,)
-    rest_quat = wp.to_torch(model.body_q).to(env.device)[rigid_ids][:, 3:7]
+    half_pi = torch.full((env_ids.shape[0],), torch.pi / 2.0, device=env.device)
+    grasp_rot_y = quat_from_euler_xyz(torch.zeros_like(half_pi), half_pi, torch.zeros_like(half_pi))
     plug_pos = grasp_pos + quat_apply(hand_quat, trans)
-    plug_quat = quat_mul(yaw_quat, rest_quat)
+    plug_quat = quat_mul(yaw_quat, quat_mul(hand_quat, grasp_rot_y))
     abs_body_q = torch.cat([plug_pos, plug_quat], dim=-1).unsqueeze(1)  # (n_envs, 1, 7)
 
     new_q = _apply_and_reset(env, rigid_ids.unsqueeze(-1), abs_body_q=abs_body_q)
