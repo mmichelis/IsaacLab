@@ -92,6 +92,16 @@ _FRANKA_WORKSPACE = {
     "shoulder_offset": _SHOULDER_OFFSET,
 }
 
+# Goal pose reset: position sampled in the same shoulder-centered spherical shell as the plug (keeps
+# the goal reachable), with the socket's insertion orientation kept wide.
+_GOAL_SPHERICAL_RANGE = {
+    "r": _PLUG_GRASP_RANGE["r"],
+    "theta": _PLUG_GRASP_RANGE["theta"],
+    "phi": _PLUG_GRASP_RANGE["phi"],
+    "pitch": (-math.pi / 4.0, math.pi / 4.0),
+    "yaw": (-math.pi / 2.0, math.pi / 2.0),
+}
+
 # Kinematic anchor, above the tabletop in front of the robot [m].
 _ANCHOR_POS = (0.15, 0.0, 0.2)
 
@@ -103,9 +113,6 @@ _PLUG_MASS = 0.05
 # Taut plug reach from the anchor [m]; the plug spawns here and hangs taut under gravity.
 _CABLE_REACH = (_NUM_POINTS - 2) * _SEGMENT_LENGTH
 _PLUG_INIT_POS = (_ANCHOR_POS[0] + _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2])
-
-# Goal well inside the cable reach, so insertion slackens (not stretches) the cable [m].
-_GOAL_POS = (_ANCHOR_POS[0] + 0.5 * _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2] - 0.05)
 
 # Socket dimensions [m]. Its pose is sampled per episode in a reset event (see EventCfg).
 _TARGET_HOLE_INNER = 0.03  # clear opening, > plug diameter
@@ -416,15 +423,10 @@ class EventCfg:
         func=mdp.reset_socket_pose_uniform,
         mode="reset",
         params={
-            "pose_range": {
-                "x": (_GOAL_POS[0] - 0.1, _GOAL_POS[0] + 0.1),
-                "y": (_GOAL_POS[1] - 0.25, _GOAL_POS[1] + 0.25),
-                "z": (_GOAL_POS[2] - 0.05, _GOAL_POS[2] + 0.2),
-                "pitch": (-math.pi / 4, math.pi / 4),
-                "yaw": (-math.pi / 2, math.pi / 2),
-            },
+            "pose_range": _GOAL_SPHERICAL_RANGE,
             "socket_offset_b": _SOCKET_OFFSET_B,
             "wall_offsets": _WALL_OFFSETS,
+            "shoulder_offset": _SHOULDER_OFFSET,
         },
     )
     # Clear the proxy teleport velocity from the arm-joint reset above; must run after it.

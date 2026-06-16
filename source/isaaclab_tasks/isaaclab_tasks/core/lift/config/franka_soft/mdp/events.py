@@ -459,23 +459,27 @@ def reset_socket_pose_uniform(
     pose_range: dict[str, tuple[float, float]],
     socket_offset_b: tuple[float, float, float],
     wall_offsets: dict[str, tuple[float, float, float]],
+    shoulder_offset: tuple[float, float, float] = (0.0, 0.0, 0.333),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> None:
     """Place the kinematic socket walls at a per-env goal pose sampled in the robot frame.
 
-    A goal pose is sampled uniformly per axis in the robot's root frame; the socket center sits at
-    ``goal + R(goal_quat) * socket_offset_b`` (offset in the goal's local frame). Each wall is then
-    written to ``socket_center + R(socket_quat) * wall_offset`` with the shared socket orientation,
-    so the four walls form one rigid socket. The walls are kinematic, so a direct pose write holds.
+    The goal position is sampled in shoulder-centered spherical coordinates (a first-order model of
+    the arm's reachable shell, like the plug reset), so the goal stays reachable; the orientation is
+    sampled per Euler axis. The socket center sits at ``goal + R(goal_quat) * socket_offset_b``
+    (offset in the goal's local frame). Each wall is then written to
+    ``socket_center + R(socket_quat) * wall_offset`` with the shared socket orientation, so the four
+    walls form one rigid socket. The walls are kinematic, so a direct pose write holds.
 
     Args:
         env: The RL environment.
         env_ids: Environment indices to reset.
-        pose_range: Per-axis uniform ranges for the goal pose. Keys ``"x"``, ``"y"``, ``"z"`` give
-            translation [m]; ``"roll"``, ``"pitch"``, ``"yaw"`` give rotation [rad]. Missing keys
-            default to ``(0.0, 0.0)``.
+        pose_range: Ranges for the goal pose. Position keys ``"r"`` [m], ``"theta"`` (polar) [rad],
+            ``"phi"`` (azimuth) [rad] are sampled in a shell about the shoulder; ``"roll"``,
+            ``"pitch"``, ``"yaw"`` [rad] give the orientation. Missing keys default to ``(0.0, 0.0)``.
         socket_offset_b: Offset from the goal to the socket center [m], in the goal's local frame.
         wall_offsets: Per-wall ``scene_asset_name -> offset_from_socket_center [m]`` pairs.
+        shoulder_offset: Shoulder position in the robot root frame [m] (sphere origin).
         robot_cfg: The robot entity providing the reference frame.
     """
     num = env_ids.shape[0]
@@ -484,7 +488,14 @@ def reset_socket_pose_uniform(
         lo, hi = pose_range.get(key, (0.0, 0.0))
         return torch.empty(num, device=env.device).uniform_(float(lo), float(hi))
 
-    pos_b = torch.stack([_uniform("x"), _uniform("y"), _uniform("z")], dim=-1)
+    pos_rel = _sample_sphere(
+        r_range=pose_range.get("r", (0.0, 0.0)),
+        t_range=pose_range.get("theta", (0.0, 0.0)),
+        p_range=pose_range.get("phi", (0.0, 0.0)),
+        num=num,
+        device=env.device,
+    )
+    pos_b = torch.tensor(shoulder_offset, device=env.device) + pos_rel
     quat_b = quat_from_euler_xyz(_uniform("roll"), _uniform("pitch"), _uniform("yaw"))
 
     # Socket center in the robot frame (offset applied in the goal's local frame), then to world.
