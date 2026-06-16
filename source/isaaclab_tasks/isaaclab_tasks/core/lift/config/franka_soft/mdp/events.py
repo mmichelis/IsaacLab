@@ -375,38 +375,35 @@ def reset_plug_uniform(
     env_ids: torch.Tensor,
     pose_range: dict[str, tuple[float, float]],
     plug_cfg: SceneEntityCfg,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     grasp_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.1034),
 ) -> None:
     """Reset a free rigid plug (VBD body) centered on the gripper's grasp point.
 
     The no-cable counterpart of :func:`reset_cable_assembly_uniform`: it re-seeds only the plug's
-    VBD state (no cable/anchor) at the post-reset grasp point, so with a zero ``pose_range`` the arm
+    VBD state (no cable/anchor) at the gripper grasp point, so with a zero ``pose_range`` the arm
     only has to close its fingers to hold the plug. The plug keeps its build-time orientation (long
     axis along the socket bore, matching the cable task); the sampled translation is applied in the
     gripper frame and the yaw about world Z.
 
-    Must run after the arm-joint reset: the grasp point is read from the robot articulation, whose
-    forward kinematics recompute lazily from the just-reset joint positions.
+    The arm always resets to its default joints, so the grasp frame is a per-env constant cached by
+    the env (``plug_grasp_hand_*_w``); using it avoids reading the arm FK, which the coupled solver
+    does not refresh during a reset event (it would yield the stale pre-reset pose).
 
     Args:
-        env: The RL environment.
+        env: The RL environment (must expose ``plug_grasp_hand_pos_w``/``plug_grasp_hand_quat_w``).
         env_ids: Environment indices to reset.
         pose_range: Per-axis uniform ranges; see :func:`reset_cable_uniform`. ``"x"``/``"y"``/``"z"``
             are gripper-frame offsets [m] from the grasp point; ``"yaw"`` is about world Z [rad].
         plug_cfg: Scene-entity reference to the rigid plug :class:`RigidObject`.
-        robot_cfg: The robot articulation providing the gripper frame.
         grasp_offset_b: Grasp point offset from ``panda_hand`` [m], in the hand frame (matches the
             ``ee_frame`` sensor offset).
     """
     from isaaclab_contrib.deformable.vbd_manager import NewtonVBDManager
 
-    # Grasp point: panda_hand link pose + offset (matches the ``ee_frame`` sensor). The articulation
-    # recomputes FK from the just-reset joint positions, so this reflects the post-reset arm.
-    robot = env.scene[robot_cfg.name]
-    hand_idx = robot.find_bodies("panda_hand")[0][0]
-    hand_pos = robot.data.body_link_pos_w.torch[env_ids, hand_idx]
-    hand_quat = robot.data.body_link_quat_w.torch[env_ids, hand_idx]
+    # Grasp point: cached panda_hand pose at the default arm config + offset (matches the ``ee_frame``
+    # sensor). Cached because the coupled solver does not refresh the arm FK during a reset event.
+    hand_pos = env.plug_grasp_hand_pos_w[env_ids]
+    hand_quat = env.plug_grasp_hand_quat_w[env_ids]
     offset_b = torch.tensor(grasp_offset_b, device=env.device).expand_as(hand_pos)
     grasp_pos = hand_pos + quat_apply(hand_quat, offset_b)
 

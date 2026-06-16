@@ -63,10 +63,10 @@ _CABLE_NUM_BODIES = 26
 
 # Per-episode reset transform applied to the cable assembly (cable + anchor + plug).
 _RESET_POSE_RANGE = {
-    "x": (-0.05, 0.05),
-    "y": (-0.3, 0.3),
-    "z": (-0.05, 0.05),
-    "yaw": (-math.pi / 3.0, math.pi / 3.0),
+    # "x": (-0.05, 0.05),
+    # "y": (-0.3, 0.3),
+    # "z": (-0.05, 0.05),
+    # "yaw": (-math.pi / 3.0, math.pi / 3.0),
 }
 
 # No-cable plug reset: gripper-frame jitter about the grasp point, so the arm only closes to grab.
@@ -382,7 +382,7 @@ class EventCfg:
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
-        params={"position_range": (0.9, 1.1), "velocity_range": (0.0, 0.0)},
+        params={"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)},
     )
     reset_assembly = EventTerm(
         func=mdp.reset_cable_assembly_uniform,
@@ -506,7 +506,6 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
         # Spawn the plug at the gripper, so a zero-offset reset only needs the fingers to close. The
         # arm must therefore reset to its default config (a zero default-offset action holds it
         # there); otherwise it would drift off the spawned plug before the fingers close.
-        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.reset_assembly = None
         self.events.reset_plug = EventTerm(
             func=mdp.reset_plug_uniform,
@@ -525,7 +524,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 6.0
+        self.episode_length_s = 3.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
