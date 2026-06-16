@@ -73,18 +73,8 @@ _RESET_POSE_RANGE = {
 # ~a spherical shell about it, so reset sampling uses it as the sphere origin.
 _SHOULDER_OFFSET = (0.0, 0.0, 0.333)
 
-# No-cable plug reset: the plug spawns at the default grasp point, jittered in shoulder-centered
-# spherical coords (r [m], polar theta [rad], azimuth phi [rad]) so the arm only closes to grab. The
-# default is the FK grasp point (panda_hand + ee offset) at the Franka default config.
-_DEFAULT_FRANKA_POSE = (0.46630, 1.45799, 0.0)
-# Default plug orientation (euler xyz [rad]) at the default config; only yaw is jittered (+/- 5 deg).
-_DEFAULT_PLUG_RPY = (0.04440, -0.77480, math.pi)
-_PLUG_GRASP_RANGE = {
-    "r": (_DEFAULT_FRANKA_POSE[0] - 0.005, _DEFAULT_FRANKA_POSE[0] + 0.005),
-    "theta": (_DEFAULT_FRANKA_POSE[1] - 0.005, _DEFAULT_FRANKA_POSE[1] + 0.005),
-    "phi": (_DEFAULT_FRANKA_POSE[2] - 0.005, _DEFAULT_FRANKA_POSE[2] + 0.005),
-    "yaw": (_DEFAULT_PLUG_RPY[2] - math.radians(5.0), _DEFAULT_PLUG_RPY[2] + math.radians(5.0)),
-}
+# Reachable-workspace bounds (shoulder-centered shell): r [m], polar theta [rad], azimuth phi [rad].
+# All reset sampling is clipped to these so the plug and goal stay reachable.
 _FRANKA_WORKSPACE = {
     "r": (0.1, 0.75),
     "theta": (0.05, math.pi / 2.0),
@@ -92,15 +82,44 @@ _FRANKA_WORKSPACE = {
     "shoulder_offset": _SHOULDER_OFFSET,
 }
 
+
+def _clip_to_workspace(pose_range: dict[str, tuple[float, float]]) -> dict[str, tuple[float, float]]:
+    """Clip a spherical pose range's ``r``/``theta``/``phi`` to :data:`_FRANKA_WORKSPACE`."""
+    clipped = dict(pose_range)
+    for key in ("r", "theta", "phi"):
+        if key in clipped:
+            lo, hi = clipped[key]
+            w_lo, w_hi = _FRANKA_WORKSPACE[key]
+            clipped[key] = (max(lo, w_lo), min(hi, w_hi))
+    return clipped
+
+
+# No-cable plug reset: the plug spawns at the default grasp point, jittered in shoulder-centered
+# spherical coords (r [m], polar theta [rad], azimuth phi [rad]) so the arm only closes to grab. The
+# default is the FK grasp point (panda_hand + ee offset) at the Franka default config.
+_DEFAULT_FRANKA_POSE = (0.46630, 1.45799, 0.0)
+# Default plug orientation (euler xyz [rad]) at the default config; only yaw is jittered (+/- 5 deg).
+_DEFAULT_PLUG_RPY = (0.04440, -0.77480, math.pi)
+_PLUG_GRASP_RANGE = _clip_to_workspace(
+    {
+        "r": (_DEFAULT_FRANKA_POSE[0] - 0.005, _DEFAULT_FRANKA_POSE[0] + 0.005),
+        "theta": (_DEFAULT_FRANKA_POSE[1] - 0.005, _DEFAULT_FRANKA_POSE[1] + 0.005),
+        "phi": (_DEFAULT_FRANKA_POSE[2] - 0.005, _DEFAULT_FRANKA_POSE[2] + 0.005),
+        "yaw": (_DEFAULT_PLUG_RPY[2] - math.radians(5.0), _DEFAULT_PLUG_RPY[2] + math.radians(5.0)),
+    }
+)
+
 # Goal pose reset: position sampled in the same shoulder-centered spherical shell as the plug (keeps
 # the goal reachable), with the socket's insertion orientation kept wide.
-_GOAL_SPHERICAL_RANGE = {
-    "r": _PLUG_GRASP_RANGE["r"],
-    "theta": _PLUG_GRASP_RANGE["theta"],
-    "phi": _PLUG_GRASP_RANGE["phi"],
-    "pitch": (-math.pi / 4.0, math.pi / 4.0),
-    "yaw": (-math.pi / 2.0, math.pi / 2.0),
-}
+_GOAL_SPHERICAL_RANGE = _clip_to_workspace(
+    {
+        "r": _PLUG_GRASP_RANGE["r"],
+        "theta": _PLUG_GRASP_RANGE["theta"],
+        "phi": _PLUG_GRASP_RANGE["phi"],
+        "pitch": (-math.pi / 4.0, math.pi / 4.0),
+        "yaw": (-math.pi / 2.0, math.pi / 2.0),
+    }
+)
 
 # Kinematic anchor, above the tabletop in front of the robot [m].
 _ANCHOR_POS = (0.15, 0.0, 0.2)
@@ -548,7 +567,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 3.0
+        self.episode_length_s = 6.0
 
         # simulation settings
         self.sim.dt = 1 / 60.0
