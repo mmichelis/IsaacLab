@@ -76,6 +76,29 @@ def _get_body_ids(env: ManagerBasedEnv, cfg: SceneEntityCfg, *, is_cable: bool) 
     return resolved
 
 
+def _sample_sphere (
+    r_range: tuple[float, float] = (0.0, 0.0),
+    t_range: tuple[float, float] = (0.0, 0.0),
+    p_range: tuple[float, float] = (0.0, 0.0),
+    num: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """Sample ``num`` points uniformly from a spherical sector defined by ``(r_range, t_range, p_range)``.
+
+    Spherical coordinates are radius [m], polar angle theta [rad] from world Z, and azimuthal angle phi
+    [rad] about world Z. Missing keys default to ``(0.0, 0.0)``.
+    """
+    r_rescaled = (r_range[0] + torch.rand(num, device=device) * (r_range[1] - r_range[0])) / r_range[1]
+    r = torch.sqrt(r_rescaled) * r_range[1]  # sqrt for uniform sampling in volume
+    t = torch.zeros(num, device=device).uniform_(t_range[0], t_range[1])
+    p = torch.zeros(num, device=device).uniform_(p_range[0], p_range[1])
+    sin_t = torch.sin(t)
+    x = r * sin_t * torch.cos(p)
+    y = r * sin_t * torch.sin(p)
+    z = r * torch.cos(t)
+    return torch.stack([x, y, z], dim=-1)
+
+
 def _sample_rigid_transform(
     pose_range: dict[str, tuple[float, float]],
     num: int,
