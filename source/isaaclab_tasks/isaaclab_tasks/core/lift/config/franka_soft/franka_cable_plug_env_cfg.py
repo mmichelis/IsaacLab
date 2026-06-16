@@ -428,14 +428,16 @@ class RewardsCfg:
     grasping_plug = RewTerm(
         func=mdp.object_grasped,
         params={"force_threshold": 1.0, "reach_threshold": 0.03, "asset_cfg": SceneEntityCfg("object")},
-        weight=5.0,
+        weight=50.0,
     )
     plug_goal_tracking = RewTerm(
-        func=mdp.object_com_goal_distance,
+        func=mdp.object_grasped_goal_distance,
         params={
             "std": 0.3,
             "minimal_height": 0.05,
             "command_name": "object_pose",
+            "force_threshold": 1.0,
+            "reach_threshold": 0.03,
             "asset_cfg": SceneEntityCfg("object"),
         },
         weight=16.0,

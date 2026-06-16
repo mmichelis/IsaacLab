@@ -27,3 +27,6 @@ Added
   reward that grants a fixed bonus once both gripper fingers exert a contact force on the plug (read
   from the coupled solver) and the end-effector has reached it. It replaces the lift bonus in the
   cable-plug reward so the task rewards grasping rather than raising the plug.
+* Added :func:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.object_grasped_goal_distance`,
+  a goal-tracking reward gated on the same grasp condition, so the cable-plug task only credits goal
+  tracking while the plug is grasped rather than rewarding it drifting toward the goal on its own.

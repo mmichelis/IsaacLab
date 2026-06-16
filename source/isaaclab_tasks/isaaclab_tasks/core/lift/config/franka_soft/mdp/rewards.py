@@ -123,6 +123,31 @@ def _gripper_finger_force(env: ManagerBasedRLEnv) -> torch.Tensor:
     return wp.to_torch(solver.body_forces)[idx].norm(dim=-1)
 
 
+def _is_grasped(
+    env: ManagerBasedRLEnv,
+    force_threshold: float,
+    reach_threshold: float,
+    asset_cfg: SceneEntityCfg,
+    ee_frame_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Boolean grasp mask, shape ``(num_envs,)``.
+
+    A grasp requires that both fingers exert a contact force above ``force_threshold`` [N] (so the
+    plug is pinched -- equal and opposite forces act on the plug and the gripper) and that the
+    end-effector is within ``reach_threshold`` [m] of the plug's nearest point. Contact forces are
+    read from the coupled solver via :func:`_gripper_finger_force`. A non-finite distance from a
+    diverged solve fails the comparison (-> not grasped).
+    """
+    grasped = (_gripper_finger_force(env) > force_threshold).all(dim=1)
+
+    asset = env.scene[asset_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    points_w = _points_w(asset)
+    ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
+    distance = torch.linalg.norm(points_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
+    return grasped & (distance < reach_threshold)
+
+
 def object_grasped(
     env: ManagerBasedRLEnv,
     force_threshold: float,
@@ -130,12 +155,7 @@ def object_grasped(
     asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
-    """Fixed reward when the gripper has grasped the plug.
-
-    A grasp requires that both fingers exert a contact force above ``force_threshold`` [N] (so the
-    plug is pinched -- equal and opposite forces act on the plug and the gripper) and that the
-    end-effector is within ``reach_threshold`` [m] of the plug's nearest point. Contact forces are
-    read from the coupled solver via :func:`_gripper_finger_force`.
+    """Fixed reward when the gripper has grasped the plug (see :func:`_is_grasped`).
 
     Args:
         env: The environment instance.
@@ -147,15 +167,7 @@ def object_grasped(
     Returns:
         Reward tensor with shape ``(num_envs,)``; ``1`` when grasped, else ``0``.
     """
-    grasped = (_gripper_finger_force(env) > force_threshold).all(dim=1)
-
-    asset = env.scene[asset_cfg.name]
-    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    points_w = _points_w(asset)
-    ee_w = wp.to_torch(ee_frame.data.target_pos_w)[..., 0, :]
-    distance = torch.linalg.norm(points_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
-    # A non-finite distance from a diverged solve fails the comparison (-> not grasped, 0).
-    return (grasped & (distance < reach_threshold)).float()
+    return _is_grasped(env, force_threshold, reach_threshold, asset_cfg, ee_frame_cfg).float()
 
 
 def object_com_goal_distance(
@@ -181,6 +193,42 @@ def object_com_goal_distance(
     com_w = _com_w(asset)
     distance = torch.linalg.norm(des_pos_w - com_w, dim=1)
     return (com_w[:, 2] > minimal_height) * (1.0 - torch.tanh(distance / std))
+
+
+def object_grasped_goal_distance(
+    env: ManagerBasedRLEnv,
+    std: float,
+    minimal_height: float,
+    command_name: str,
+    force_threshold: float,
+    reach_threshold: float,
+    asset_cfg: SceneEntityCfg,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Goal tracking (see :func:`object_com_goal_distance`) gated on grasping the plug.
+
+    Identical to :func:`object_com_goal_distance` but credited only while the plug is grasped
+    (see :func:`_is_grasped`), so the policy is rewarded for carrying the plug toward the goal
+    rather than for the plug drifting there on its own.
+
+    Args:
+        env: The environment instance.
+        std: Tanh kernel scale for the goal distance [m].
+        minimal_height: Minimum plug COM height to credit tracking [m].
+        command_name: Name of the goal-pose command term.
+        force_threshold: Minimum per-finger contact force for a grasp [N].
+        reach_threshold: Maximum end-effector distance to the plug [m].
+        asset_cfg: The plug entity.
+        robot_cfg: The robot entity providing the root frame for the command.
+        ee_frame_cfg: The end-effector frame entity.
+
+    Returns:
+        Reward tensor with shape ``(num_envs,)``.
+    """
+    tracking = object_com_goal_distance(env, std, minimal_height, command_name, asset_cfg, robot_cfg)
+    grasped = _is_grasped(env, force_threshold, reach_threshold, asset_cfg, ee_frame_cfg)
+    return tracking * grasped.float()
 
 
 _SOCKET_CFGS = (
