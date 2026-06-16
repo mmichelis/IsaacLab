@@ -76,22 +76,25 @@ def _get_body_ids(env: ManagerBasedEnv, cfg: SceneEntityCfg, *, is_cable: bool) 
     return resolved
 
 
-def _sample_sphere (
+def _sample_sphere(
     r_range: tuple[float, float] = (0.0, 0.0),
     t_range: tuple[float, float] = (0.0, 0.0),
     p_range: tuple[float, float] = (0.0, 0.0),
+    *,
     num: int,
     device: torch.device,
 ) -> torch.Tensor:
-    """Sample ``num`` points uniformly from a spherical sector defined by ``(r_range, t_range, p_range)``.
+    """Sample ``num`` Cartesian points from a spherical sector given by ``(r_range, t_range, p_range)``.
 
-    Spherical coordinates are radius [m], polar angle theta [rad] from world Z, and azimuthal angle phi
-    [rad] about world Z. Missing keys default to ``(0.0, 0.0)``.
+    Spherical coordinates are radius [m], polar angle theta [rad] from the sector's +Z, and azimuth phi
+    [rad] about +Z. Radius is sampled uniformly in volume (cube-root); theta and phi are uniform in angle.
+
+    Returns a tensor of shape ``(num, 3)``. With a degenerate range (``lo == hi``), the coordinate is fixed.
     """
-    r_rescaled = (r_range[0] + torch.rand(num, device=device) * (r_range[1] - r_range[0])) / r_range[1]
-    r = torch.sqrt(r_rescaled) * r_range[1]  # sqrt for uniform sampling in volume
-    t = torch.zeros(num, device=device).uniform_(t_range[0], t_range[1])
-    p = torch.zeros(num, device=device).uniform_(p_range[0], p_range[1])
+    u = torch.rand(num, device=device)
+    r = (r_range[0] ** 3 + u * (r_range[1] ** 3 - r_range[0] ** 3)) ** (1.0 / 3.0)
+    t = torch.empty(num, device=device).uniform_(t_range[0], t_range[1])
+    p = torch.empty(num, device=device).uniform_(p_range[0], p_range[1])
     sin_t = torch.sin(t)
     x = r * sin_t * torch.cos(p)
     y = r * sin_t * torch.sin(p)
@@ -398,46 +401,51 @@ def reset_plug_uniform(
     env_ids: torch.Tensor,
     pose_range: dict[str, tuple[float, float]],
     plug_cfg: SceneEntityCfg,
-    grasp_offset_b: tuple[float, float, float] = (0.0, 0.0, 0.1034),
+    shoulder_offset: tuple[float, float, float] = (0.0, 0.0, 0.333),
+    default_rp: tuple[float, float] = (0.0, 0.0),
 ) -> None:
-    """Reset a free rigid plug (VBD body) centered on the gripper's grasp point.
+    """Reset a free rigid plug (VBD body) at a sampled point in the Franka's reachable workspace.
 
     The no-cable counterpart of :func:`reset_cable_assembly_uniform`: it re-seeds only the plug's
-    VBD state (no cable/anchor) at the gripper grasp point, aligned with the gripper and rotated
-    90 deg about the gripper y axis, so the long axis lies across the approach axis (perpendicular
-    to the finger-closing direction). With a zero ``pose_range`` the arm only has to close its
-    fingers to hold the plug. The sampled translation is applied in the gripper frame and the yaw
-    about world Z.
+    VBD state (no cable/anchor). The plug center is sampled in shoulder-centered spherical
+    coordinates -- a first-order model of the arm's reachable shell -- so every reset lands within
+    reach. With a tight ``pose_range`` about the default grasp point the arm only has to close its
+    fingers to hold the plug.
 
-    The arm always resets to its default joints, so the grasp frame is a per-env constant cached by
-    the env (``plug_grasp_hand_*_w``); using it avoids reading the arm FK, which the coupled solver
-    does not refresh during a reset event (it would yield the stale pre-reset pose).
+    The Franka root sits at each env origin, so the sphere origin is ``env_origin + shoulder_offset``.
+    The orientation uses fixed roll/pitch (the default grasp tilt) with a jittered world-Z yaw, so it
+    needs no arm FK -- which the coupled solver does not refresh during a reset event.
 
     Args:
-        env: The RL environment (must expose ``plug_grasp_hand_pos_w``/``plug_grasp_hand_quat_w``).
+        env: The RL environment.
         env_ids: Environment indices to reset.
-        pose_range: Per-axis uniform ranges; see :func:`reset_cable_uniform`. ``"x"``/``"y"``/``"z"``
-            are gripper-frame offsets [m] from the grasp point; ``"yaw"`` is about world Z [rad].
+        pose_range: Spherical ranges for the plug center -- ``"r"`` [m], ``"theta"`` (polar) [rad],
+            ``"phi"`` (azimuth) [rad] -- about the shoulder, plus ``"yaw"`` [rad] about world Z.
         plug_cfg: Scene-entity reference to the rigid plug :class:`RigidObject`.
-        grasp_offset_b: Grasp point offset from ``panda_hand`` [m], in the hand frame (matches the
-            ``ee_frame`` sensor offset).
+        shoulder_offset: Shoulder position in the robot root frame [m] (sphere origin).
+        default_rp: Fixed plug ``(roll, pitch)`` [rad]; only yaw is jittered.
     """
-    # Grasp point: cached panda_hand pose at the default arm config + offset (matches the ``ee_frame``
-    # sensor). Cached because the coupled solver does not refresh the arm FK during a reset event.
-    hand_pos = env.plug_grasp_hand_pos_w[env_ids]
-    hand_quat = env.plug_grasp_hand_quat_w[env_ids]
-    offset_b = torch.tensor(grasp_offset_b, device=env.device).expand_as(hand_pos)
-    grasp_pos = hand_pos + quat_apply(hand_quat, offset_b)
+    n = env_ids.shape[0]
+    device = env.device
+    # Plug center: spherical sample about the shoulder (root frame), offset to world via env origin.
+    pos_rel = _sample_sphere(
+        r_range=pose_range.get("r", (0.0, 0.0)),
+        t_range=pose_range.get("theta", (0.0, 0.0)),
+        p_range=pose_range.get("phi", (0.0, 0.0)),
+        num=n,
+        device=device,
+    )
+    shoulder = torch.tensor(shoulder_offset, device=device)
+    plug_pos = env.scene.env_origins[env_ids] + shoulder + pos_rel
 
-    # Plug at the grasp point + gripper-frame offset, oriented with the gripper but rotated 90 deg
-    # about the gripper y axis so the long axis (plug local z) lies across the approach, perpendicular
-    # to the finger-closing axis. Perturbed by a small world-Z yaw.
-    trans, yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
+    # Orientation: fixed grasp roll/pitch with a jittered world-Z yaw (pre-multiplying Rz adds to yaw).
+    lo, hi = pose_range.get("yaw", (0.0, 0.0))
+    yaw = torch.empty(n, device=device).uniform_(float(lo), float(hi))
+    roll = torch.full((n,), float(default_rp[0]), device=device)
+    pitch = torch.full((n,), float(default_rp[1]), device=device)
+    plug_quat = quat_from_euler_xyz(roll, pitch, yaw)
+
     rigid_ids = _get_body_ids(env, plug_cfg, is_cable=False)[env_ids]  # (n_envs,)
-    half_pi = torch.full((env_ids.shape[0],), torch.pi / 2.0, device=env.device)
-    grasp_rot_y = quat_from_euler_xyz(torch.zeros_like(half_pi), half_pi, torch.zeros_like(half_pi))
-    plug_pos = grasp_pos + quat_apply(hand_quat, trans)
-    plug_quat = quat_mul(yaw_quat, quat_mul(hand_quat, grasp_rot_y))
     abs_body_q = torch.cat([plug_pos, plug_quat], dim=-1).unsqueeze(1)  # (n_envs, 1, 7)
 
     new_q = _apply_and_reset(env, rigid_ids.unsqueeze(-1), abs_body_q=abs_body_q)

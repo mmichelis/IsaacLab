@@ -69,12 +69,27 @@ _RESET_POSE_RANGE = {
     # "yaw": (-math.pi / 3.0, math.pi / 3.0),
 }
 
-# No-cable plug reset: gripper-frame jitter about the grasp point, so the arm only closes to grab.
+# Franka shoulder (J1/J2 axis intersection) in the robot root frame [m]; the reachable workspace is
+# ~a spherical shell about it, so reset sampling uses it as the sphere origin.
+_SHOULDER_OFFSET = (0.0, 0.0, 0.333)
+
+# No-cable plug reset: the plug spawns at the default grasp point, jittered in shoulder-centered
+# spherical coords (r [m], polar theta [rad], azimuth phi [rad]) so the arm only closes to grab. The
+# default is the FK grasp point (panda_hand + ee offset) at the Franka default config.
+_DEFAULT_FRANKA_POSE = (0.46630, 1.45799, 0.0)
+# Default plug orientation (euler xyz [rad]) at the default config; only yaw is jittered (+/- 5 deg).
+_DEFAULT_PLUG_RPY = (0.04440, -0.77480, math.pi)
 _PLUG_GRASP_RANGE = {
-    "x": (-0.005, 0.005),
-    "y": (-0.005, 0.005),
-    "z": (-0.005, 0.005),
-    "yaw": (-math.radians(5.0), math.radians(5.0)),
+    "r": (_DEFAULT_FRANKA_POSE[0] - 0.005, _DEFAULT_FRANKA_POSE[0] + 0.005),
+    "theta": (_DEFAULT_FRANKA_POSE[1] - 0.005, _DEFAULT_FRANKA_POSE[1] + 0.005),
+    "phi": (_DEFAULT_FRANKA_POSE[2] - 0.005, _DEFAULT_FRANKA_POSE[2] + 0.005),
+    "yaw": (_DEFAULT_PLUG_RPY[2] - math.radians(5.0), _DEFAULT_PLUG_RPY[2] + math.radians(5.0)),
+}
+_FRANKA_WORKSPACE = {
+    "r": (0.1, 0.75),
+    "theta": (0.05, math.pi / 2.0),
+    "phi": (-math.pi / 4.0, math.pi / 4.0),
+    "shoulder_offset": _SHOULDER_OFFSET,
 }
 
 # Kinematic anchor, above the tabletop in front of the robot [m].
@@ -512,7 +527,12 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
         self.events.reset_plug = EventTerm(
             func=mdp.reset_plug_uniform,
             mode="reset",
-            params={"pose_range": _PLUG_GRASP_RANGE, "plug_cfg": SceneEntityCfg("object")},
+            params={
+                "pose_range": _PLUG_GRASP_RANGE,
+                "plug_cfg": SceneEntityCfg("object"),
+                "shoulder_offset": _SHOULDER_OFFSET,
+                "default_rp": _DEFAULT_PLUG_RPY[:2],
+            },
         )
         # Keep the cable_poses slot (zeros) so the observation space matches the cable env.
         self.observations.policy.cable_poses = ObsTerm(
