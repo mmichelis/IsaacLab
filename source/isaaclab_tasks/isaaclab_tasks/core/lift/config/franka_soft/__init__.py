@@ -47,7 +47,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaCablePlugPPORunnerCfg",
     },
 )
 
@@ -57,7 +57,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugEnvCfg_PLAY",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaCablePlugPPORunnerCfg",
     },
 )
 
@@ -67,7 +67,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugNoCableEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaCablePlugPPORunnerCfg",
     },
 )
 
@@ -77,6 +77,6 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugNoCableEnvCfg_PLAY",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaCablePlugPPORunnerCfg",
     },
 )

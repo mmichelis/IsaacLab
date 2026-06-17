@@ -422,7 +422,7 @@ class ActionsCfg:
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.05},
+        open_command_expr={"panda_finger_.*": 0.04},
         close_command_expr={"panda_finger_.*": 0.007},
     )
 
@@ -500,20 +500,20 @@ class RewardsCfg:
     )
     grasping_plug = RewTerm(
         func=mdp.object_grasped,
-        params={"force_threshold": 1.0, "reach_threshold": 0.03, "asset_cfg": SceneEntityCfg("object")},
-        weight=1.0,
+        params={"force_threshold": 0.1, "reach_threshold": 0.05, "asset_cfg": SceneEntityCfg("object")},
+        weight=10.0,
     )
     plug_goal_tracking = RewTerm(
         func=mdp.object_grasped_goal_distance,
         params={
-            "std": 0.3,
-            "minimal_height": 0.05,
+            "std": 0.25,
+            "minimal_height": 0.0,
             "command_name": "object_pose",
-            "force_threshold": 1.0,
-            "reach_threshold": 0.03,
+            "force_threshold": 0.1,
+            "reach_threshold": 0.05,
             "asset_cfg": SceneEntityCfg("object"),
         },
-        weight=16.0,
+        weight=1.0,
     )
     # Sparse bonus when the plug center is inside the socket bore.
     # plug_inserted = RewTerm(
@@ -522,7 +522,12 @@ class RewardsCfg:
     #     weight=500.0,
     # )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    # Smooth the arm only; the binary gripper must stay free to toggle open/closed.
+    # action_rate = RewTerm(
+    #     func=mdp.action_rate_l2_term,
+    #     params={"action_name": "arm_action"},
+    #     weight=-1e-2,
+    # )
     # gripper_close = RewTerm(
     #     func=mdp.gripper_close_amount,
     #     params={"action_name": "gripper_action"},

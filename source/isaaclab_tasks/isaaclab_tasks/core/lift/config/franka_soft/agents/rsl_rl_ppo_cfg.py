@@ -12,10 +12,10 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class FrankaDeformablePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 50000
-    save_interval = 10
+    save_interval = 100
     experiment_name = "franka_deformable"
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=0.25,
+        init_noise_std=1.0,
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[256, 128, 64],
@@ -35,4 +35,25 @@ class FrankaDeformablePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
+    )
+
+
+@configclass
+class FrankaCablePlugPPORunnerCfg(FrankaDeformablePPORunnerCfg):
+    """PPO config for the cable-plug grasp-and-insert task, tuned separately from the shared
+    deformable config (own checkpoint folder, lower arm-exploration noise)."""
+    
+    num_steps_per_env = 24
+    max_iterations = 50000
+    save_interval = 100
+    experiment_name = "franka_cable_plug"
+    policy = RslRlPpoActorCriticCfg(
+        # Lower than the shared default: the plug spawns at the gripper, so heavy arm noise pushes
+        # the end-effector off it before the fingers can close. The binary gripper still explores.
+        init_noise_std=0.5,
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
+        actor_hidden_dims=[256, 128, 64],
+        critic_hidden_dims=[256, 128, 64],
+        activation="elu",
     )
