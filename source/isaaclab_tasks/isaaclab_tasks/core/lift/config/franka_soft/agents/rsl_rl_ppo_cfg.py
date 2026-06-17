@@ -15,7 +15,7 @@ class FrankaDeformablePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     save_interval = 10
     experiment_name = "franka_deformable"
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=1.0,
+        init_noise_std=0.25,
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[256, 128, 64],

@@ -417,7 +417,7 @@ class ActionsCfg:
     """7-dim arm joint position + 1-dim binary gripper command."""
 
     arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.0, use_default_offset=True
+        asset_name="robot", joint_names=["panda_joint.*"], scale=0.5, use_default_offset=True
     )
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
@@ -496,12 +496,12 @@ class RewardsCfg:
     reaching_plug = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("object")},
-        weight=5.0,
+        weight=1.0,
     )
     grasping_plug = RewTerm(
         func=mdp.object_grasped,
         params={"force_threshold": 1.0, "reach_threshold": 0.03, "asset_cfg": SceneEntityCfg("object")},
-        weight=50.0,
+        weight=1.0,
     )
     plug_goal_tracking = RewTerm(
         func=mdp.object_grasped_goal_distance,
@@ -522,7 +522,7 @@ class RewardsCfg:
     #     weight=500.0,
     # )
 
-    # action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
     # gripper_close = RewTerm(
     #     func=mdp.gripper_close_amount,
     #     params={"action_name": "gripper_action"},
