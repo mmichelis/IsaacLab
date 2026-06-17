@@ -78,7 +78,7 @@ _SHOULDER_OFFSET = (0.0, 0.0, 0.333)
 # All reset sampling is clipped to these so the plug and goal stay reachable.
 _FRANKA_WORKSPACE = {
     "r": (0.15, 0.75),
-    "theta": (0.05, math.pi / 2.0),
+    "theta": (math.pi / 12.0, math.pi / 2.0 + math.pi / 3.0),
     "phi": (-math.pi / 4.0, math.pi / 4.0),
     "shoulder_offset": _SHOULDER_OFFSET,
 }
@@ -136,7 +136,7 @@ _CURRICULUM_NUM_STEPS = 1e5
 _PLUG_GRASP_RANGE_FINAL = _clip_to_workspace(
     {
         "r": (0.15, 0.75),
-        "theta": (0.05, math.pi / 2.0),
+        "theta": (math.pi / 4.0, math.pi / 2.0 + math.pi / 6.0),
         "phi": (-math.pi / 4.0, math.pi / 4.0),
         "roll": (_DEFAULT_PLUG_RPY[0] - math.pi / 4, _DEFAULT_PLUG_RPY[0] + math.pi / 4),
         "pitch": (_DEFAULT_PLUG_RPY[1] - math.pi / 4, _DEFAULT_PLUG_RPY[1] + math.pi / 4),
@@ -146,7 +146,7 @@ _PLUG_GRASP_RANGE_FINAL = _clip_to_workspace(
 _GOAL_SPHERICAL_RANGE_FINAL = _clip_to_workspace(
     {
         "r": (0.15, 0.75),
-        "theta": (0.05, math.pi / 2.0),
+        "theta": (math.pi / 4.0, math.pi / 2.0 + math.pi / 6.0),
         "phi": (-math.pi / 4.0, math.pi / 4.0),
         "pitch": (_DEFAULT_PLUG_RPY[1] - 1.5 * math.pi, _DEFAULT_PLUG_RPY[1] - math.pi / 4),
         "yaw": (_DEFAULT_PLUG_RPY[2] - math.pi / 3, _DEFAULT_PLUG_RPY[2] + math.pi / 3),
