@@ -522,12 +522,7 @@ class RewardsCfg:
     #     weight=500.0,
     # )
 
-    # Smooth the arm only; the binary gripper must stay free to toggle open/closed.
-    # action_rate = RewTerm(
-    #     func=mdp.action_rate_l2_term,
-    #     params={"action_name": "arm_action"},
-    #     weight=-1e-2,
-    # )
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
     # gripper_close = RewTerm(
     #     func=mdp.gripper_close_amount,
     #     params={"action_name": "gripper_action"},

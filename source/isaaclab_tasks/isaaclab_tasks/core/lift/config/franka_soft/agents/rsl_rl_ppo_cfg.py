@@ -53,7 +53,7 @@ class FrankaCablePlugPPORunnerCfg(FrankaDeformablePPORunnerCfg):
         init_noise_std=0.5,
         actor_obs_normalization=False,
         critic_obs_normalization=False,
-        actor_hidden_dims=[256, 128, 64],
-        critic_hidden_dims=[256, 128, 64],
+        actor_hidden_dims=[512, 128, 64],
+        critic_hidden_dims=[512, 128, 64],
         activation="elu",
     )
