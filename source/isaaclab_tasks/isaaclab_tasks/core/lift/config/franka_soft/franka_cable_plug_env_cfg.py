@@ -23,6 +23,7 @@ from isaaclab_visualizers.newton.newton_visualizer_cfg import NewtonVisualizerCf
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.managers import CommandTerm, CommandTermCfg, SceneEntityCfg
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -118,6 +119,26 @@ _GOAL_SPHERICAL_RANGE = _clip_to_workspace(
         "phi": _PLUG_GRASP_RANGE["phi"],
         "pitch": (-math.pi / 4.0, math.pi / 4.0),
         "yaw": (-math.pi / 2.0, math.pi / 2.0),
+    }
+)
+
+# Curriculum: linearly widen the plug/goal reset ranges from their tight initial values (above) to
+# these wider, still workspace-clipped, final bounds over the first _CURRICULUM_NUM_STEPS env steps.
+# Only the spherical position (r/theta/phi) and the plug yaw widen; goal pitch/yaw stay at initial.
+_CURRICULUM_NUM_STEPS = 1e8
+_PLUG_GRASP_RANGE_FINAL = _clip_to_workspace(
+    {
+        "r": (0.35, 0.60),
+        "theta": (1.10, 1.50),
+        "phi": (-math.pi / 6.0, math.pi / 6.0),
+        "yaw": (_DEFAULT_PLUG_RPY[2] - math.radians(20.0), _DEFAULT_PLUG_RPY[2] + math.radians(20.0)),
+    }
+)
+_GOAL_SPHERICAL_RANGE_FINAL = _clip_to_workspace(
+    {
+        "r": (0.30, 0.65),
+        "theta": (1.00, 1.50),
+        "phi": (-math.pi / 4.0, math.pi / 4.0),
     }
 )
 
@@ -508,11 +529,37 @@ class TerminationsCfg:
         params={"minimum_height": 0.0, "asset_cfg": SceneEntityCfg("object")},
     )
 
+    # Plug left the table footprint.
+    plug_outside_table = DoneTerm(
+        func=mdp.object_outside_table_bounds,
+        params={"x_bounds": (0.0, 1.0), "y_bounds": (-0.5, 0.5), "z_bounds": (0.0, 1.0), "asset_cfg": SceneEntityCfg("object")},
+    )
+
     # Thresholds well above the worst seen under extreme random actions (~30 rad/s, ~5 m/s).
     velocity_divergence = DoneTerm(
         func=mdp.assembly_velocity_out_of_bounds,
         params={"max_joint_vel": 50.0, "max_body_vel": 20.0},
     )
+
+
+@configclass
+class CurriculumCfg:
+    """Widen the goal (and, without the cable, plug) reset ranges over training steps."""
+
+    reset_goal_range = CurrTerm(
+        func=mdp.modify_term_cfg,
+        params={
+            "address": "events.reset_socket.params.pose_range",
+            "modify_fn": mdp.step_widen_pose_range,
+            "modify_params": {
+                "initial_range": _GOAL_SPHERICAL_RANGE,
+                "final_range": _GOAL_SPHERICAL_RANGE_FINAL,
+                "num_steps": _CURRICULUM_NUM_STEPS,
+            },
+        },
+    )
+    # Plug-only widening, populated by the no-cable variant (reset_plug exists only there).
+    reset_plug_range: CurrTerm | None = None
 
 
 ##
@@ -536,6 +583,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     def _disable_cable(self) -> None:
         """Remove the cable and anchor; manipulate the free plug, keeping the observation space."""
@@ -553,6 +601,19 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
                 "plug_cfg": SceneEntityCfg("object"),
                 "shoulder_offset": _SHOULDER_OFFSET,
                 "default_rp": _DEFAULT_PLUG_RPY[:2],
+            },
+        )
+        # Widen the plug grasp range over training (the goal range is widened in the base cfg).
+        self.curriculum.reset_plug_range = CurrTerm(
+            func=mdp.modify_term_cfg,
+            params={
+                "address": "events.reset_plug.params.pose_range",
+                "modify_fn": mdp.step_widen_pose_range,
+                "modify_params": {
+                    "initial_range": _PLUG_GRASP_RANGE,
+                    "final_range": _PLUG_GRASP_RANGE_FINAL,
+                    "num_steps": _CURRICULUM_NUM_STEPS,
+                },
             },
         )
         # Keep the cable_poses slot (zeros) so the observation space matches the cable env.
@@ -631,3 +692,39 @@ class FrankaCablePlugNoCableEnvCfg(FrankaCablePlugEnvCfg):
     """
 
     with_cable: bool = False
+
+
+def _pin_full_difficulty(cfg: FrankaCablePlugEnvCfg) -> None:
+    """Pin the reset ranges to the curriculum's final (full-difficulty) bounds and disable it.
+
+    For eval the difficulty should not ramp from scratch with ``common_step_counter``, so the goal
+    (and, without the cable, plug) reset ranges are set to what the curriculum reaches at the end of
+    training, and the now-redundant curriculum terms are removed.
+    """
+    cfg.events.reset_socket.params["pose_range"] = {**_GOAL_SPHERICAL_RANGE, **_GOAL_SPHERICAL_RANGE_FINAL}
+    if cfg.events.reset_plug is not None:
+        cfg.events.reset_plug.params["pose_range"] = {**_PLUG_GRASP_RANGE, **_PLUG_GRASP_RANGE_FINAL}
+    cfg.curriculum.reset_goal_range = None
+    cfg.curriculum.reset_plug_range = None
+
+
+@configclass
+class FrankaCablePlugEnvCfg_PLAY(FrankaCablePlugEnvCfg):
+    """Eval cfg for the cable variant: reset ranges pinned to full difficulty, curriculum disabled."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 16
+        self.observations.policy.enable_corruption = False
+        _pin_full_difficulty(self)
+
+
+@configclass
+class FrankaCablePlugNoCableEnvCfg_PLAY(FrankaCablePlugNoCableEnvCfg):
+    """Eval cfg for the no-cable variant: reset ranges pinned to full difficulty, curriculum disabled."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 16
+        self.observations.policy.enable_corruption = False
+        _pin_full_difficulty(self)
