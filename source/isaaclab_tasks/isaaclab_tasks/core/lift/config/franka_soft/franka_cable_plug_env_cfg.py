@@ -115,13 +115,14 @@ _PLUG_GRASP_RANGE = _clip_to_workspace(
 
 # Goal pose reset: position sampled in the same shoulder-centered spherical shell as the plug (keeps
 # the goal reachable), with the socket's insertion orientation kept wide.
+# Pitch is -90 deg from the default plug orientation so the socket faces +x.
 _GOAL_SPHERICAL_RANGE = _clip_to_workspace(
     {
         "r": _PLUG_GRASP_RANGE["r"],
         "theta": _PLUG_GRASP_RANGE["theta"],
         "phi": _PLUG_GRASP_RANGE["phi"],
-        "pitch": (-math.pi / 4.0, math.pi / 4.0),
-        "yaw": (-math.pi / 2.0, math.pi / 2.0),
+        "pitch": (_DEFAULT_PLUG_RPY[1]-math.pi/2, _DEFAULT_PLUG_RPY[1]-math.pi/2),
+        "yaw": (_DEFAULT_PLUG_RPY[2], _DEFAULT_PLUG_RPY[2]),
     }
 )
 
@@ -129,7 +130,9 @@ _GOAL_SPHERICAL_RANGE = _clip_to_workspace(
 # these wider, still workspace-clipped, final bounds over the first _CURRICULUM_NUM_STEPS env steps.
 # The plug widens position (r/theta/phi) and orientation (roll/pitch/yaw about the default tilt); the
 # goal widens position only (its pitch/yaw stay at initial).
-_CURRICULUM_NUM_STEPS = 1e9
+# Scale to the training budget: common_step_counter advances num_steps_per_env per iteration, so a
+# full run (24 * 50000 iters) reaches ~1.2e6; saturate partway so training continues at full difficulty.
+_CURRICULUM_NUM_STEPS = 1e5
 _PLUG_GRASP_RANGE_FINAL = _clip_to_workspace(
     {
         "r": (0.15, 0.75),
@@ -145,6 +148,8 @@ _GOAL_SPHERICAL_RANGE_FINAL = _clip_to_workspace(
         "r": (0.15, 0.75),
         "theta": (0.05, math.pi / 2.0),
         "phi": (-math.pi / 4.0, math.pi / 4.0),
+        "pitch": (_DEFAULT_PLUG_RPY[1]-1.5*math.pi, _DEFAULT_PLUG_RPY[1]-math.pi/4),
+        "yaw": (_DEFAULT_PLUG_RPY[2]-math.pi/3, _DEFAULT_PLUG_RPY[2]+math.pi/3),
     }
 )
 
