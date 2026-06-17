@@ -121,7 +121,7 @@ _GOAL_SPHERICAL_RANGE = _clip_to_workspace(
         "r": _PLUG_GRASP_RANGE["r"],
         "theta": _PLUG_GRASP_RANGE["theta"],
         "phi": _PLUG_GRASP_RANGE["phi"],
-        "pitch": (_DEFAULT_PLUG_RPY[1]-math.pi/2, _DEFAULT_PLUG_RPY[1]-math.pi/2),
+        "pitch": (_DEFAULT_PLUG_RPY[1] - math.pi / 2, _DEFAULT_PLUG_RPY[1] - math.pi / 2),
         "yaw": (_DEFAULT_PLUG_RPY[2], _DEFAULT_PLUG_RPY[2]),
     }
 )
@@ -148,8 +148,8 @@ _GOAL_SPHERICAL_RANGE_FINAL = _clip_to_workspace(
         "r": (0.15, 0.75),
         "theta": (0.05, math.pi / 2.0),
         "phi": (-math.pi / 4.0, math.pi / 4.0),
-        "pitch": (_DEFAULT_PLUG_RPY[1]-1.5*math.pi, _DEFAULT_PLUG_RPY[1]-math.pi/4),
-        "yaw": (_DEFAULT_PLUG_RPY[2]-math.pi/3, _DEFAULT_PLUG_RPY[2]+math.pi/3),
+        "pitch": (_DEFAULT_PLUG_RPY[1] - 1.5 * math.pi, _DEFAULT_PLUG_RPY[1] - math.pi / 4),
+        "yaw": (_DEFAULT_PLUG_RPY[2] - math.pi / 3, _DEFAULT_PLUG_RPY[2] + math.pi / 3),
     }
 )
 
@@ -417,7 +417,7 @@ class ActionsCfg:
     """7-dim arm joint position + 1-dim binary gripper command."""
 
     arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.5, use_default_offset=True
+        asset_name="robot", joint_names=["panda_joint.*"], scale=0.0, use_default_offset=True
     )
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
@@ -516,21 +516,21 @@ class RewardsCfg:
         weight=16.0,
     )
     # Sparse bonus when the plug center is inside the socket bore.
-    plug_inserted = RewTerm(
-        func=mdp.plug_inserted,
-        params={"depth_tol": _TARGET_HOLE_DEPTH / 2.0, "radius": _TARGET_HOLE_INNER / 2.0},
-        weight=500.0,
-    )
+    # plug_inserted = RewTerm(
+    #     func=mdp.plug_inserted,
+    #     params={"depth_tol": _TARGET_HOLE_DEPTH / 2.0, "radius": _TARGET_HOLE_INNER / 2.0},
+    #     weight=500.0,
+    # )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
-    gripper_close = RewTerm(
-        func=mdp.gripper_close_amount,
-        params={"action_name": "gripper_action"},
-        weight=-1e-2,
-    )
-    joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
-    joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-6)
-    joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-6)
+    # action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    # gripper_close = RewTerm(
+    #     func=mdp.gripper_close_amount,
+    #     params={"action_name": "gripper_action"},
+    #     weight=-1e-2,
+    # )
+    # joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4)
+    # joint_torque = RewTerm(func=mdp.joint_torques_l2, weight=-1e-6)
+    # joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-1e-6)
 
 
 @configclass

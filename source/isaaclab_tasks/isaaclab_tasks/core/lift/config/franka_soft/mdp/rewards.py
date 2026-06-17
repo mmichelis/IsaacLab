@@ -206,11 +206,13 @@ def object_grasped_goal_distance(
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
-    """Goal tracking (see :func:`object_com_goal_distance`) gated on grasping the plug.
+    """Goal tracking (see :func:`object_com_goal_distance`) gated on grasping and aligning the plug.
 
-    Identical to :func:`object_com_goal_distance` but credited only while the plug is grasped
-    (see :func:`_is_grasped`), so the policy is rewarded for carrying the plug toward the goal
-    rather than for the plug drifting there on its own.
+    Extends :func:`object_com_goal_distance` with two multiplicative gates: the plug must be grasped
+    (see :func:`_is_grasped`), and its long axis (body z) must point into the goal bore (the goal
+    frame's +x axis). The latter is the signed cosine between the two world-frame axes clamped to
+    ``[0, 1]``, so credit fades as the plug tilts away and vanishes once it points past 90 deg or
+    backward. Rotation about the long axis is left free (the plug is rotationally symmetric).
 
     Args:
         env: The environment instance.
@@ -228,7 +230,19 @@ def object_grasped_goal_distance(
     """
     tracking = object_com_goal_distance(env, std, minimal_height, command_name, asset_cfg, robot_cfg)
     grasped = _is_grasped(env, force_threshold, reach_threshold, asset_cfg, ee_frame_cfg)
-    return tracking * grasped.float()
+
+    # Long-axis alignment: plug body z should point along the goal bore axis (goal frame +x).
+    robot: Articulation = env.scene[robot_cfg.name]
+    asset = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    _, des_quat_w = combine_frame_transforms(
+        wp.to_torch(robot.data.root_pos_w), wp.to_torch(robot.data.root_quat_w), command[:, :3], command[:, 3:7]
+    )
+    z_hat = torch.tensor([0.0, 0.0, 1.0], device=env.device).expand(env.num_envs, 3)
+    x_hat = torch.tensor([1.0, 0.0, 0.0], device=env.device).expand(env.num_envs, 3)
+    align = (quat_apply(asset.data.root_quat_w.torch, z_hat) * quat_apply(des_quat_w, x_hat)).sum(dim=1).clamp(0.0, 1.0)
+    align = torch.nan_to_num(align, nan=0.0, posinf=0.0, neginf=0.0)
+    return tracking * grasped.float() * align
 
 
 _SOCKET_CFGS = (
