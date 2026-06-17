@@ -55,6 +55,34 @@ def step_widen_pose_range(
     return widened
 
 
+def step_interpolate_value(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    data: float,
+    initial_value: float,
+    final_value: float,
+    num_steps: int,
+    start_step: int = 0,
+) -> float:
+    """Linearly interpolate a scalar environment parameter from initial to final over training steps.
+
+    Ramps from :paramref:`initial_value` to :paramref:`final_value` as
+    :attr:`~isaaclab.envs.ManagerBasedRLEnv.common_step_counter` goes from ``start_step`` to
+    ``start_step + num_steps``. For use with :class:`~isaaclab.envs.mdp.modify_env_param` on a scalar
+    attribute (e.g. ``cfg.episode_length_s``). Always returns the current target (no ``NO_CHANGE``),
+    so the attribute holds ``initial_value`` from the first step regardless of its configured default.
+
+    Args:
+        data: Current value of the targeted attribute (unused).
+        initial_value: Value before ``start_step``.
+        final_value: Value reached at ``start_step + num_steps``.
+        num_steps: Number of steps over which to ramp.
+        start_step: Step at which the ramp begins.
+    """
+    frac = min(max((env.common_step_counter - start_step) / max(num_steps, 1), 0.0), 1.0)
+    return initial_value + frac * (final_value - initial_value)
+
+
 def curriculum_progress(
     env: ManagerBasedRLEnv,
     env_ids: Sequence[int],

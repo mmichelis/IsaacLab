@@ -28,10 +28,11 @@ __all__ = [
     "reset_socket_pose_uniform",
     # Curriculum terms
     "curriculum_progress",
+    "step_interpolate_value",
     "step_widen_pose_range",
 ]
 
-from .curriculums import curriculum_progress, step_widen_pose_range
+from .curriculums import curriculum_progress, step_interpolate_value, step_widen_pose_range
 from .events import (
     reset_cable_assembly_uniform,
     reset_cable_uniform,

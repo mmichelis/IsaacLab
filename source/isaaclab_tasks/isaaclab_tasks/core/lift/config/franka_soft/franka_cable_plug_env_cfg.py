@@ -148,6 +148,11 @@ _GOAL_SPHERICAL_RANGE_FINAL = _clip_to_workspace(
     }
 )
 
+# Episode length [s] ramped by the curriculum: short episodes early (fast grasp feedback), long ones
+# once the task widens.
+_EPISODE_LENGTH_INITIAL = 0.5
+_EPISODE_LENGTH_FINAL = 8.0
+
 # Kinematic anchor, above the tabletop in front of the robot [m].
 _ANCHOR_POS = (0.15, 0.0, 0.2)
 
@@ -572,6 +577,20 @@ class CurriculumCfg:
     # Plug-only widening, populated by the no-cable variant (reset_plug exists only there).
     reset_plug_range: CurrTerm | None = None
 
+    # Ramp the episode length from short to long over training.
+    episode_length = CurrTerm(
+        func=mdp.modify_env_param,
+        params={
+            "address": "cfg.episode_length_s",
+            "modify_fn": mdp.step_interpolate_value,
+            "modify_params": {
+                "initial_value": _EPISODE_LENGTH_INITIAL,
+                "final_value": _EPISODE_LENGTH_FINAL,
+                "num_steps": _CURRICULUM_NUM_STEPS,
+            },
+        },
+    )
+
     # Report the widening progress (0->1) as Curriculum/progress in the training output.
     progress = CurrTerm(
         func=mdp.curriculum_progress,
@@ -644,7 +663,8 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
 
         # general settings
         self.decimation = 1
-        self.episode_length_s = 6.0
+        # Curriculum ramps this up to _EPISODE_LENGTH_FINAL; start short for fast early feedback.
+        self.episode_length_s = _EPISODE_LENGTH_INITIAL
 
         # simulation settings
         self.sim.dt = 1 / 60.0
@@ -714,14 +734,16 @@ def _pin_full_difficulty(cfg: FrankaCablePlugEnvCfg) -> None:
     """Pin the reset ranges to the curriculum's final (full-difficulty) bounds and disable it.
 
     For eval the difficulty should not ramp from scratch with ``common_step_counter``, so the goal
-    (and, without the cable, plug) reset ranges are set to what the curriculum reaches at the end of
-    training, and the now-redundant curriculum terms are removed.
+    (and, without the cable, plug) reset ranges and the episode length are set to what the curriculum
+    reaches at the end of training, and the now-redundant curriculum terms are removed.
     """
     cfg.events.reset_socket.params["pose_range"] = {**_GOAL_SPHERICAL_RANGE, **_GOAL_SPHERICAL_RANGE_FINAL}
     if cfg.events.reset_plug is not None:
         cfg.events.reset_plug.params["pose_range"] = {**_PLUG_GRASP_RANGE, **_PLUG_GRASP_RANGE_FINAL}
+    cfg.episode_length_s = _EPISODE_LENGTH_FINAL
     cfg.curriculum.reset_goal_range = None
     cfg.curriculum.reset_plug_range = None
+    cfg.curriculum.episode_length = None
     cfg.curriculum.progress = None
 
 
