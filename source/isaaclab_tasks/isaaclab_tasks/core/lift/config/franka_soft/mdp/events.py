@@ -402,7 +402,6 @@ def reset_plug_uniform(
     pose_range: dict[str, tuple[float, float]],
     plug_cfg: SceneEntityCfg,
     shoulder_offset: tuple[float, float, float] = (0.0, 0.0, 0.333),
-    default_rp: tuple[float, float] = (0.0, 0.0),
 ) -> None:
     """Reset a free rigid plug (VBD body) at a sampled point in the Franka's reachable workspace.
 
@@ -413,17 +412,17 @@ def reset_plug_uniform(
     fingers to hold the plug.
 
     The Franka root sits at each env origin, so the sphere origin is ``env_origin + shoulder_offset``.
-    The orientation uses fixed roll/pitch (the default grasp tilt) with a jittered world-Z yaw, so it
-    needs no arm FK -- which the coupled solver does not refresh during a reset event.
+    The orientation is sampled in euler roll/pitch/yaw, so it needs no arm FK -- which the coupled
+    solver does not refresh during a reset event.
 
     Args:
         env: The RL environment.
         env_ids: Environment indices to reset.
         pose_range: Spherical ranges for the plug center -- ``"r"`` [m], ``"theta"`` (polar) [rad],
-            ``"phi"`` (azimuth) [rad] -- about the shoulder, plus ``"yaw"`` [rad] about world Z.
+            ``"phi"`` (azimuth) [rad] -- about the shoulder, plus euler ``"roll"``/``"pitch"``/``"yaw"``
+            [rad] ranges. Any key absent from the dict defaults to ``0.0``.
         plug_cfg: Scene-entity reference to the rigid plug :class:`RigidObject`.
         shoulder_offset: Shoulder position in the robot root frame [m] (sphere origin).
-        default_rp: Fixed plug ``(roll, pitch)`` [rad]; only yaw is jittered.
     """
     n = env_ids.shape[0]
     device = env.device
@@ -438,12 +437,12 @@ def reset_plug_uniform(
     shoulder = torch.tensor(shoulder_offset, device=device)
     plug_pos = env.scene.env_origins[env_ids] + shoulder + pos_rel
 
-    # Orientation: fixed grasp roll/pitch with a jittered world-Z yaw (pre-multiplying Rz adds to yaw).
-    lo, hi = pose_range.get("yaw", (0.0, 0.0))
-    yaw = torch.empty(n, device=device).uniform_(float(lo), float(hi))
-    roll = torch.full((n,), float(default_rp[0]), device=device)
-    pitch = torch.full((n,), float(default_rp[1]), device=device)
-    plug_quat = quat_from_euler_xyz(roll, pitch, yaw)
+    # Orientation: jitter euler roll/pitch/yaw; any range absent from pose_range defaults to 0.
+    def _euler(key: str) -> torch.Tensor:
+        lo, hi = pose_range.get(key, (0.0, 0.0))
+        return torch.empty(n, device=device).uniform_(float(lo), float(hi))
+
+    plug_quat = quat_from_euler_xyz(_euler("roll"), _euler("pitch"), _euler("yaw"))
 
     rigid_ids = _get_body_ids(env, plug_cfg, is_cable=False)[env_ids]  # (n_envs,)
     abs_body_q = torch.cat([plug_pos, plug_quat], dim=-1).unsqueeze(1)  # (n_envs, 1, 7)

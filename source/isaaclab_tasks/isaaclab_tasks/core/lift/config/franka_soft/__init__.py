@@ -52,11 +52,31 @@ gym.register(
 )
 
 gym.register(
+    id="Isaac-Lift-CablePlug-Franka-Play-v0",
+    entry_point=f"{__name__}.franka_cable_plug_env:FrankaCablePlugEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Isaac-Lift-Plug-Franka-v0",
     entry_point=f"{__name__}.franka_cable_plug_env:FrankaCablePlugEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugNoCableEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Isaac-Lift-Plug-Franka-Play-v0",
+    entry_point=f"{__name__}.franka_cable_plug_env:FrankaCablePlugEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.franka_cable_plug_env_cfg:FrankaCablePlugNoCableEnvCfg_PLAY",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaDeformablePPORunnerCfg",
     },
 )

@@ -53,3 +53,21 @@ def step_widen_pose_range(
         i_lo, i_hi = initial_range[key]
         widened[key] = (i_lo + frac * (f_lo - i_lo), i_hi + frac * (f_hi - i_hi))
     return widened
+
+
+def curriculum_progress(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    num_steps: int,
+    start_step: int = 0,
+) -> float:
+    """Report the range-widening progress in ``[0, 1]`` for logging.
+
+    Matches the fraction used by :func:`step_widen_pose_range`; surfaces as ``Curriculum/<name>`` in
+    the rsl_rl iteration output and TensorBoard. Does not modify the environment.
+
+    Args:
+        num_steps: Number of steps over which the ranges widen.
+        start_step: Step at which widening begins.
+    """
+    return min(max((env.common_step_counter - start_step) / max(num_steps, 1), 0.0), 1.0)

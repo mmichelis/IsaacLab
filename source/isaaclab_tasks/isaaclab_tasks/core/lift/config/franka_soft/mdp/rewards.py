@@ -380,6 +380,7 @@ def object_outside_table_bounds(
     env: ManagerBasedRLEnv,
     x_bounds: tuple[float, float],
     y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
     asset_cfg: SceneEntityCfg,
 ) -> torch.Tensor:
     """Terminate if any asset point leaves the table footprint.
@@ -388,6 +389,7 @@ def object_outside_table_bounds(
         env: The environment instance.
         x_bounds: Allowed x-position range in the environment frame [m].
         y_bounds: Allowed y-position range in the environment frame [m].
+        z_bounds: Allowed z-position range in the environment frame [m].
         asset_cfg: The deformable or cable entity.
 
     Returns:
@@ -397,7 +399,8 @@ def object_outside_table_bounds(
     points = _points_w(asset) - env.scene.env_origins.unsqueeze(1)
     outside_x = (points[..., 0] < x_bounds[0]) | (points[..., 0] > x_bounds[1])
     outside_y = (points[..., 1] < y_bounds[0]) | (points[..., 1] > y_bounds[1])
-    return torch.any(outside_x | outside_y, dim=1)
+    outside_z = (points[..., 2] < z_bounds[0]) | (points[..., 2] > z_bounds[1])
+    return torch.any(outside_x | outside_y | outside_z, dim=1)
 
 
 def ee_below_minimum(

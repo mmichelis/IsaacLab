@@ -26,8 +26,12 @@ __all__ = [
     "reset_plug_uniform",
     "reset_proxy_body_prev",
     "reset_socket_pose_uniform",
+    # Curriculum terms
+    "curriculum_progress",
+    "step_widen_pose_range",
 ]
 
+from .curriculums import curriculum_progress, step_widen_pose_range
 from .events import (
     reset_cable_assembly_uniform,
     reset_cable_uniform,

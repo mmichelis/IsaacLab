@@ -77,7 +77,7 @@ _SHOULDER_OFFSET = (0.0, 0.0, 0.333)
 # Reachable-workspace bounds (shoulder-centered shell): r [m], polar theta [rad], azimuth phi [rad].
 # All reset sampling is clipped to these so the plug and goal stay reachable.
 _FRANKA_WORKSPACE = {
-    "r": (0.1, 0.75),
+    "r": (0.15, 0.75),
     "theta": (0.05, math.pi / 2.0),
     "phi": (-math.pi / 4.0, math.pi / 4.0),
     "shoulder_offset": _SHOULDER_OFFSET,
@@ -99,14 +99,17 @@ def _clip_to_workspace(pose_range: dict[str, tuple[float, float]]) -> dict[str, 
 # spherical coords (r [m], polar theta [rad], azimuth phi [rad]) so the arm only closes to grab. The
 # default is the FK grasp point (panda_hand + ee offset) at the Franka default config.
 _DEFAULT_FRANKA_POSE = (0.46630, 1.45799, 0.0)
-# Default plug orientation (euler xyz [rad]) at the default config; only yaw is jittered (+/- 5 deg).
+# Default plug orientation (euler xyz [rad]) at the default config; the reset starts at this exact
+# pose (degenerate ranges) and the curriculum widens roll/pitch/yaw from here.
 _DEFAULT_PLUG_RPY = (0.04440, -0.77480, math.pi)
 _PLUG_GRASP_RANGE = _clip_to_workspace(
     {
-        "r": (_DEFAULT_FRANKA_POSE[0] - 0.005, _DEFAULT_FRANKA_POSE[0] + 0.005),
-        "theta": (_DEFAULT_FRANKA_POSE[1] - 0.005, _DEFAULT_FRANKA_POSE[1] + 0.005),
-        "phi": (_DEFAULT_FRANKA_POSE[2] - 0.005, _DEFAULT_FRANKA_POSE[2] + 0.005),
-        "yaw": (_DEFAULT_PLUG_RPY[2] - math.radians(5.0), _DEFAULT_PLUG_RPY[2] + math.radians(5.0)),
+        "r": (_DEFAULT_FRANKA_POSE[0], _DEFAULT_FRANKA_POSE[0]),
+        "theta": (_DEFAULT_FRANKA_POSE[1], _DEFAULT_FRANKA_POSE[1]),
+        "phi": (_DEFAULT_FRANKA_POSE[2], _DEFAULT_FRANKA_POSE[2]),
+        "roll": (_DEFAULT_PLUG_RPY[0], _DEFAULT_PLUG_RPY[0]),
+        "pitch": (_DEFAULT_PLUG_RPY[1], _DEFAULT_PLUG_RPY[1]),
+        "yaw": (_DEFAULT_PLUG_RPY[2], _DEFAULT_PLUG_RPY[2]),
     }
 )
 
@@ -124,20 +127,23 @@ _GOAL_SPHERICAL_RANGE = _clip_to_workspace(
 
 # Curriculum: linearly widen the plug/goal reset ranges from their tight initial values (above) to
 # these wider, still workspace-clipped, final bounds over the first _CURRICULUM_NUM_STEPS env steps.
-# Only the spherical position (r/theta/phi) and the plug yaw widen; goal pitch/yaw stay at initial.
-_CURRICULUM_NUM_STEPS = 1e8
+# The plug widens position (r/theta/phi) and orientation (roll/pitch/yaw about the default tilt); the
+# goal widens position only (its pitch/yaw stay at initial).
+_CURRICULUM_NUM_STEPS = 1e9
 _PLUG_GRASP_RANGE_FINAL = _clip_to_workspace(
     {
-        "r": (0.35, 0.60),
-        "theta": (1.10, 1.50),
-        "phi": (-math.pi / 6.0, math.pi / 6.0),
-        "yaw": (_DEFAULT_PLUG_RPY[2] - math.radians(20.0), _DEFAULT_PLUG_RPY[2] + math.radians(20.0)),
+        "r": (0.15, 0.75),
+        "theta": (0.05, math.pi / 2.0),
+        "phi": (-math.pi / 4.0, math.pi / 4.0),
+        "roll": (_DEFAULT_PLUG_RPY[0] - math.pi / 4, _DEFAULT_PLUG_RPY[0] + math.pi / 4),
+        "pitch": (_DEFAULT_PLUG_RPY[1] - math.pi / 4, _DEFAULT_PLUG_RPY[1] + math.pi / 4),
+        "yaw": (_DEFAULT_PLUG_RPY[2] - math.pi / 4, _DEFAULT_PLUG_RPY[2] + math.pi / 4),
     }
 )
 _GOAL_SPHERICAL_RANGE_FINAL = _clip_to_workspace(
     {
-        "r": (0.30, 0.65),
-        "theta": (1.00, 1.50),
+        "r": (0.15, 0.75),
+        "theta": (0.05, math.pi / 2.0),
         "phi": (-math.pi / 4.0, math.pi / 4.0),
     }
 )
@@ -503,7 +509,7 @@ class RewardsCfg:
     plug_inserted = RewTerm(
         func=mdp.plug_inserted,
         params={"depth_tol": _TARGET_HOLE_DEPTH / 2.0, "radius": _TARGET_HOLE_INNER / 2.0},
-        weight=10.0,
+        weight=500.0,
     )
 
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
@@ -532,7 +538,12 @@ class TerminationsCfg:
     # Plug left the table footprint.
     plug_outside_table = DoneTerm(
         func=mdp.object_outside_table_bounds,
-        params={"x_bounds": (0.0, 1.0), "y_bounds": (-0.5, 0.5), "z_bounds": (0.0, 1.0), "asset_cfg": SceneEntityCfg("object")},
+        params={
+            "x_bounds": (0.0, 1.0),
+            "y_bounds": (-0.5, 0.5),
+            "z_bounds": (0.0, 1.0),
+            "asset_cfg": SceneEntityCfg("object"),
+        },
     )
 
     # Thresholds well above the worst seen under extreme random actions (~30 rad/s, ~5 m/s).
@@ -560,6 +571,12 @@ class CurriculumCfg:
     )
     # Plug-only widening, populated by the no-cable variant (reset_plug exists only there).
     reset_plug_range: CurrTerm | None = None
+
+    # Report the widening progress (0->1) as Curriculum/progress in the training output.
+    progress = CurrTerm(
+        func=mdp.curriculum_progress,
+        params={"num_steps": _CURRICULUM_NUM_STEPS},
+    )
 
 
 ##
@@ -600,7 +617,6 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
                 "pose_range": _PLUG_GRASP_RANGE,
                 "plug_cfg": SceneEntityCfg("object"),
                 "shoulder_offset": _SHOULDER_OFFSET,
-                "default_rp": _DEFAULT_PLUG_RPY[:2],
             },
         )
         # Widen the plug grasp range over training (the goal range is widened in the base cfg).
@@ -706,6 +722,7 @@ def _pin_full_difficulty(cfg: FrankaCablePlugEnvCfg) -> None:
         cfg.events.reset_plug.params["pose_range"] = {**_PLUG_GRASP_RANGE, **_PLUG_GRASP_RANGE_FINAL}
     cfg.curriculum.reset_goal_range = None
     cfg.curriculum.reset_plug_range = None
+    cfg.curriculum.progress = None
 
 
 @configclass
