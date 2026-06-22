@@ -299,14 +299,31 @@ def plug_socket_insertion(
     depth: float,
     radius: float,
     min_axis_cos: float,
+    force_threshold: float = 0.1,
+    reach_threshold: float = 0.05,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     socket_cfgs: tuple[SceneEntityCfg, ...] = _SOCKET_CFGS,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Dense peg-in-hole shaping: center the plug on the bore, align it, then seat it.
 
     Sums lateral centering (tanh kernel, scale ``std`` [m]), coaxial alignment, and an axial
     depth term that only credits once the plug is within ``radius`` [m] of the axis and aligned
     above ``min_axis_cos``. Depth is normalized by the bore ``depth`` [m] (seated at the center).
+    The whole term is gated on the plug being grasped (see :func:`_is_grasped`) so the policy
+    cannot earn it by maneuvering or dropping an ungrasped plug near the socket.
+
+    Args:
+        env: The environment instance.
+        std: Lateral centering tanh kernel scale [m].
+        depth: Bore depth used to normalize the axial seated term [m].
+        radius: Max radial offset for the seated gate [m].
+        min_axis_cos: Min ``|cos|`` between plug and bore axes for the seated gate.
+        force_threshold: Minimum per-finger contact force for a grasp [N].
+        reach_threshold: Maximum end-effector distance to the plug [m].
+        asset_cfg: The plug entity.
+        socket_cfgs: The four socket wall entities.
+        ee_frame_cfg: The end-effector frame entity.
 
     Returns:
         Reward tensor with shape ``(num_envs,)``.
@@ -315,7 +332,8 @@ def plug_socket_insertion(
     centering = 1.0 - torch.tanh(lateral / std)
     seated = (1.0 - axial.abs() / depth).clamp(0.0, 1.0)
     gate = (lateral < radius) & (axis_cos > min_axis_cos)
-    return centering + axis_cos + gate.float() * seated
+    grasped = _is_grasped(env, force_threshold, reach_threshold, asset_cfg, ee_frame_cfg).float()
+    return grasped * (centering + axis_cos + gate.float() * seated)
 
 
 def plug_inserted(

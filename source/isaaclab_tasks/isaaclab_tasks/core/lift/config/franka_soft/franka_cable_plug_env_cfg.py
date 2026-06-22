@@ -156,7 +156,7 @@ _GOAL_SPHERICAL_RANGE_FINAL = _clip_to_workspace(
 # Episode length [s] ramped by the curriculum: short episodes early (fast grasp feedback), long ones
 # once the task widens.
 _EPISODE_LENGTH_INITIAL = 0.5
-_EPISODE_LENGTH_FINAL = 8.0
+_EPISODE_LENGTH_FINAL = 4.0
 
 # Kinematic anchor, above the tabletop in front of the robot [m].
 _ANCHOR_POS = (0.15, 0.0, 0.2)
@@ -177,7 +177,7 @@ _TARGET_HOLE_DEPTH = _PLUG_HEIGHT
 
 # Socket center relative to the sampled goal, in the goal's local frame [m]: the goal (the staging
 # point the plug tracks) sits one offset in front of the socket opening (which faces -x).
-_SOCKET_OFFSET_B = (0.1, 0.0, 0.0)
+_SOCKET_OFFSET_B = (0.05, 0.0, 0.0)
 _STAGING_OFFSET = tuple(-v for v in _SOCKET_OFFSET_B)  # goal relative to socket center, in the bore frame
 
 
@@ -513,14 +513,30 @@ class RewardsCfg:
             "reach_threshold": 0.05,
             "asset_cfg": SceneEntityCfg("object"),
         },
-        weight=1.0,
+        weight=5.0,
     )
-    # Sparse bonus when the plug center is inside the socket bore.
-    # plug_inserted = RewTerm(
-    #     func=mdp.plug_inserted,
-    #     params={"depth_tol": _TARGET_HOLE_DEPTH / 2.0, "radius": _TARGET_HOLE_INNER / 2.0},
-    #     weight=500.0,
+    # Dense peg-in-hole shaping (grasp-gated): centers, aligns, then seats the plug in the bore. Drives the
+    # final ~10 cm from the staging goal into the socket, which goal-tracking alone does not (its tanh kernel
+    # saturates at the staging point). Weight 3 -> max ~9, kept below grasping (10) so the grasp holds first.
+    # plug_socket_insertion = RewTerm(
+    #     func=mdp.plug_socket_insertion,
+    #     params={
+    #         "std": 0.02,
+    #         "depth": _TARGET_HOLE_DEPTH,
+    #         "radius": _TARGET_HOLE_INNER / 2.0,
+    #         "min_axis_cos": 0.9,
+    #         "asset_cfg": SceneEntityCfg("object"),
+    #     },
+    #     weight=3.0,
     # )
+    # Sparse success bonus when the plug center is seated inside the socket bore (grasp-gated via the dense
+    # term above carrying the policy there). Weight 50 -- a crisp success signal, not the old 500 (which would
+    # spike the value targets and destabilize PPO).
+    plug_inserted = RewTerm(
+        func=mdp.plug_inserted,
+        params={"depth_tol": _TARGET_HOLE_DEPTH / 2.0, "radius": _TARGET_HOLE_INNER / 2.0},
+        weight=50.0,
+    )
 
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
     # gripper_close = RewTerm(
