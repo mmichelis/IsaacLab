@@ -340,26 +340,36 @@ def plug_inserted(
     env: ManagerBasedRLEnv,
     depth_tol: float,
     radius: float,
+    force_threshold: float = 0.1,
+    reach_threshold: float = 0.05,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     socket_cfgs: tuple[SceneEntityCfg, ...] = _SOCKET_CFGS,
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
-    """Sparse success: ``1`` when the plug center is inside the socket bore.
+    """Sparse success: ``1`` when the plug is grasped and its center is inside the socket bore.
 
-    Orientation is not checked: the plug center being within the bore (``|axial| < depth_tol``
-    along the bore axis and ``lateral < radius`` from it) is sufficient.
+    Gated on the plug being grasped (see :func:`_is_grasped`) so the policy cannot earn it by
+    maneuvering or dropping a free plug into the socket. Orientation is not checked: the plug center
+    being within the bore (``|axial| < depth_tol`` along the bore axis and ``lateral < radius`` from
+    it) while grasped is sufficient.
 
     Args:
         env: The environment instance.
         depth_tol: Max ``|axial|`` distance from the bore center, i.e. the bore half-depth [m].
         radius: Max radial offset from the bore axis, i.e. the bore radius [m].
+        force_threshold: Minimum per-finger contact force for a grasp [N].
+        reach_threshold: Maximum end-effector distance to the plug [m].
         asset_cfg: The plug entity.
         socket_cfgs: The four socket wall entities.
+        ee_frame_cfg: The end-effector frame entity.
 
     Returns:
         Reward tensor with shape ``(num_envs,)``.
     """
     axial, lateral, _ = _plug_in_socket(env, asset_cfg, socket_cfgs)
-    return ((axial.abs() < depth_tol) & (lateral < radius)).float()
+    seated = (axial.abs() < depth_tol) & (lateral < radius)
+    grasped = _is_grasped(env, force_threshold, reach_threshold, asset_cfg, ee_frame_cfg)
+    return (seated & grasped).float()
 
 
 def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:

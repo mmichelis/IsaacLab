@@ -529,14 +529,19 @@ class RewardsCfg:
     #     },
     #     weight=3.0,
     # )
-    # Sparse success bonus when the plug center is seated inside the socket bore (grasp-gated via the dense
-    # term above carrying the policy there). Weight 50 -- a crisp success signal, not the old 500 (which would
-    # spike the value targets and destabilize PPO).
-    plug_inserted = RewTerm(
-        func=mdp.plug_inserted,
-        params={"depth_tol": _TARGET_HOLE_DEPTH / 2.0, "radius": _TARGET_HOLE_INNER / 2.0},
-        weight=50.0,
-    )
+    # Sparse success bonus when the plug is grasped and its center is seated inside the socket bore. Grasp-
+    # gated so it cannot be earned by dropping a free plug in. Weight 50 -- a crisp success signal, not the
+    # old 500 (which would spike the value targets and destabilize PPO).
+    # plug_inserted = RewTerm(
+    #     func=mdp.plug_inserted,
+    #     params={
+    #         "depth_tol": _TARGET_HOLE_DEPTH / 2.0,
+    #         "radius": _TARGET_HOLE_INNER / 2.0,
+    #         "force_threshold": 0.1,
+    #         "reach_threshold": 0.05,
+    #     },
+    #     weight=50.0,
+    # )
 
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-2)
     # gripper_close = RewTerm(
