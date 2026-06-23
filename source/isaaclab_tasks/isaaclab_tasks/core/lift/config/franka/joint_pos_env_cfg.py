@@ -3,7 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+
 from isaaclab.assets import RigidObjectCfg
+from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
@@ -11,7 +15,11 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
+from isaaclab_contrib.coupling import CoupledProxySolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import CoupledNewtonCfg, NewtonModelCfg, VBDSolverCfg
+
 from isaaclab_tasks.core.lift import mdp
+from isaaclab_tasks.core.lift.config.franka_soft import mdp as soft_mdp
 from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 
 ##
@@ -28,7 +36,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         super().__post_init__()
 
         # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
@@ -45,7 +53,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set Cube as object
         self.scene.object = RigidObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Object",
+            prim_path="/World/envs/env_.*/Object",
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0, 0.055], rot=[0, 0, 0, 1]),
             spawn=UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
@@ -66,18 +74,67 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
         self.scene.ee_frame = FrameTransformerCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
+            prim_path="/World/envs/env_.*/Robot/panda_link0",
             debug_vis=False,
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
+                    prim_path="/World/envs/env_.*/Robot/panda_hand",
                     name="end_effector",
                     offset=OffsetCfg(
                         pos=[0.0, 0.0, 0.1034],
                     ),
                 ),
             ],
+        )
+
+        # The object is a VBD body, so re-seed its VBD state on reset instead of writing the
+        # rigid-body sim (reset_root_state_uniform would no-op on the solver side).
+        # self.events.reset_object_position = EventTerm(
+        #     func=soft_mdp.reset_rigid_body_uniform,
+        #     mode="reset",
+        #     params={
+        #         "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+        #         "asset_cfg": SceneEntityCfg("object"),
+        #     },
+        # )
+        # Proxy-coupled gripper: clear the teleport velocity left by the robot-joint reset, else the
+        # fingers fling the object. Must run after reset_robot_joints / reset_all.
+        # self.events.reset_proxy_velocity = EventTerm(func=soft_mdp.reset_proxy_body_prev, mode="reset")
+
+        # self.sim.physics = CoupledNewtonCfg(
+        #     scene_cfg=self.scene,
+        #     solver_cfg=CoupledProxySolverCfg(
+        #         src_solver_cfg=MJWarpSolverCfg(
+        #             cone="elliptic",
+        #             ls_parallel=True,
+        #             ls_iterations=20,
+        #             integrator="implicitfast",
+        #         ),
+        #         dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
+        #         src_bodies=[SceneEntityCfg("robot")],
+        #         dst_bodies=[SceneEntityCfg("object")],
+        #         proxy_bodies=[
+        #             SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
+        #         ],
+        #         # More relaxation passes tighten the proxy grip on the plug.
+        #         proxy_iterations=4,
+        #     ),
+        #     model_cfg=NewtonModelCfg(
+        #         shape_material_ke=1e5,
+        #         shape_material_kd=1e-2,
+        #         shape_material_mu=10.0,
+        #     ),
+        #     num_substeps=8,
+        # )
+        self.sim.physics = NewtonCfg(
+            solver_cfg=MJWarpSolverCfg(
+                cone="elliptic",
+                ls_parallel=True,
+                ls_iterations=20,
+                integrator="implicitfast",
+            ),
+            num_substeps=8,
         )
 
 
