@@ -134,9 +134,12 @@ def _is_grasped(
 
     A grasp requires that both fingers exert a contact force above ``force_threshold`` [N] (so the
     plug is pinched -- equal and opposite forces act on the plug and the gripper) and that the
-    end-effector is within ``reach_threshold`` [m] of the plug's nearest point. Contact forces are
-    read from the coupled solver via :func:`_gripper_finger_force`. A non-finite distance from a
-    diverged solve fails the comparison (-> not grasped).
+    end-effector is within ``reach_threshold`` [m] of the plug's nearest point. The finger force is
+    the net contact wrench and cannot tell the plug from other contacted bodies (e.g. the socket
+    walls), so the proximity gate is what makes the grasp plug-specific: a held plug sits at the
+    grasp point (~0 m), while pressing the walls leaves the plug outside ``reach_threshold``. Contact
+    forces are read from the coupled solver via :func:`_gripper_finger_force`. A non-finite distance
+    from a diverged solve fails the comparison (-> not grasped).
     """
     grasped = (_gripper_finger_force(env) > force_threshold).all(dim=1)
 

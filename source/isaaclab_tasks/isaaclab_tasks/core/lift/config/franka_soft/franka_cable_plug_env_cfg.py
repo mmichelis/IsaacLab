@@ -132,7 +132,7 @@ _GOAL_SPHERICAL_RANGE = _clip_to_workspace(
 # goal widens position only (its pitch/yaw stay at initial).
 # Scale to the training budget: common_step_counter advances num_steps_per_env per iteration, so a
 # full run (24 * 50000 iters) reaches ~1.2e6; saturate partway so training continues at full difficulty.
-_CURRICULUM_NUM_STEPS = 1e5
+_CURRICULUM_NUM_STEPS = 2e5
 _PLUG_GRASP_RANGE_FINAL = _clip_to_workspace(
     {
         "r": (0.15, 0.75),
@@ -177,7 +177,7 @@ _TARGET_HOLE_DEPTH = _PLUG_HEIGHT
 
 # Socket center relative to the sampled goal, in the goal's local frame [m]: the goal (the staging
 # point the plug tracks) sits one offset in front of the socket opening (which faces -x).
-_SOCKET_OFFSET_B = (0.05, 0.0, 0.0)
+_SOCKET_OFFSET_B = (0.1, 0.0, 0.0)
 _STAGING_OFFSET = tuple(-v for v in _SOCKET_OFFSET_B)  # goal relative to socket center, in the bore frame
 
 
@@ -498,9 +498,12 @@ class RewardsCfg:
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("object")},
         weight=1.0,
     )
+    # reach_threshold gates the grasp on the plug center sitting at the grasp point (ee_frame TCP): a held
+    # plug measures ~0 m from it, while pressing the socket walls (whose net force the finger sensor cannot
+    # tell from the plug's) leaves the plug outside this radius, so 0.02 m credits grasping the plug only.
     grasping_plug = RewTerm(
         func=mdp.object_grasped,
-        params={"force_threshold": 0.1, "reach_threshold": 0.05, "asset_cfg": SceneEntityCfg("object")},
+        params={"force_threshold": 0.1, "reach_threshold": 0.02, "asset_cfg": SceneEntityCfg("object")},
         weight=10.0,
     )
     plug_goal_tracking = RewTerm(
@@ -510,7 +513,7 @@ class RewardsCfg:
             "minimal_height": 0.0,
             "command_name": "object_pose",
             "force_threshold": 0.1,
-            "reach_threshold": 0.05,
+            "reach_threshold": 0.02,
             "asset_cfg": SceneEntityCfg("object"),
         },
         weight=5.0,
@@ -538,7 +541,7 @@ class RewardsCfg:
     #         "depth_tol": _TARGET_HOLE_DEPTH / 2.0,
     #         "radius": _TARGET_HOLE_INNER / 2.0,
     #         "force_threshold": 0.1,
-    #         "reach_threshold": 0.05,
+    #         "reach_threshold": 0.02,
     #     },
     #     weight=50.0,
     # )

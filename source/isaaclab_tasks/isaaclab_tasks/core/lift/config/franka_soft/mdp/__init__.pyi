@@ -25,6 +25,7 @@ __all__ = [
     "reset_cable_uniform",
     "reset_plug_uniform",
     "reset_proxy_body_prev",
+    "reset_rigid_body_uniform",
     "reset_socket_pose_uniform",
     # Curriculum terms
     "curriculum_progress",
@@ -38,6 +39,7 @@ from .events import (
     reset_cable_uniform,
     reset_plug_uniform,
     reset_proxy_body_prev,
+    reset_rigid_body_uniform,
     reset_socket_pose_uniform,
 )
 from .observations import (

@@ -48,9 +48,7 @@ class FrankaCablePlugPPORunnerCfg(FrankaDeformablePPORunnerCfg):
     save_interval = 100
     experiment_name = "franka_cable_plug"
     policy = RslRlPpoActorCriticCfg(
-        # Lower than the shared default: the plug spawns at the gripper, so heavy arm noise pushes
-        # the end-effector off it before the fingers can close. The binary gripper still explores.
-        init_noise_std=0.5,
+        init_noise_std=1.0,
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[512, 128, 64],

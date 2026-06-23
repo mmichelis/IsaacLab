@@ -396,6 +396,34 @@ def reset_cable_assembly_uniform(
         )
 
 
+def reset_rigid_body_uniform(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    asset_cfg: SceneEntityCfg,
+) -> None:
+    """Reset a single free rigid VBD body with a sampled rigid transform about its rest pose.
+
+    The VBD counterpart of :func:`~isaaclab.envs.mdp.reset_root_state_uniform`: it re-seeds the
+    body's ``state.body_q`` (and AVBD companions) instead of writing the rigid-body sim, then
+    mirrors the new pose into IsaacLab's :class:`~isaaclab.assets.RigidObjectData` so observations
+    do not lag a frame. The build-time rest pose is offset by a per-env transform sampled from
+    ``pose_range`` (the same delta semantics as the rigid-body version).
+
+    Args:
+        env: The RL environment.
+        env_ids: Environment indices to reset.
+        pose_range: Per-axis uniform ranges; see :func:`reset_cable_uniform`.
+        asset_cfg: Scene-entity reference to the rigid :class:`RigidObject`.
+    """
+    delta_trans, delta_yaw_quat = _sample_rigid_transform(pose_range, env_ids.shape[0], env.device)
+    body_ids = _get_body_ids(env, asset_cfg, is_cable=False)[env_ids].unsqueeze(-1)  # (n_envs, 1)
+    new_q = _apply_and_reset(env, body_ids, delta_trans, delta_yaw_quat)
+    env.scene[asset_cfg.name].write_root_link_pose_to_sim_index(
+        root_pose=new_q.squeeze(1).contiguous(), env_ids=env_ids
+    )
+
+
 def reset_plug_uniform(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
