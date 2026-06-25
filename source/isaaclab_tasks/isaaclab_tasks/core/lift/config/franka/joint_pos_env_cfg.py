@@ -3,13 +3,16 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from isaaclab_newton.physics import MJWarpSolverCfg
 
+import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
+from isaaclab.sim import CollisionPropertiesCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
@@ -37,6 +40,18 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set Franka as robot
         self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+
+        # table
+        self.scene.table = RigidObjectCfg(
+            prim_path="/World/envs/env_.*/Table",
+            spawn=sim_utils.CuboidCfg(
+                size=(1.28, 0.91, 1.00),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                visible=True,
+            ),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(0.344, 0.0, -0.503), rot=(1.0, 0.0, 0.0, 0.0)),
+        )
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
@@ -100,6 +115,17 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         )
         self.events.reset_proxy_velocity = EventTerm(func=soft_mdp.reset_proxy_body_prev, mode="reset")
 
+        # Reset envs whose cube leaves the table footprint; z is left generous so lifting is fine.
+        self.terminations.object_out_of_bounds = DoneTerm(
+            func=soft_mdp.object_outside_table_bounds,
+            params={
+                "x_bounds": (0.0, 1.0),
+                "y_bounds": (-0.5, 0.5),
+                "z_bounds": (-0.1, 2.0),
+                "asset_cfg": SceneEntityCfg("object"),
+            },
+        )
+
         self.sim.physics = CoupledNewtonCfg(
             scene_cfg=self.scene,
             solver_cfg=CoupledProxySolverCfg(
@@ -110,10 +136,12 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
                     integrator="implicitfast",
                 ),
                 dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
-                src_bodies=[SceneEntityCfg("robot")],
+                src_bodies=[SceneEntityCfg("robot"), SceneEntityCfg("table")],
                 dst_bodies=[SceneEntityCfg("object")],
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
+                    # Table is owned by src (mjwarp); expose it as a proxy so the VBD cube rests on it.
+                    SceneEntityCfg("table", body_names=["Table"]),
                 ],
                 proxy_iterations=4,
             ),
