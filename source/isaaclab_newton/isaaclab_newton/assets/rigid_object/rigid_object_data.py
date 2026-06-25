@@ -136,7 +136,11 @@ class RigidObjectData(BaseRigidObjectData):
         state buffers).
         """
         if self._fk_timestamp < self._sim_timestamp:
-            SimulationManager.forward()
+            # TODO: Temporary fix until Newton masks VBD eval_fk.
+            # Dispatch via the active manager (its forward() override skips VBD-owned bodies,
+            # whose velocity must not be recomputed from stale joint state).
+            sim = SimulationManager._sim
+            sim.forward() if sim is not None else SimulationManager.forward()
             self._fk_timestamp = self._sim_timestamp
 
     def _reset_pose(

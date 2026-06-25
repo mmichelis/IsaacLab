@@ -126,13 +126,17 @@ class ArticulationData(BaseArticulationData):
         """Run forward kinematics if joint state has changed since the last FK update.
 
         Newton's ``state.body_q`` (per-body world transforms) is updated by ``eval_fk``,
-        invoked here through ``SimulationManager.forward()``. After a manual joint or root
-        write that bypassed the sim step (``write_*_to_sim_*``), ``_fk_timestamp`` is set
-        to ``-1.0`` to force a refresh on the next read of any property that depends on
+        invoked here through the active physics manager's ``forward()``. After a manual
+        joint or root write that bypassed the sim step (``write_*_to_sim_*``), ``_fk_timestamp``
+        is set to ``-1.0`` to force a refresh on the next read of any property that depends on
         body poses (``body_link_pose_w``, the Jacobian properties, ``mass_matrix``).
         """
         if self._fk_timestamp < self._sim_timestamp:
-            SimulationManager.forward()
+            # TODO: Temporary fix until Newton masks VBD eval_fk.
+            # Dispatch via the active manager (its forward() override skips VBD-owned bodies,
+            # whose velocity must not be recomputed from stale joint state).
+            sim = SimulationManager._sim
+            sim.forward() if sim is not None else SimulationManager.forward()
             self._fk_timestamp = self._sim_timestamp
 
     def _reset_pose(
@@ -938,7 +942,7 @@ class ArticulationData(BaseArticulationData):
         Newton implementation: applies the COM→origin shift kernel to
         :attr:`body_com_jacobian_w` (Newton's ``eval_jacobian`` is COM-referenced).
         """
-        # ``body_link_pose_w`` accessor triggers ``SimulationManager.forward()`` if FK is
+        # ``body_link_pose_w`` accessor triggers the active manager's ``forward()`` if FK is
         # stale (after a manual joint / root write that bypassed the sim step). Reading the
         # property here — not ``_sim_bind_body_link_pose_w`` directly — keeps the shift
         # kernel from using stale link rotations during reset / IK-warm-start paths.
