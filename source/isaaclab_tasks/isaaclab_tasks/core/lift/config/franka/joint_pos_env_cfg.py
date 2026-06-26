@@ -3,26 +3,15 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_newton.physics import MJWarpSolverCfg
-
-import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
-from isaaclab.managers import EventTermCfg as EventTerm
-from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
-from isaaclab.sim import CollisionPropertiesCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
-from isaaclab_contrib.coupling import CoupledProxySolverCfg
-from isaaclab_contrib.deformable.newton_manager_cfg import CoupledNewtonCfg, NewtonModelCfg, VBDSolverCfg
-
 from isaaclab_tasks.core.lift import mdp
-from isaaclab_tasks.core.lift.config.franka_soft import mdp as soft_mdp
 from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 
 ##
@@ -39,19 +28,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         super().__post_init__()
 
         # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-
-        # table
-        self.scene.table = RigidObjectCfg(
-            prim_path="/World/envs/env_.*/Table",
-            spawn=sim_utils.CuboidCfg(
-                size=(1.28, 0.91, 1.00),
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-                collision_props=sim_utils.CollisionPropertiesCfg(),
-                visible=True,
-            ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(0.344, 0.0, -0.503), rot=(1.0, 0.0, 0.0, 0.0)),
-        )
+        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
@@ -68,7 +45,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set Cube as object
         self.scene.object = RigidObjectCfg(
-            prim_path="/World/envs/env_.*/Object",
+            prim_path="{ENV_REGEX_NS}/Object",
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0, 0.055], rot=[0, 0, 0, 1]),
             spawn=UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
@@ -89,12 +66,12 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
         self.scene.ee_frame = FrameTransformerCfg(
-            prim_path="/World/envs/env_.*/Robot/panda_link0",
+            prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
             debug_vis=False,
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
-                    prim_path="/World/envs/env_.*/Robot/panda_hand",
+                    prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
                     name="end_effector",
                     offset=OffsetCfg(
                         pos=[0.0, 0.0, 0.1034],
@@ -102,75 +79,6 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
                 ),
             ],
         )
-
-        # The object is a VBD body, so re-seed its VBD state on reset instead of writing the
-        # rigid-body sim (reset_root_state_uniform would no-op on the solver side).
-        self.events.reset_object_position = EventTerm(
-            func=soft_mdp.reset_rigid_body_uniform,
-            mode="reset",
-            params={
-                "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
-                "asset_cfg": SceneEntityCfg("object"),
-            },
-        )
-        self.events.reset_proxy_velocity = EventTerm(func=soft_mdp.reset_proxy_body_prev, mode="reset")
-
-        # Reset envs whose cube leaves the table footprint; z is left generous so lifting is fine.
-        self.terminations.object_out_of_bounds = DoneTerm(
-            func=soft_mdp.object_outside_table_bounds,
-            params={
-                "x_bounds": (0.0, 1.0),
-                "y_bounds": (-0.5, 0.5),
-                "z_bounds": (-0.1, 2.0),
-                "asset_cfg": SceneEntityCfg("object"),
-            },
-        )
-
-        self.sim.physics = CoupledNewtonCfg(
-            scene_cfg=self.scene,
-            solver_cfg=CoupledProxySolverCfg(
-                src_solver_cfg=MJWarpSolverCfg(
-                    cone="elliptic",
-                    ls_parallel=True,
-                    ls_iterations=20,
-                    integrator="implicitfast",
-                ),
-                dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
-                src_bodies=[SceneEntityCfg("robot"), SceneEntityCfg("table")],
-                dst_bodies=[SceneEntityCfg("object")],
-                proxy_bodies=[
-                    SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),
-                    # Table is owned by src (mjwarp); expose it as a proxy so the VBD cube rests on it.
-                    SceneEntityCfg("table", body_names=["Table"]),
-                ],
-                proxy_iterations=4,
-            ),
-            model_cfg=NewtonModelCfg(
-                shape_material_ke=1e5,
-                shape_material_kd=1e-2,
-                shape_material_mu=10.0,
-            ),
-            num_substeps=8,
-        )
-
-        # self.sim.physics = NewtonCfg(
-        #     solver_cfg=MJWarpSolverCfg(
-        #         cone="elliptic",
-        #         ls_parallel=True,
-        #         ls_iterations=20,
-        #         integrator="implicitfast",
-        #     ),
-        #     num_substeps=8,
-        # )
-
-        # self.sim.physics = NewtonCfg(
-        #     solver_cfg=VBDSolverCfg(
-        #         iterations=20,
-        #         rigid_avbd_beta=1e3,
-        #         rigid_contact_k_start=1e3
-        #     ),
-        #     num_substeps=8,
-        # )
 
 
 @configclass
