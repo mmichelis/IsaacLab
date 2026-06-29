@@ -11,23 +11,19 @@ only the physics backend so the two are directly comparable for learning-curve
 matching.
 """
 
-import torch
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
-from isaaclab.managers import EventTermCfg as EventTerm
-from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
+from isaaclab.sim import CollisionPropertiesCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_tasks.core.lift import mdp
-from isaaclab_tasks.core.lift.config.franka_soft import mdp as soft_mdp
 from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 
 ##
@@ -35,23 +31,6 @@ from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
-
-
-def clamp_object_linear_velocity(env, env_ids, asset_cfg: SceneEntityCfg, max_speed: float) -> None:
-    """Clamp the object's linear speed each control step (mjwarp depenetration-cap analogue).
-
-    Newton ignores PhysX's ``max_depenetration_velocity``, so the gripper can eject the cube at
-    high velocity and a policy reward-hacks the lift term by punching it airborne. Capping the
-    cube's linear speed stops the impulsive launch while leaving a slow, sustained grasped lift
-    unaffected. Runs as an every-step interval event (``env_ids`` is None -> all envs).
-    """
-    asset = env.scene[asset_cfg.name]
-    vel = asset.data.root_vel_w.torch.clone()  # [N, 6] = [lin (3), ang (3)]
-    lin = vel[:, :3]
-    speed = torch.linalg.vector_norm(lin, dim=-1, keepdim=True)
-    scale = torch.clamp(max_speed / speed.clamp_min(1e-6), max=1.0)
-    vel[:, :3] = lin * scale
-    asset.write_root_velocity_to_sim_index(root_velocity=vel, env_ids=torch.arange(env.num_envs, device=asset.device))
 
 
 @configclass
@@ -65,10 +44,15 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         # Set Franka as robot
         self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
+        # Replace the world-welded USD table with a static cuboid collider (same footprint and
+        # top height as the mjwarp variant). PhysX positions per-env static geoms via the cloner.
         self.scene.table = AssetBaseCfg(
             prim_path="/World/envs/env_.*/Table",
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, 0.0), rot=(0.0, 0.0, 0.707, 0.707)),
-            spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.9, 1.3, 1.05),
+                collision_props=CollisionPropertiesCfg(),
+            ),
         )
 
         # Set actions for the specific robot type (franka)
@@ -84,16 +68,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
 
-        # Shrink the command frame markers: the EE (current-pose) frame barely visible, and the
-        # goal-pose frame half as thick as the default (0.1).
-        self.commands.object_pose.current_pose_visualizer_cfg.markers["frame"].scale = (0.02, 0.02, 0.02)
-        self.commands.object_pose.goal_pose_visualizer_cfg.markers["frame"].scale = (0.05, 0.05, 0.05)
-
-        # Set rigid Cube as object. The PhysX solver-iteration rigid_props below are honored by
-        # PhysX and ignored by Newton; they are kept identical across both variants regardless.
-        # A high-friction, zero-restitution contact material is set so the gripper can grip the
-        # cube (Newton combines the two geoms' friction as the element-wise max, so this governs
-        # the finger-cube contact). Both variants share it to keep the scene identical.
+        # Set rigid Cube as object.
         self.scene.object = RigidObjectCfg(
             prim_path="/World/envs/env_.*/Object",
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0, 0.055], rot=[1, 0, 0, 0]),
@@ -141,28 +116,23 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        # mjwarp's implicit PD drive is less damped than PhysX at the same gain, so the arm
-        # overshoots more. Raise arm damping ~3x (4 -> 12) so the joint/EE motion ranges match
-        # the PhysX baseline (gripper joints left as-is).
-        for actuator_name in ("panda_shoulder", "panda_forearm"):
-            self.scene.robot.actuators[actuator_name].damping = 16.0
-
-        self.scene.table_collider = RigidObjectCfg(
-            prim_path="/World/envs/env_.*/TableCollider",
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(0.344, 0.0, -0.503)),
-            spawn=sim_utils.CuboidCfg(
-                size=(1.28, 0.91, 1.00),
-                visible=False,
-                collision_props=sim_utils.CollisionPropertiesCfg(),
-                # Kinematic so mjwarp welds it as a per-env body (not a static world geom).
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        # mjwarp does not position per-env static geoms, so re-create the table as a jointless
+        # articulation, which mjwarp positions per-env.
+        self.scene.table = ArticulationCfg(
+            prim_path="/World/envs/env_.*/Table",
+            init_state=ArticulationCfg.InitialStateCfg(
+                pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
             ),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.9, 1.3, 1.05),
+                collision_props=CollisionPropertiesCfg(),
+                rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=True),
+            ),
+            actuators={},
+            articulation_root_prim_path="",
         )
 
-        # Pure mjwarp Newton backend (no coupling / VBD). Solver settings mirror the coupled
-        # config's mjwarp source solver. Stiffer contacts (ke 2.5e3 -> 4e4, kd 100 -> 400, ~solref
-        # 0.005s critically damped) stop the arm/cube sinking into the table; num_substeps 8 -> 16
-        # keeps the stiffer contacts stable.
+        # Pure mjwarp Newton backend (no coupling / VBD).
         self.sim.physics = NewtonCfg(
             solver_cfg=MJWarpSolverCfg(
                 cone="elliptic",
@@ -171,31 +141,4 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
                 integrator="implicitfast",
             ),
             num_substeps=16,
-            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
-        )
-
-        # Cap the cube's linear speed every control step so the gripper cannot launch it (mjwarp
-        # has no PhysX-style depenetration-velocity cap). Prevents the punch reward-hack while a
-        # slow grasped lift is unaffected. interval_range_s=(0, 0) fires every step.
-        self.events.clamp_object_velocity = EventTerm(
-            func=clamp_object_linear_velocity,
-            mode="interval",
-            interval_range_s=(0.0, 0.0),
-            params={"asset_cfg": SceneEntityCfg("object"), "max_speed": 1.0},
-        )
-
-        # Reset envs whose coupled solve destabilizes: any robot/cube body exceeding 1e2 m/s.
-        self.terminations.body_velocity_out_of_bounds = DoneTerm(
-            func=soft_mdp.body_velocity_out_of_bounds,
-            params={"max_velocity": 1e2},
-        )
-
-        self.terminations.object_out_of_bounds = DoneTerm(
-            func=soft_mdp.object_outside_table_bounds,
-            params={
-                "x_bounds": (0.0, 0.9),
-                "y_bounds": (-0.5, 0.5),
-                "z_bounds": (-0.1, 2.0),
-                "asset_cfg": SceneEntityCfg("object"),
-            },
         )
