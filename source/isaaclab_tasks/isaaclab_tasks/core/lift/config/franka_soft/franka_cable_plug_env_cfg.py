@@ -132,7 +132,7 @@ _GOAL_SPHERICAL_RANGE = _clip_to_workspace(
 # goal widens position only (its pitch/yaw stay at initial).
 # Scale to the training budget: common_step_counter advances num_steps_per_env per iteration, so a
 # full run (24 * 50000 iters) reaches ~1.2e6; saturate partway so training continues at full difficulty.
-_CURRICULUM_NUM_STEPS = 2e5
+_CURRICULUM_NUM_STEPS = 2e4
 _PLUG_GRASP_RANGE_FINAL = _clip_to_workspace(
     {
         "r": (0.15, 0.75),
@@ -202,7 +202,12 @@ _WALL_OFFSETS: dict[str, tuple[float, float, float]] = {
 
 
 def _wall_cfg(size: tuple[float, float, float], offset: tuple[float, float, float], prim_name: str) -> RigidObjectCfg:
-    """Kinematic cuboid wall at ``offset`` from the socket center (a reset event repositions it)."""
+    """Kinematic cuboid wall at ``offset`` from the socket center (a reset event repositions it).
+
+    The reset writes the wall's VBD ``body_q`` directly (see :func:`reset_socket_pose_uniform`); a
+    kinematic body is never integrated, so that pose persists and the wall stays immovable under the
+    plug during insertion.
+    """
     return RigidObjectCfg(
         prim_path=f"/World/envs/env_.*/{prim_name}",
         spawn=sim_utils.CuboidCfg(
@@ -243,6 +248,18 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
     )
     target_hole_left: RigidObjectCfg = _wall_cfg(_WALL_SIZE_LR, _WALL_OFFSETS["target_hole_left"], "TargetHoleLeft")
     target_hole_right: RigidObjectCfg = _wall_cfg(_WALL_SIZE_LR, _WALL_OFFSETS["target_hole_right"], "TargetHoleRight")
+
+    table_collider: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/TableCollider",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.344, 0.0, -0.503)),
+        spawn=sim_utils.CuboidCfg(
+            size=(1.28, 0.91, 1.00),
+            visible=False,
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            # Kinematic so mjwarp welds it as a per-env body (not a static world geom).
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        ),
+    )
 
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Plug",
@@ -297,6 +314,9 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
         self.robot.actuators["panda_hand"].effort_limit_sim = 1500.0
         self.robot.actuators["panda_hand"].stiffness = 1500.0
         self.robot.actuators["panda_hand"].damping = 150.0
+
+        for actuator_name in ("panda_shoulder", "panda_forearm"):
+            self.robot.actuators[actuator_name].damping = 16.0
 
 
 ##
@@ -731,7 +751,7 @@ class FrankaCablePlugEnvCfg(FrankaSoftEnvCfg):
                     integrator="implicitfast",
                 ),
                 dst_solver_cfg=VBDSolverCfg(iterations=20, rigid_avbd_beta=1e3, rigid_contact_k_start=1e3),
-                src_bodies=[SceneEntityCfg("robot")],
+                src_bodies=[SceneEntityCfg("robot"), SceneEntityCfg("table_collider")],
                 dst_bodies=dst_bodies,
                 proxy_bodies=[
                     SceneEntityCfg("robot", body_names=["panda_hand", "panda_(left|right)finger"]),

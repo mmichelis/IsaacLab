@@ -496,7 +496,10 @@ def reset_socket_pose_uniform(
     sampled per Euler axis. The socket center sits at ``goal + R(goal_quat) * socket_offset_b``
     (offset in the goal's local frame). Each wall is then written to
     ``socket_center + R(socket_quat) * wall_offset`` with the shared socket orientation, so the four
-    walls form one rigid socket. The walls are kinematic, so a direct pose write holds.
+    walls form one rigid socket. The pose is scattered into the VBD ``body_q`` (via
+    :func:`_apply_and_reset`); writing only ``joint_q`` would revert next step, as VBD's masked FK
+    never carries it into ``body_q``. The walls are kinematic, so that ``body_q`` is never integrated
+    and the socket holds its pose.
 
     Args:
         env: The RL environment.
@@ -533,10 +536,18 @@ def reset_socket_pose_uniform(
         robot.data.root_pos_w.torch[env_ids], robot.data.root_quat_w.torch[env_ids], center_b, quat_b
     )
 
-    # Place each wall at center + R(center_quat) * local_offset.
-    for name, local_offset in wall_offsets.items():
-        offset_w = quat_apply(center_quat_w, torch.tensor(local_offset, device=env.device).expand(num, 3))
-        wall_pos_w = center_pos_w + offset_w
-        env.scene[name].write_root_pose_to_sim_index(
-            root_pose=torch.cat([wall_pos_w, center_quat_w], dim=-1), env_ids=env_ids
-        )
+    # Each wall at center + R(center_quat) * local_offset, scattered into VBD body_q so it persists.
+    names = list(wall_offsets.keys())
+    wall_q = []
+    for name in names:
+        offset_w = quat_apply(center_quat_w, torch.tensor(wall_offsets[name], device=env.device).expand(num, 3))
+        wall_q.append(torch.cat([center_pos_w + offset_w, center_quat_w], dim=-1))
+    abs_body_q = torch.stack(wall_q, dim=1)  # (num, n_walls, 7)
+    body_ids = torch.stack(
+        [_get_body_ids(env, SceneEntityCfg(name), is_cable=False)[env_ids] for name in names], dim=1
+    )  # (num, n_walls)
+
+    new_q = _apply_and_reset(env, body_ids, abs_body_q=abs_body_q)
+    # Mirror into the RigidObjectData buffers so observations/markers don't lag a frame.
+    for i, name in enumerate(names):
+        env.scene[name].write_root_link_pose_to_sim_index(root_pose=new_q[:, i].contiguous(), env_ids=env_ids)
