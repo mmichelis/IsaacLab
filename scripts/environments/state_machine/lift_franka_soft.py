@@ -372,6 +372,7 @@ def main():
                 object_position = object_data.body_com_pos_w.torch[:, 3] - env.unwrapped.scene.env_origins
             elif args_cli.task == "Isaac-Lift-CablePlug-Franka-v0":
                 # Grab the rigid plug
+                object_data = env.unwrapped.scene["object"].data
                 object_position = object_data.body_link_pos_w.torch[:, 0] - env.unwrapped.scene.env_origins
             else:
                 object_data: DeformableObjectData = env.unwrapped.scene["deformable"].data
