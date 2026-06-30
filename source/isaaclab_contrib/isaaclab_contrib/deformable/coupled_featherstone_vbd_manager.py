@@ -470,6 +470,7 @@ class NewtonCoupledFeatherstoneVBDManager(NewtonManager):
                 float(model.soft_contact_kd),
                 float(model.soft_contact_mu),
                 float(cls._soft_solver.friction_epsilon),
+                model.shape_margin,
                 float(dt),
                 state.body_f,
             ],
