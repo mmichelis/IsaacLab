@@ -328,7 +328,7 @@ class _SocketPoseCommand(CommandTerm):
     """Goal pose (robot root frame) read back from the socket walls placed by the reset event.
 
     The socket is sampled and built once per episode in
-    :func:`~isaaclab_tasks.manager_based.manipulation.lift_franka_soft.mdp.reset_socket_pose_uniform`,
+    :func:`~isaaclab_tasks.core.lift.config.franka_soft.mdp.reset_socket_pose_uniform`,
     so this command samples nothing. Each step it reads the four walls and exposes the staging point
     (one offset in front of the opening, which faces -x) as the goal the plug tracks, letting the
     stock command-based observation and reward terms apply unchanged. Subclasses

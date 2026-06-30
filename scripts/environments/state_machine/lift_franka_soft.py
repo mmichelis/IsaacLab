@@ -60,6 +60,8 @@ import gymnasium as gym
 import torch
 import warp as wp
 
+from isaaclab.assets.deformable_object.deformable_object_data import DeformableObjectData
+
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
