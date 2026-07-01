@@ -37,7 +37,7 @@ def object_position_in_robot_root_frame(
 
 def deformable_com_in_robot_root_frame(
     env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Position of the deformable object's COM in the robot's root frame [m].
@@ -65,7 +65,7 @@ class DeformableSampledPointsInRobotRootFrame(ManagerTermBase):
     def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
 
-        self.asset_cfg: SceneEntityCfg = cfg.params.get("asset_cfg", SceneEntityCfg("deformable"))
+        self.asset_cfg: SceneEntityCfg = cfg.params.get("asset_cfg", SceneEntityCfg("object"))
         self.robot_cfg: SceneEntityCfg = cfg.params.get("robot_cfg", SceneEntityCfg("robot"))
         self.num_points: int = cfg.params.get("num_points", 20)
 
@@ -92,7 +92,7 @@ class DeformableSampledPointsInRobotRootFrame(ManagerTermBase):
     def __call__(
         self,
         env: ManagerBasedRLEnv,
-        asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
         robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
         num_points: int = 20,
     ) -> torch.Tensor:

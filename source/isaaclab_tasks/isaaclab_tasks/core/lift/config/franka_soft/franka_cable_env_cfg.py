@@ -46,8 +46,8 @@ class _FrankaCableSceneCfg(_FrankaSoftSceneCfg):
     """Scene for the Franka cable lifting environment.
 
     Inherits ``robot``, ``ee_frame``, ``table``, ``ground``, ``sky_light`` and the
-    ``__post_init__`` actuator tuning from :class:`_FrankaSoftSceneCfg`; replaces the
-    volumetric ``object`` asset with a Newton cable.
+    ``__post_init__`` actuator tuning from :class:`_FrankaSoftSceneCfg`; overrides the
+    inherited volumetric ``object`` asset with a Newton cable.
     """
 
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")

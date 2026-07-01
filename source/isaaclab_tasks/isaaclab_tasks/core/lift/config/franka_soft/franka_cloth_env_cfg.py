@@ -113,7 +113,7 @@ class DeformableCfg(PresetCfg):
 class FrankaClothSceneCfg(_FrankaSoftSceneCfg):
     """Scene for the Franka surface deformable environment."""
 
-    deformable: DeformableCfg = DeformableCfg()
+    object: DeformableCfg = DeformableCfg()
 
     # static collidable cubes the cloth drops onto (sits on the table top at z = 0).
     # Modeled as a static asset (no rigid body / no DOFs) so adding it does not

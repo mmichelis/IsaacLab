@@ -197,7 +197,7 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         ],
     )
 
-    deformable: DeformableCfg = DeformableCfg()
+    object: DeformableCfg = DeformableCfg()
 
     # static table matching the Newton example: half-extents (0.4, 0.4, 0.1) → top at z = 0.2
     # NOTE: SeattleLabTable USD has its origin on the top surface, so the deformable object
@@ -244,7 +244,7 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Commands for the deformable goal pose (xyz + identity quat in robot root frame)."""
 
-    deformable_pose = mdp.UniformPoseCommandCfg(
+    object_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
         body_name="panda_hand",
         resampling_time_range=(5.0, 5.0),
@@ -307,9 +307,9 @@ class ObservationsCfg:
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         deformable_sampled_points = ObsTerm(
             func=mdp.DeformableSampledPointsInRobotRootFrame,
-            params={"asset_cfg": SceneEntityCfg("deformable"), "num_points": 20},
+            params={"asset_cfg": SceneEntityCfg("object"), "num_points": 20},
         )
-        target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "deformable_pose"})
+        target_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "object_pose"})
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self) -> None:
@@ -335,7 +335,7 @@ class EventCfg:
         params={
             "position_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (0.0, 0.0)},
             "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("deformable"),
+            "asset_cfg": SceneEntityCfg("object"),
         },
     )
 
@@ -346,12 +346,12 @@ class RewardsCfg:
 
     reaching_deformable = RewTerm(
         func=mdp.deformable_ee_distance,
-        params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"std": 0.1, "asset_cfg": SceneEntityCfg("object")},
         weight=5.0,
     )
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("object")},
         weight=5.0,
     )
     deformable_goal_tracking = RewTerm(
@@ -359,8 +359,8 @@ class RewardsCfg:
         params={
             "std": 0.3,
             "minimal_height": 0.075,
-            "command_name": "deformable_pose",
-            "asset_cfg": SceneEntityCfg("deformable"),
+            "command_name": "object_pose",
+            "asset_cfg": SceneEntityCfg("object"),
         },
         weight=16.0,
     )
@@ -369,8 +369,8 @@ class RewardsCfg:
         params={
             "std": 0.05,
             "minimal_height": 0.075,
-            "command_name": "deformable_pose",
-            "asset_cfg": SceneEntityCfg("deformable"),
+            "command_name": "object_pose",
+            "asset_cfg": SceneEntityCfg("object"),
         },
         weight=5.0,
     )
@@ -397,13 +397,13 @@ class TerminationsCfg:
         params={
             "x_bounds": (0.0, 1.0),
             "y_bounds": (-0.5, 0.5),
-            "asset_cfg": SceneEntityCfg("deformable"),
+            "asset_cfg": SceneEntityCfg("object"),
         },
     )
 
     deformable_dropped = DoneTerm(
         func=mdp.deformable_com_below_minimum,
-        params={"minimum_height": -0.1, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"minimum_height": -0.1, "asset_cfg": SceneEntityCfg("object")},
     )
 
     ee_below_table = DoneTerm(

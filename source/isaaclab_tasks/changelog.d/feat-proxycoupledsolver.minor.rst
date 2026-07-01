@@ -1,17 +1,14 @@
 Changed
 ^^^^^^^
 
-* **Breaking:** Renamed the deformable scene entity and its MDP terms in
-  ``lift_franka_soft`` from ``deformable`` to ``object`` to align with the
-  rigid lift task. Affects ``Isaac-Lift-Soft-Franka-v0`` and the cloth
-  variant: scene entry ``scene.deformable`` -> ``scene.object``, command
-  ``deformable_pose`` -> ``object_pose``, and MDP functions
-  ``deformable_ee_distance``, ``deformable_lifted``,
-  ``deformable_com_goal_distance``, ``deformable_com_in_robot_root_frame``,
-  ``deformable_com_below_minimum``, ``deformable_outside_table_bounds``,
-  ``DeformableSampledPointsInRobotRootFrame`` -> ``object_*`` /
-  ``ObjectSampledPointsInRobotRootFrame``. Update env configs, checkpoints,
-  and RL configs accordingly.
+* **Breaking:** Renamed the manipulation-target scene entity and goal command
+  in the ``lift_franka_soft`` tasks from ``deformable`` to ``object`` to align
+  with the rigid lift task. Affects ``Isaac-Lift-Soft-Franka``,
+  ``Isaac-Lift-Cloth-Franka``, ``Isaac-Lift-Cable-Franka-v0`` and
+  ``Isaac-Lift-CablePlug-Franka-v0``: scene entry ``scene.deformable`` ->
+  ``scene.object`` and command ``deformable_pose`` -> ``object_pose``. The MDP
+  term and function names (e.g. ``deformable_ee_distance``) are unchanged.
+  Update env configs, checkpoints, and RL configs accordingly.
 
 * Migrated ``lift_franka_soft`` (rigid + cloth variants) from
   ``DeformableNewtonCfg`` to

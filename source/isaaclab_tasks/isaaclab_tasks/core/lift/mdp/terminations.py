@@ -63,7 +63,7 @@ def object_reached_goal(
 def deformable_com_below_minimum(
     env: ManagerBasedRLEnv,
     minimum_height: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
     """Termination signal when the deformable's COM falls below ``minimum_height`` [m]."""
     asset: DeformableObject = env.scene[asset_cfg.name]
@@ -75,7 +75,7 @@ def deformable_outside_table_bounds(
     env: ManagerBasedRLEnv,
     x_bounds: tuple[float, float],
     y_bounds: tuple[float, float],
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
     """Terminate if any deformable nodal point leaves the table footprint.
 

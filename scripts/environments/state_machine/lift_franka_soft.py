@@ -375,7 +375,7 @@ def main():
                 object_data = env.unwrapped.scene["object"].data
                 object_position = object_data.body_link_pos_w.torch[:, 0] - env.unwrapped.scene.env_origins
             else:
-                object_data: DeformableObjectData = env.unwrapped.scene["deformable"].data
+                object_data: DeformableObjectData = env.unwrapped.scene["object"].data
                 object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
             object_position += object_local_grasp_position
 

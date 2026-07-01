@@ -98,7 +98,7 @@ class object_goal_distance(ManagerTermBase):
 def deformable_lifted(
     env: ManagerBasedRLEnv,
     minimal_height: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
     """Reward if the deformable COM is above a minimum height.
 
@@ -118,7 +118,7 @@ def deformable_lifted(
 def deformable_ee_distance(
     env: ManagerBasedRLEnv,
     std: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
 ) -> torch.Tensor:
     """Reward reaching the deformable's nearest nodal point with the end-effector.
@@ -146,7 +146,7 @@ def deformable_com_goal_distance(
     minimal_height: float,
     command_name: str,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
     """Reward tracking of the goal position by the deformable's COM (tanh kernel).
 
