@@ -311,15 +311,11 @@ def main():
     # create action buffers (position + quaternion)
     actions = torch.zeros(env.unwrapped.action_space.shape, device=env.unwrapped.device)
     actions[:, 3] = 1.0
-    # Use a straight-down grasp for the rigid cube.
+    # Use the top-down grasp closest to the Franka reset wrist yaw.
     desired_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
-    if args_cli.task == "Isaac-Lift-Cube-Franka-Mjwarp-IK-Abs-v0":
-        desired_orientation[:, 1] = 1.0
-        object_grasp_orientation[:, 1] = 1.0
-    else:
-        desired_orientation[:, 0] = 1.0
-        object_grasp_orientation[:, 0] = 1.0
+    desired_orientation[:, 0] = 1.0
+    object_grasp_orientation[:, 0] = 1.0
     object_local_grasp_position = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device)
 
     # create state machine
@@ -331,6 +327,8 @@ def main():
         position_threshold=position_threshold,
     )
 
+    ee_frame_sensor = env.unwrapped.scene["ee_frame"]
+
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
@@ -339,7 +337,6 @@ def main():
 
             # observations
             # -- end-effector frame
-            ee_frame_sensor = env.unwrapped.scene["ee_frame"]
             tcp_rest_position = (
                 ee_frame_sensor.data.target_pos_w.torch[..., 0, :].clone() - env.unwrapped.scene.env_origins
             )
