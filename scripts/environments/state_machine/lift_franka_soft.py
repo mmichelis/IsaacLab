@@ -61,6 +61,7 @@ import torch
 import warp as wp
 
 from isaaclab.assets.deformable_object.deformable_object_data import DeformableObjectData
+from isaaclab.assets.rigid_object.rigid_object_data import RigidObjectData
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
@@ -310,20 +311,25 @@ def main():
     # create action buffers (position + quaternion)
     actions = torch.zeros(env.unwrapped.action_space.shape, device=env.unwrapped.device)
     actions[:, 3] = 1.0
-    # desired rotation after grasping
+    # Use a straight-down grasp for the rigid cube.
     desired_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
-    desired_orientation[:, 0] = 1.0
-
-    # Top-down approach: identity quaternion (wxyz, w=1) aligns panda_hand with the Franka root,
-    # giving the canonical top-down grasp pose. The bar lies along world-X, so the gripper
-    # closes across its short side without any wrist twist.
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
-    object_grasp_orientation[:, 0] = 1.0
-    # Grasp at the deformable's centre of mass.
+    if args_cli.task == "Isaac-Lift-Cube-Franka-Mjwarp-IK-Abs-v0":
+        desired_orientation[:, 1] = 1.0
+        object_grasp_orientation[:, 1] = 1.0
+    else:
+        desired_orientation[:, 0] = 1.0
+        object_grasp_orientation[:, 0] = 1.0
     object_local_grasp_position = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device)
 
     # create state machine
-    pick_sm = PickAndLiftSm(env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device)
+    position_threshold = 0.075 if args_cli.task == "Isaac-Lift-Cube-Franka-Mjwarp-IK-Abs-v0" else 0.03
+    pick_sm = PickAndLiftSm(
+        env_cfg.sim.dt * env_cfg.decimation,
+        env.unwrapped.num_envs,
+        env.unwrapped.device,
+        position_threshold=position_threshold,
+    )
 
     while simulation_app.is_running():
         # run everything in inference mode
@@ -339,12 +345,19 @@ def main():
             )
             tcp_rest_orientation = ee_frame_sensor.data.target_quat_w.torch[..., 0, :].clone()
             # -- object frame
-            object_data: DeformableObjectData = env.unwrapped.scene["deformable"].data
-            object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
+            if args_cli.task == "Isaac-Lift-Cube-Franka-Mjwarp-IK-Abs-v0":
+                object_data: RigidObjectData = env.unwrapped.scene["object"].data
+                object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
+            else:
+                object_data: DeformableObjectData = env.unwrapped.scene["deformable"].data
+                object_position = object_data.root_pos_w.torch - env.unwrapped.scene.env_origins
             object_position += object_local_grasp_position
 
             # -- target object frame
-            desired_position = env.unwrapped.command_manager.get_command("deformable_pose")[..., :3]
+            if args_cli.task == "Isaac-Lift-Cube-Franka-Mjwarp-IK-Abs-v0":
+                desired_position = env.unwrapped.command_manager.get_command("object_pose")[..., :3]
+            else:
+                desired_position = env.unwrapped.command_manager.get_command("deformable_pose")[..., :3]
 
             # advance state machine
             actions = pick_sm.compute(

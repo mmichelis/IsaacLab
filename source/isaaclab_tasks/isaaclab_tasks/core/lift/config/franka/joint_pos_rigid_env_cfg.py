@@ -11,10 +11,12 @@ only the physics backend so the two are directly comparable for learning-curve
 matching.
 """
 
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim import CollisionPropertiesCfg
@@ -116,6 +118,12 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
+        # mjwarp's implicit PD drive is less damped than PhysX at the same gain, so the arm
+        # overshoots more. Raise arm damping ~3x (4 -> 12) so the joint/EE motion ranges match
+        # the PhysX baseline (gripper joints left as-is).
+        for actuator_name in ("panda_shoulder", "panda_forearm"):
+            self.scene.robot.actuators[actuator_name].damping = 16.0
+
         # mjwarp does not position per-env static geoms, so re-create the table as a jointless
         # articulation, which mjwarp positions per-env.
         self.scene.table = ArticulationCfg(
@@ -141,4 +149,34 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
                 integrator="implicitfast",
             ),
             num_substeps=16,
+            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+        )
+
+
+@configclass
+class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
+    """Pure-mjwarp cube lift driven by task-space absolute-pose IK.
+
+    Same scene and solver as :class:`FrankaCubeLiftMjwarpEnvCfg`, but the arm is
+    commanded with a differential IK action so the task-space pick-and-lift state
+    machine (``scripts/environments/state_machine/lift_franka_soft.py``) can drive it.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Task-space IK control must hold the arm against gravity, so raise the arm gains to the
+        # high-PD values (400/80) used by IK lift tasks, discarding the base's joint-position
+        # damping tuning. Arm gravity is left enabled (unlike FRANKA_PANDA_HIGH_PD_CFG).
+        for actuator_name in ("panda_shoulder", "panda_forearm"):
+            self.scene.robot.actuators[actuator_name].stiffness = 400.0
+            self.scene.robot.actuators[actuator_name].damping = 80.0
+
+        # Swap joint-position control for 7-dim absolute EE pose via differential IK.
+        self.actions.arm_action = DifferentialInverseKinematicsActionCfg(
+            asset_name="robot",
+            joint_names=["panda_joint.*"],
+            body_name="panda_hand",
+            controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=False, ik_method="dls"),
+            body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
         )
