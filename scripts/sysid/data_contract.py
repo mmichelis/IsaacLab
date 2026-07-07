@@ -34,10 +34,13 @@ REQUIRED_KEYS = (
     "joint_names",
     "active_joint_names",
     "sample_rate",
-    "kp_used",
-    "kd_used",
 )
 SHAPER_PARAM_KEYS = ("shaper_ema_alpha", "shaper_relative_dynamics", "shaper_rate_hz")
+
+# Fallback gains when a dataset omits kp_used/kd_used (provenance only, never
+# the fit target). IsaacLab FRANKA_PANDA_HIGH_PD_CFG arm values.
+DEFAULT_KP_USED = 400.0
+DEFAULT_KD_USED = 80.0
 
 _PANDA_RE = re.compile(r"^panda_joint(\d+)$")
 
@@ -158,6 +161,20 @@ def _validate_shapes(data: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tens
 
 
 def _validate_gains(data: dict, N: int) -> tuple[torch.Tensor, torch.Tensor]:
+    has_kp, has_kd = "kp_used" in data, "kd_used" in data
+    if has_kp != has_kd:
+        raise ContractError(
+            f"dataset has only one of kp_used/kd_used ({'kp_used' if has_kp else 'kd_used'} "
+            "present) — both must be present together, or both omitted to fall back to defaults."
+        )
+    if not has_kp:
+        print(
+            f"[WARN]: dataset lacks kp_used/kd_used; defaulting to Franka high-PD gains "
+            f"(kp={DEFAULT_KP_USED}, kd={DEFAULT_KD_USED}) for all {N} joints. "
+            "These are provenance only (warm-start seed / held-joint gains / baseline), "
+            "never the fit target."
+        )
+        return (torch.full((N,), DEFAULT_KP_USED), torch.full((N,), DEFAULT_KD_USED))
     kp = _to_tensor(data["kp_used"]).reshape(-1)
     kd = _to_tensor(data["kd_used"]).reshape(-1)
     if kp.shape[0] != N or kd.shape[0] != N:
