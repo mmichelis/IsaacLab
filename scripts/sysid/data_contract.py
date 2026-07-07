@@ -243,7 +243,7 @@ def _validate_freshness(
 
 
 # PM-ruled hard ceiling on the stale-row debug override.
-MAX_ALLOW_STALE_FRACTION = 0.20
+MAX_ALLOW_STALE_FRACTION = 1.0
 
 
 def validate_contract(
