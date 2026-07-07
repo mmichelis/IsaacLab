@@ -45,9 +45,12 @@ from isaaclab_tasks.utils import PresetCfg
 # Robot definition
 ##
 
-# convert_urdf.py treats the output as a directory: the root layer lands at
-# <out>/<name>/<name>.usda with the multi-physics payloads beside it.
-FR3_USD_PATH = os.path.join(os.path.dirname(__file__), "assets", "fr3.usd", "fr3_nomesh", "fr3_nomesh.usda")
+# convert_urdf.py treats its output arg as a directory and lands the root layer
+# at <out>/<name>/<name>.usda. prepare_fr3_asset.py already passes the nested
+# .../fr3_nomesh/fr3_nomesh.usda as <out>, so the stage lands one level deeper.
+FR3_USD_PATH = os.path.join(
+    os.path.dirname(__file__), "assets", "fr3.usd", "fr3_nomesh", "fr3_nomesh.usda", "fr3_nomesh", "fr3_nomesh.usda"
+)
 
 # Column order of the dataset produced by isaac_ros_sysid (franka_fr3.yaml).
 FR3_SYSID_JOINT_ORDER: list[str] = [

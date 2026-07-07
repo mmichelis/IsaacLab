@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot name="fr3">
-
-
-
-
-
-
+  
+  
+  
+  
+  
+  
   <link name="base">
       </link>
   <joint name="fr3_base_joint" type="fixed">
@@ -13,7 +13,7 @@
     <child link="fr3_link0" />
     <origin rpy="0 0 0" xyz="0 0 0" />
   </joint>
-
+  
   <link name="fr3_link0">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0172 0.0004 0.0745" />
@@ -21,7 +21,7 @@
       <inertia ixx="0.009" ixy="0.0" ixz="0.002" iyy="0.0115" iyz="0.0" izz="0.0085" />
     </inertial>
   </link>
-
+  
   <link name="fr3_link1">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0000004128 -0.0181251324 -0.0386035970" />
@@ -38,7 +38,7 @@
     <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-2.7437" soft_upper_limit="2.7437" />
     <dynamics D="1" K="7000" damping="0.003" friction="0.2" mu_coulomb="0" mu_viscous="16" />
   </joint>
-
+  
   <link name="fr3_link2">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0031828864 -0.0743221644 0.0088146084" />
@@ -55,7 +55,7 @@
     <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-1.7837" soft_upper_limit="1.7837" />
     <dynamics D="1" K="7000" damping="0.003" friction="0.2" mu_coulomb="0" mu_viscous="16" />
   </joint>
-
+  
   <link name="fr3_link3">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0407015686 -0.0048200565 -0.0289730823" />
@@ -72,7 +72,7 @@
     <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-2.9007" soft_upper_limit="2.9007" />
     <dynamics D="1" K="7000" damping="0.003" friction="0.2" mu_coulomb="0" mu_viscous="16" />
   </joint>
-
+  
   <link name="fr3_link4">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0459100965 0.0630492960 -0.0085187868" />
@@ -89,7 +89,7 @@
     <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-3.0421" soft_upper_limit="-0.1518" />
     <dynamics D="1" K="7000" damping="0.003" friction="0.2" mu_coulomb="0" mu_viscous="16" />
   </joint>
-
+  
   <link name="fr3_link5">
     <inertial>
       <origin rpy="0 0 0" xyz="-0.0016039605 0.0292536262 -0.0972965990" />
@@ -106,7 +106,7 @@
     <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-2.8065" soft_upper_limit="2.8065" />
     <dynamics D="1" K="7000" damping="0.003" friction="0.2" mu_coulomb="0" mu_viscous="16" />
   </joint>
-
+  
   <link name="fr3_link6">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0597131221 -0.0410294666 -0.0101692726" />
@@ -123,7 +123,7 @@
     <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="0.5445" soft_upper_limit="4.5169" />
     <dynamics D="1" K="7000" damping="0.003" friction="0.2" mu_coulomb="0" mu_viscous="16" />
   </joint>
-
+  
   <link name="fr3_link7">
     <inertial>
       <origin rpy="0 0 0" xyz="0.0045225817 0.0086261921 -0.0161633251" />
