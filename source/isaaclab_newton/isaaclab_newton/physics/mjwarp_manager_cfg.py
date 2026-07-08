@@ -97,6 +97,14 @@ class MJWarpSolverCfg(NewtonSolverCfg):
     iterative line search for performance.
     """
 
+    enable_multiccd: bool = False
+    """Whether to enable multi-CCD contact generation.
+
+    If ``True``, convex geom pairs (box/mesh) produce up to 4 contact points instead of 1,
+    which stabilizes flat face-to-face contacts such as gripper pads on a box. Geom pairs
+    where either geom has ``margin > 0`` still produce a single contact.
+    """
+
     use_mujoco_contacts: bool = True
     """Whether to use MuJoCo's internal contact solver.
 

@@ -147,6 +147,8 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
                 ls_parallel=True,
                 ls_iterations=20,
                 integrator="implicitfast",
+                # Multi-point contacts for the flat gripper-pad/cube faces (1 contact per pair otherwise).
+                enable_multiccd=True,
             ),
             num_substeps=16,
             default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
