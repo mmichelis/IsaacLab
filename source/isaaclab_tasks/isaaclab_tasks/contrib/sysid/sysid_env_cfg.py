@@ -84,6 +84,10 @@ class CmaEsCfg:
     # plateau_patience iterations.
     plateau_patience: int = 10
     plateau_min_delta: float = 1e-3
+    # Weight on the mean per-joint normalized stiffness (0 = lower bound, 1 = upper
+    # bound) added to the data-fit loss, biasing toward the smallest stiffness that
+    # still matches the data. 0 disables the penalty.
+    stiffness_penalty: float = 0.0
 
 
 @configclass
