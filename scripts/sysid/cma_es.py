@@ -48,12 +48,14 @@ class CMAESOptimizer:
         warmstart_sigma_scale: float = 1.0,
         plateau_patience: int = 0,
         plateau_min_delta: float = 1e-4,
+        stiffness_penalty: float = 0.0,
         seed: int = 0,
         run_metadata: dict | None = None,
     ) -> None:
         self.joint_order = joint_order
         self.max_iteration = max_iteration
         self.epsilon = epsilon
+        self.stiffness_penalty = stiffness_penalty
         self.save_interval = save_interval
         self.device = device
         self.save_optimization_process = save_optimization_process
@@ -157,6 +159,18 @@ class CMAESOptimizer:
     def evolve(self) -> None:
         """Advance CMA-ES one generation using accumulated scores."""
         self.scores /= self.scores_counter
+        # Stiffness regularization: bias toward the smallest stiffness that still
+        # fits. Penalty = weight * mean over joints of normalized stiffness (0 =
+        # lower bound, 1 = upper bound), scale-invariant across joints. Folded into
+        # the CMA objective so tell() and best-candidate selection see the same
+        # regularized score; the data-fit component is logged/saved separately.
+        self.data_scores = self.scores.clone()
+        if self.stiffness_penalty > 0.0:
+            norm_stiffness = (self.params[:, self.stiffness_idx] + 1.0) / 2.0
+            self.penalty = self.stiffness_penalty * norm_stiffness.mean(dim=1)
+            self.scores = self.scores + self.penalty
+        else:
+            self.penalty = torch.zeros_like(self.scores)
         self.scores_buffer[self.iteration_counter, :] = self.scores
         gen_min, gen_min_idx = torch.min(self.scores, dim=0)
         if gen_min.item() < self.best_score:
@@ -170,6 +184,8 @@ class CMAESOptimizer:
                 {
                     "sim_params": self.best_sim_params.cpu(),
                     "score": self.best_score,
+                    "data_score": self.data_scores[gen_min_idx].item(),
+                    "stiffness_penalty": self.penalty[gen_min_idx].item(),
                     "iteration": self.best_iteration,
                     "env_index": int(gen_min_idx.item()),
                     "joint_order": self.joint_order,
@@ -255,6 +271,11 @@ class CMAESOptimizer:
         max_score = torch.max(self.scores)
         print("Max score:", max_score.item())
         print("Min score:", min_score.item(), "at index:", min_index.item())
+        if self.stiffness_penalty > 0.0:
+            print(
+                f"  (data-fit {self.data_scores[min_index].item():.6e} + stiffness penalty "
+                f"{self.penalty[min_index].item():.6e})"
+            )
         print("Stiffness:", self.sim_params[min_index, self.stiffness_idx].tolist())
         print("Damping:", self.sim_params[min_index, self.damping_idx].tolist())
         print(f"Elapsed: {(datetime.now() - self._timer_start).total_seconds():.1f}s")
@@ -282,6 +303,13 @@ class CMAESOptimizer:
                 self.iteration_counter,
             )
         self.writer.add_scalar("0_Episode/score", min_score.item(), self.iteration_counter)
+        if self.stiffness_penalty > 0.0:
+            self.writer.add_scalar(
+                "0_Episode/data_score", self.data_scores[min_score_index].item(), self.iteration_counter
+            )
+            self.writer.add_scalar(
+                "0_Episode/stiffness_penalty", self.penalty[min_score_index].item(), self.iteration_counter
+            )
         self.writer.add_scalar("0_Episode/max_score", max_score.item(), self.iteration_counter)
         self.writer.add_scalar("0_Episode/diff_score", (max_score - min_score) / min_score, self.iteration_counter)
 

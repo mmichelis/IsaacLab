@@ -39,7 +39,7 @@ from isaaclab.app import add_launcher_args, launch_simulation
 from isaaclab_tasks.utils import resolve_task_config, setup_preset_cli
 
 parser = argparse.ArgumentParser(description="CMA-ES sysid fitting for implicit-actuator gains.")
-parser.add_argument("--num_envs", type=int, default=256, help="CMA-ES population size.")
+parser.add_argument("--num_envs", type=int, default=4096, help="CMA-ES population size.")
 parser.add_argument("--task", type=str, default="Isaac-Sysid-Franka-FR3-v0", help="Gym task name.")
 parser.add_argument("--data", type=str, required=True, help="Path to .pt/.npz dataset (see data_contract.py).")
 parser.add_argument(
@@ -61,6 +61,15 @@ parser.add_argument(
     help="Seed the CMA-ES mean from the dataset's kp_used/kd_used metadata.",
 )
 parser.add_argument("--warmstart_sigma_scale", type=float, default=1.0, help="Sigma scale when warm-starting.")
+parser.add_argument(
+    "--stiffness_penalty",
+    type=float,
+    default=None,
+    help=(
+        "Weight on the mean normalized stiffness added to the fit loss, biasing toward the "
+        "smallest stiffness that still matches. 0 disables. Default: cfg value."
+    ),
+)
 parser.add_argument(
     "--eval_params",
     type=str,
@@ -129,6 +138,18 @@ parser.add_argument(
     type=float,
     default=0.05,
     help="Eval verdict policy: fraction of (tick,joint) samples at the effort limit above which eval FAILS.",
+)
+parser.add_argument(
+    "--dump_trajectory",
+    type=str,
+    default=None,
+    help="Eval mode only: save env-0 (eval_params) sim position trajectory to this .pt path.",
+)
+parser.add_argument(
+    "--benchmark",
+    action="store_true",
+    default=False,
+    help="Benchmark mode: boot once, time single physics steps, project per-iteration cost, exit.",
 )
 parser.add_argument("--max_iterations", type=int, default=None, help="Override cfg CMA-ES max iterations.")
 parser.add_argument("--seed", type=int, default=0, help="CMA-ES seed (multi-seed runs are an acceptance gate).")
@@ -482,13 +503,14 @@ def main() -> None:
                     velocity=initial_dof_vel_full[:, inactive_col_indices], joint_ids=sim_inactive_joint_ids
                 )
 
-        def replay_once(params: torch.Tensor, opt: CMAESOptimizer | None = None):
+        def replay_once(params: torch.Tensor, opt: CMAESOptimizer | None = None, traj_out: list | None = None):
             """Roll the full trajectory with one parameter population.
 
             Returns (scores, saturation_fraction) per env: burn-in-masked mean
             over counted steps of the sum-over-joints squared error, and the
             fraction of (tick, joint) samples at >=99% of the effort limit.
             When ``opt`` is given, samples also feed its trajectory buffer.
+            When ``traj_out`` is a list, env-0's sim_q is appended each step.
             """
             env.reset()
             apply_params(params)
@@ -499,6 +521,8 @@ def main() -> None:
                 for i in range(time_steps):
                     count = bool(loss_mask[i])  # burn-in + stale rows (data_contract.build_loss_mask)
                     sim_q = articulation.data.joint_pos.torch[:, sim_joint_ids]
+                    if traj_out is not None:
+                        traj_out.append(sim_q[0].detach().cpu().clone())
                     real_q = measured_dof_pos[i].unsqueeze(0).expand(num_envs, -1)
                     if opt is not None:
                         opt.tell(sim_q, real_q, count=count)
@@ -517,6 +541,37 @@ def main() -> None:
                             ticks += 1
             return scores / max(counted, 1), sat_events / max(ticks, 1)
 
+        # -------------------------------------------------------------- benchmark mode
+        if args_cli.benchmark:
+            import time
+
+            def _sync():
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+
+            p = torch.cat([default_stiffness, default_damping]).unsqueeze(0).repeat(num_envs, 1)
+            apply_params(p)
+            env.reset()
+            for _ in range(20):  # warmup: CUDA graph capture / JIT
+                env.step(actions)
+            _sync()
+            n_steps = 200
+            t0 = time.perf_counter()
+            for _ in range(n_steps):
+                env.step(actions)
+            _sync()
+            per_step = (time.perf_counter() - t0) / n_steps
+            total_steps = time_steps * steps_per_sample
+            print("\n[BENCH] ------------------------------------------------------------")
+            print(f"[BENCH] num_envs (population)      : {num_envs}")
+            print(f"[BENCH] single physics step        : {per_step * 1e3:.3f} ms  ({1.0 / per_step:.0f} steps/s)")
+            print(f"[BENCH] trajectory: {time_steps} samples x {steps_per_sample} substeps = {total_steps} steps")
+            print(f"[BENCH] full iteration (1 gen)     : {per_step * total_steps:.2f} s (projected)")
+            print(f"[BENCH] 200 generations            : {per_step * total_steps * 200 / 60:.1f} min (projected)")
+            print("[BENCH] ------------------------------------------------------------")
+            env.close()
+            return
+
         # -------------------------------------------------------------- eval-only mode
         if args_cli.eval_params:
             if num_envs < 3:
@@ -533,7 +588,11 @@ def main() -> None:
             if num_envs >= 3:
                 rows[2] = torch.cat([default_stiffness, default_damping])
                 labels[2] = "asset_default_gains"
-            scores, sat = replay_once(rows)
+            traj_out = [] if args_cli.dump_trajectory else None
+            scores, sat = replay_once(rows, traj_out=traj_out)
+            if traj_out is not None:
+                torch.save(torch.stack(traj_out), args_cli.dump_trajectory)  # [T, K] env-0 (eval_params)
+                print(f"[EVAL] env-0 trajectory ({len(traj_out)} steps) → {args_cli.dump_trajectory}")
             result = {
                 "data": args_cli.data,
                 "eval_params": args_cli.eval_params,
@@ -573,6 +632,11 @@ def main() -> None:
 
         log_dir = args_cli.log_dir or str(Path("logs") / "sysid" / env_cfg.sysid.robot_name)
         os.makedirs(log_dir, exist_ok=True)
+        stiffness_penalty = (
+            args_cli.stiffness_penalty
+            if args_cli.stiffness_penalty is not None
+            else env_cfg.sysid.cmaes.stiffness_penalty
+        )
 
         opt = CMAESOptimizer(
             bounds=bounds,
@@ -590,6 +654,7 @@ def main() -> None:
             warmstart_sigma_scale=args_cli.warmstart_sigma_scale,
             plateau_patience=env_cfg.sysid.cmaes.plateau_patience,
             plateau_min_delta=env_cfg.sysid.cmaes.plateau_min_delta,
+            stiffness_penalty=stiffness_penalty,
             seed=args_cli.seed,
             run_metadata={
                 "data": args_cli.data,
@@ -600,6 +665,7 @@ def main() -> None:
                 "shaper_relative_dynamics": shaper.relative_dynamics,
                 "shaper_rate_hz": shaper.rate_hz,
                 "shaper_approximate": shaper.approximate,
+                "stiffness_penalty": stiffness_penalty,
                 "burn_in_s": burn_in_s,
                 "stale_fraction": ds.stale_fraction,
                 "allow_stale_fraction": args_cli.allow_stale_fraction,
