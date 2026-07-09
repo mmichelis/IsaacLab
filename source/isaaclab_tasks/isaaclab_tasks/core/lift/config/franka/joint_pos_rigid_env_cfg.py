@@ -152,7 +152,7 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
             ),
             num_substeps=2,
             collision_decimation=1,
-            default_shape_cfg=NewtonShapeCfg(ke=2e3, kd=150.0),
+            default_shape_cfg=NewtonShapeCfg(ke=3e3, kd=150.0),
         )
 
 
@@ -177,17 +177,13 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
         )
 
-        # Soften the arm PD so the IK target is tracked gently: lowering stiffness drops the
-        # closed-loop bandwidth (slower, smoother approach to each pose, less snap into the cube),
-        # with damping scaled ~sqrt(stiffness) to keep the joint response overdamped (no overshoot).
-        # gravcomp=1.0 keeps the arm from sagging despite the lower stiffness.
+        # Soften the arm PD so the IK target is tracked gently
         for actuator_name in ("panda_shoulder", "panda_forearm"):
             self.scene.robot.actuators[actuator_name].stiffness = 100.0
-            self.scene.robot.actuators[actuator_name].damping = 30.0
+            self.scene.robot.actuators[actuator_name].damping = 40.0
 
-        self.scene.robot.actuators["panda_hand"].stiffness = 1000.0
-        self.scene.robot.actuators["panda_hand"].damping = 200.0
-        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 20.0
+        self.scene.robot.actuators["panda_hand"].stiffness = 500.0
+        self.scene.robot.actuators["panda_hand"].damping = 260.0
 
         # Contact sensor on the gripper fingers, filtered to the cube, to read the
         # gripper-on-cube normal contact forces (per finger).
