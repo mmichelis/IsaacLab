@@ -32,7 +32,7 @@ from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG  # isort: skip
 
 
 @configclass
@@ -44,7 +44,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         super().__post_init__()
 
         # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+        self.scene.robot = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
         # Replace the world-welded USD table with a static cuboid collider (same footprint and
         # top height as the mjwarp variant). PhysX positions per-env static geoms via the cloner.
@@ -65,7 +65,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
             asset_name="robot",
             joint_names=["panda_finger.*"],
             open_command_expr={"panda_finger_.*": 0.04},
-            close_command_expr={"panda_finger_.*": 0.0},
+            close_command_expr={"panda_finger_.*": 0.02},
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
@@ -117,12 +117,20 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        # World gravity with full gravity compensation, so the low-PD IK does not fight sag.
+        self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
+
+        # Low, near, head-on camera on the robot (base at env origin, cube at x~0.5). The env's
+        # ViewportCameraController pushes viewer.eye/lookat into every backend (Kit + Newton GL),
+        # so this single setting drives all viewers.
+        self.viewer.eye = (1.9, 0.0, 0.5)
+        self.viewer.lookat = (0.2, 0.0, 0.4)
 
         # mjwarp's implicit PD drive is less damped than PhysX at the same gain, so the arm
         # overshoots more. Raise arm damping ~3x (4 -> 12) so the joint/EE motion ranges match
         # the PhysX baseline (gripper joints left as-is).
-        for actuator_name in ("panda_shoulder", "panda_forearm"):
-            self.scene.robot.actuators[actuator_name].damping = 16.0
+        # for actuator_name in ("panda_shoulder", "panda_forearm"):
+        #     self.scene.robot.actuators[actuator_name].damping = 16.0
 
         # mjwarp does not position per-env static geoms, so re-create the table as a jointless
         # articulation, which mjwarp positions per-env.
@@ -144,14 +152,15 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         self.sim.physics = NewtonCfg(
             solver_cfg=MJWarpSolverCfg(
                 cone="elliptic",
-                ls_parallel=True,
-                ls_iterations=20,
+                # iterations=50,
+                # ls_iterations=20,
                 integrator="implicitfast",
-                # Multi-point contacts for the flat gripper-pad/cube faces (1 contact per pair otherwise).
+                # ccd_iterations=50,
+                # impratio=1.0,
                 enable_multiccd=True,
             ),
-            num_substeps=16,
-            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+            num_substeps=4,
+            default_shape_cfg=NewtonShapeCfg(ke=2e4, kd=300.0),
         )
 
 
@@ -166,13 +175,6 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-
-        # Task-space IK control must hold the arm against gravity, so raise the arm gains to the
-        # high-PD values (400/80) used by IK lift tasks, discarding the base's joint-position
-        # damping tuning. Arm gravity is left enabled (unlike FRANKA_PANDA_HIGH_PD_CFG).
-        for actuator_name in ("panda_shoulder", "panda_forearm"):
-            self.scene.robot.actuators[actuator_name].stiffness = 400.0
-            self.scene.robot.actuators[actuator_name].damping = 80.0
 
         # Swap joint-position control for 7-dim absolute EE pose via differential IK.
         self.actions.arm_action = DifferentialInverseKinematicsActionCfg(
