@@ -71,7 +71,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
         self.scene.robot.actuators["panda_hand"].stiffness = 800.0
-        self.scene.robot.actuators["panda_hand"].damping = 400.0
+        self.scene.robot.actuators["panda_hand"].damping = 200.0
 
         # Set rigid Cube as object.
         self.scene.object = RigidObjectCfg(
