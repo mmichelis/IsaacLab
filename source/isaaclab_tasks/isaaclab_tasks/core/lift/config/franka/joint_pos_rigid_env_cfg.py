@@ -11,7 +11,7 @@ only the physics backend so the two are directly comparable for learning-curve
 matching.
 """
 
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonCollisionPipelineCfg, NewtonShapeCfg
 from isaaclab_newton.sensors.contact_sensor import ContactSensorCfg
 
 import isaaclab.sim as sim_utils
@@ -118,14 +118,10 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # World gravity with full gravity compensation, so the low-PD IK does not fight sag.
         self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
-        # Low, near, head-on camera on the robot (base at env origin, cube at x~0.5). The env's
-        # ViewportCameraController pushes viewer.eye/lookat into every backend (Kit + Newton GL),
-        # so this single setting drives all viewers.
-        self.viewer.eye = (1.0, 0.0, 0.5)
-        self.viewer.lookat = (0.2, 0.0, 0.0)
+        self.viewer.eye = (1.0, 0.0, 0.4)
+        self.viewer.lookat = (0.2, 0.0, 0.1)
 
         # mjwarp does not position per-env static geoms, so re-create the table as a jointless
         # articulation, which mjwarp positions per-env.
@@ -143,7 +139,6 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
             articulation_root_prim_path="",
         )
 
-        # Pure mjwarp Newton backend (no coupling / VBD).
         self.sim.physics = NewtonCfg(
             solver_cfg=MJWarpSolverCfg(
                 cone="elliptic",
@@ -152,10 +147,15 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
                 integrator="implicitfast",
                 # ccd_iterations=50,
                 # impratio=1.0,
-                enable_multiccd=True,
+                # enable_multiccd=True,
+                use_mujoco_contacts=False,
             ),
             num_substeps=4,
             default_shape_cfg=NewtonShapeCfg(ke=2e4, kd=300.0),
+            collision_cfg=NewtonCollisionPipelineCfg(
+                broad_phase="explicit",
+                reduce_contacts=False,
+            ),
         )
 
 
