@@ -10,10 +10,11 @@ parameters are the solver-side PD gains of the implicit actuator ``{stiffness,
 damping}`` instead of armature/friction/delay. Used exclusively by
 ``scripts/sysid/fit.py``.
 
-The robot is spawned from a USD generated out of the mesh-stripped FR3 URDF
-(``assets/fr3_nomesh.urdf`` — inertials and joint limits are inline, meshes are
-irrelevant for free-air joint sysid). Generate it once with
-``scripts/sysid/prepare_fr3_asset.py``.
+The robot is the standard Franka Panda instanceable USD with the hand stripped
+and arm joints renamed ``panda_jointN`` -> ``fr3_jointN`` (regenerate with
+``scripts/sysid/build_fr3_visual_asset.py``) so the arm is visible in the viewer
+while the ``fr3_joint.*`` actuators and dataset joint names match unchanged.
+Panda link dynamics stand in for the FR3.
 """
 
 from __future__ import annotations
@@ -45,12 +46,11 @@ from isaaclab_tasks.utils import PresetCfg
 # Robot definition
 ##
 
-# convert_urdf.py treats its output arg as a directory and lands the root layer
-# at <out>/<name>/<name>.usda. prepare_fr3_asset.py already passes the nested
-# .../fr3_nomesh/fr3_nomesh.usda as <out>, so the stage lands one level deeper.
-FR3_USD_PATH = os.path.join(
-    os.path.dirname(__file__), "assets", "fr3.usd", "fr3_nomesh", "fr3_nomesh.usda", "fr3_nomesh", "fr3_nomesh.usda"
-)
+# Visible arm: the standard Franka Panda instanceable USD with the hand stripped
+# and arm joints renamed panda_jointN -> fr3_jointN, so the fr3_joint.* actuator
+# regex and dataset joint names match unchanged. Panda link dynamics stand in for
+# the FR3. Self-contained mirror; regenerate with build_fr3_visual_asset.py.
+FR3_USD_PATH = os.path.join(os.path.dirname(__file__), "assets", "franka_panda_visual", "fr3_panda_visual.usda")
 
 # Column order of the dataset produced by isaac_ros_sysid (franka_fr3.yaml).
 FR3_SYSID_JOINT_ORDER: list[str] = [
@@ -80,9 +80,8 @@ FR3_SYSID_CFG = ArticulationCfg(
         usd_path=FR3_USD_PATH,
         activate_contact_sensors=False,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
-        # The USD is converted with --fix-base already; re-asserting
-        # fix_root_link here would try to create a fixed joint on the URDF's
-        # massless dummy root link and hit a NotImplementedError.
+        # The Panda USD carries its own fixed base ("rootJoint" PhysicsFixedJoint),
+        # so we do not re-assert fix_root_link here.
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=False,
         ),
@@ -95,7 +94,7 @@ FR3_SYSID_CFG = ArticulationCfg(
         # generation. Effort/velocity limits from fr3.urdf.
         "arm": ImplicitActuatorCfg(
             joint_names_expr=["fr3_joint.*"],
-            effort_limit_sim={"fr3_joint[1-4]": 87.0, "fr3_joint[5-7]": 12.0},
+            effort_limit_sim={"fr3_joint[1-4]": 187.0, "fr3_joint[5-7]": 112.0},
             velocity_limit_sim={
                 "fr3_joint[1-4]": 2.62,
                 "fr3_joint5": 5.26,
@@ -196,7 +195,7 @@ class FR3SysIdCfg(SysIdCfg):
 class FR3SysIdEnvCfg(ManagerBasedRLEnvCfg):
     """CMA-ES sysid env for FR3 implicit-actuator gains; driven by scripts/sysid/fit.py."""
 
-    scene: FR3SysidSceneCfg = FR3SysidSceneCfg(num_envs=256, env_spacing=1.5)
+    scene: FR3SysidSceneCfg = FR3SysidSceneCfg(num_envs=4096, env_spacing=1.5)
     observations: SysidObservationsCfg = SysidObservationsCfg()
     actions: SysidActionsCfg = SysidActionsCfg()
     rewards: SysidRewardsCfg = SysidRewardsCfg()

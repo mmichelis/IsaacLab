@@ -426,8 +426,13 @@ def main() -> None:
 
         joint_order = _resolve_fit_joints(ds)
 
-        sim_joint_ids = torch.tensor([articulation.joint_names.index(n) for n in joint_order], device=device)
-        sim_full_joint_ids = torch.tensor([articulation.joint_names.index(n) for n in data_joint_order], device=device)
+        # int32: PhysX's warp write kernels reject int64 joint-id arrays (Newton tolerates them).
+        sim_joint_ids = torch.tensor(
+            [articulation.joint_names.index(n) for n in joint_order], device=device, dtype=torch.int32
+        )
+        sim_full_joint_ids = torch.tensor(
+            [articulation.joint_names.index(n) for n in data_joint_order], device=device, dtype=torch.int32
+        )
         col_indices = [data_joint_order.index(j) for j in joint_order]
         K = len(joint_order)
 
