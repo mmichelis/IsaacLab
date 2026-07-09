@@ -12,6 +12,7 @@ matching.
 """
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
+from isaaclab_newton.sensors.contact_sensor import ContactSensorCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -32,7 +33,7 @@ from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG  # isort: skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort: skip
 
 
 @configclass
@@ -123,14 +124,8 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         # Low, near, head-on camera on the robot (base at env origin, cube at x~0.5). The env's
         # ViewportCameraController pushes viewer.eye/lookat into every backend (Kit + Newton GL),
         # so this single setting drives all viewers.
-        self.viewer.eye = (1.9, 0.0, 0.5)
-        self.viewer.lookat = (0.2, 0.0, 0.4)
-
-        # mjwarp's implicit PD drive is less damped than PhysX at the same gain, so the arm
-        # overshoots more. Raise arm damping ~3x (4 -> 12) so the joint/EE motion ranges match
-        # the PhysX baseline (gripper joints left as-is).
-        # for actuator_name in ("panda_shoulder", "panda_forearm"):
-        #     self.scene.robot.actuators[actuator_name].damping = 16.0
+        self.viewer.eye = (1.0, 0.0, 0.5)
+        self.viewer.lookat = (0.2, 0.0, 0.0)
 
         # mjwarp does not position per-env static geoms, so re-create the table as a jointless
         # articulation, which mjwarp positions per-env.
@@ -183,4 +178,13 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             body_name="panda_hand",
             controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=False, ik_method="dls"),
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+        )
+
+        # Contact sensor on the gripper fingers, filtered to the cube, to read the
+        # gripper-on-cube normal contact forces (per finger).
+        self.scene.gripper_contact = ContactSensorCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/panda_.*finger",
+            update_period=0.0,
+            history_length=1,
+            filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
         )

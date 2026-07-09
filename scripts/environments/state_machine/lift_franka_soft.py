@@ -290,6 +290,9 @@ def main():
         num_envs=args_cli.num_envs,
     )
     env_cfg.viewer.eye = (2.1, 1.0, 1.3)
+    if args_cli.video:
+        env_cfg.video_recorder.window_width = 1600
+        env_cfg.video_recorder.window_height = 1600
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode=render_mode)
 
     # wrap for video recording
@@ -328,12 +331,31 @@ def main():
     )
 
     ee_frame_sensor = env.unwrapped.scene["ee_frame"]
+    contact_sensor = (
+        env.unwrapped.scene["gripper_contact"] if "gripper_contact" in env.unwrapped.scene.sensors else None
+    )
 
+    step_count = 0
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
             # step environment
             dones = env.step(actions)[-2]
+
+            # -- gripper-on-cube contact normal forces (env 0)
+            if contact_sensor is not None:
+                # force_matrix_w: (N, S=2 fingers, F=1 cube, 3); world-frame contact force vectors.
+                fmat = contact_sensor.data.force_matrix_w
+                if fmat is not None:
+                    fmat = fmat.torch[0]  # (2, 1, 3)
+                    left_f, right_f = fmat[0, 0], fmat[1, 0]
+                    total = left_f + right_f
+                    print(
+                        f"[FORCE] step={step_count:4d} sm={int(pick_sm.sm_state[0])} "
+                        f"|left|={left_f.norm():7.3f}N |right|={right_f.norm():7.3f}N "
+                        f"|net|={total.norm():7.3f}N  net_vec=[{total[0]:.3f},{total[1]:.3f},{total[2]:.3f}]"
+                    )
+            step_count += 1
 
             # observations
             # -- end-effector frame
