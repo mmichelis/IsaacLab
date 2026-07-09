@@ -151,7 +151,7 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
             ),
             num_substeps=2,
             collision_decimation=1,
-            default_shape_cfg=NewtonShapeCfg(ke=3e3, kd=150.0),
+            default_shape_cfg=NewtonShapeCfg(ke=1e4, kd=200.0),
         )
 
 
