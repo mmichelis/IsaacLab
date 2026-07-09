@@ -70,8 +70,8 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
-        self.scene.robot.actuators["panda_hand"].stiffness = 500.0
-        self.scene.robot.actuators["panda_hand"].damping = 260.0
+        self.scene.robot.actuators["panda_hand"].stiffness = 800.0
+        self.scene.robot.actuators["panda_hand"].damping = 400.0
 
         # Set rigid Cube as object.
         self.scene.object = RigidObjectCfg(
@@ -151,7 +151,7 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
             ),
             num_substeps=2,
             collision_decimation=1,
-            default_shape_cfg=NewtonShapeCfg(ke=1e4, kd=200.0),
+            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
         )
 
 
