@@ -171,6 +171,11 @@ class TerminationsCfg:
         func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
     )
 
+    object_out_of_bounds = DoneTerm(
+        func=mdp.object_outside_table_bounds,
+        params={"x_bounds": (0.0, 1.0), "y_bounds": (-0.5, 0.5), "asset_cfg": SceneEntityCfg("object")},
+    )
+
 
 @configclass
 class CurriculumCfg:

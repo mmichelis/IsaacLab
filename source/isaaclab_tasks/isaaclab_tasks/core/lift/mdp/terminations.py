@@ -60,6 +60,30 @@ def object_reached_goal(
     return distance < threshold
 
 
+def object_outside_table_bounds(
+    env: ManagerBasedRLEnv,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Terminate if the rigid object's center leaves the table footprint in xy.
+
+    Args:
+        env: The environment instance.
+        x_bounds: Allowed x-position range in the environment frame [m].
+        y_bounds: Allowed y-position range in the environment frame [m].
+        asset_cfg: The rigid object entity.
+
+    Returns:
+        Boolean tensor with shape ``(num_envs,)``.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    pos = asset.data.root_pos_w.torch[:, :2] - env.scene.env_origins[:, :2]
+    outside_x = (pos[:, 0] < x_bounds[0]) | (pos[:, 0] > x_bounds[1])
+    outside_y = (pos[:, 1] < y_bounds[0]) | (pos[:, 1] > y_bounds[1])
+    return outside_x | outside_y
+
+
 def deformable_com_below_minimum(
     env: ManagerBasedRLEnv,
     minimum_height: float,
