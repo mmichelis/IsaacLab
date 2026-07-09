@@ -66,7 +66,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
             asset_name="robot",
             joint_names=["panda_finger.*"],
             open_command_expr={"panda_finger_.*": 0.04},
-            close_command_expr={"panda_finger_.*": 0.02},
+            close_command_expr={"panda_finger_.*": 0.015},
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
@@ -150,12 +150,9 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
                 # enable_multiccd=True,
                 use_mujoco_contacts=False,
             ),
-            num_substeps=4,
-            default_shape_cfg=NewtonShapeCfg(ke=2e4, kd=300.0),
-            collision_cfg=NewtonCollisionPipelineCfg(
-                broad_phase="explicit",
-                reduce_contacts=False,
-            ),
+            num_substeps=2,
+            collision_decimation=1,
+            default_shape_cfg=NewtonShapeCfg(ke=2e3, kd=150.0),
         )
 
 
@@ -179,6 +176,18 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=False, ik_method="dls"),
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
         )
+
+        # Soften the arm PD so the IK target is tracked gently: lowering stiffness drops the
+        # closed-loop bandwidth (slower, smoother approach to each pose, less snap into the cube),
+        # with damping scaled ~sqrt(stiffness) to keep the joint response overdamped (no overshoot).
+        # gravcomp=1.0 keeps the arm from sagging despite the lower stiffness.
+        for actuator_name in ("panda_shoulder", "panda_forearm"):
+            self.scene.robot.actuators[actuator_name].stiffness = 100.0
+            self.scene.robot.actuators[actuator_name].damping = 30.0
+
+        self.scene.robot.actuators["panda_hand"].stiffness = 1000.0
+        self.scene.robot.actuators["panda_hand"].damping = 200.0
+        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 20.0
 
         # Contact sensor on the gripper fingers, filtered to the cube, to read the
         # gripper-on-cube normal contact forces (per finger).
