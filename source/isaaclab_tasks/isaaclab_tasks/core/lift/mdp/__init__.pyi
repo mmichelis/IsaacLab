@@ -21,7 +21,11 @@ __all__ = [
     "deformable_com_below_minimum",
     "deformable_outside_table_bounds",
     "ee_below_minimum",
+    # curriculums
+    "modify_gravity_linear",
 ]
+
+from .curriculums import modify_gravity_linear
 
 from .observations import (
     DeformableSampledPointsInRobotRootFrame,

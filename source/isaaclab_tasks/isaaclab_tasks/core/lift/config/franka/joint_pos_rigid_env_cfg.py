@@ -11,7 +11,7 @@ only the physics backend so the two are directly comparable for learning-curve
 matching.
 """
 
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonCollisionPipelineCfg, NewtonShapeCfg
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
 from isaaclab_newton.sensors.contact_sensor import ContactSensorCfg
 
 import isaaclab.sim as sim_utils
@@ -71,7 +71,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
         self.scene.robot.actuators["panda_hand"].stiffness = 800.0
-        self.scene.robot.actuators["panda_hand"].damping = 200.0
+        self.scene.robot.actuators["panda_hand"].damping = 100.0
 
         # Set rigid Cube as object.
         self.scene.object = RigidObjectCfg(
@@ -180,7 +180,6 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
         for actuator_name in ("panda_shoulder", "panda_forearm"):
             self.scene.robot.actuators[actuator_name].stiffness = 100.0
             self.scene.robot.actuators[actuator_name].damping = 40.0
-
 
         # Contact sensor on the gripper fingers, filtered to the cube, to read the
         # gripper-on-cube normal contact forces (per finger).
