@@ -70,6 +70,8 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
+        self.scene.robot.actuators["panda_hand"].stiffness = 500.0
+        self.scene.robot.actuators["panda_hand"].damping = 260.0
 
         # Set rigid Cube as object.
         self.scene.object = RigidObjectCfg(
@@ -142,10 +144,7 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         self.sim.physics = NewtonCfg(
             solver_cfg=MJWarpSolverCfg(
                 cone="elliptic",
-                # iterations=50,
-                # ls_iterations=20,
                 integrator="implicitfast",
-                # ccd_iterations=50,
                 # impratio=1.0,
                 # enable_multiccd=True,
                 use_mujoco_contacts=False,
@@ -182,8 +181,6 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             self.scene.robot.actuators[actuator_name].stiffness = 100.0
             self.scene.robot.actuators[actuator_name].damping = 40.0
 
-        self.scene.robot.actuators["panda_hand"].stiffness = 500.0
-        self.scene.robot.actuators["panda_hand"].damping = 260.0
 
         # Contact sensor on the gripper fingers, filtered to the cube, to read the
         # gripper-on-cube normal contact forces (per finger).
