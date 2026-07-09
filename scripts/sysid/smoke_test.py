@@ -56,7 +56,9 @@ def main() -> None:
         phys.use_cuda_graph = False
     effective_graph = getattr(phys, "use_cuda_graph", None)
     print(f"[SMOKE] physics={type(phys).__name__}, use_cuda_graph={effective_graph}")
-    assert effective_graph == (not args_cli.no_cuda_graph), "use_cuda_graph flag did not take effect"
+    # PhysX presets carry no use_cuda_graph; the flag check only applies to Newton.
+    if effective_graph is not None:
+        assert effective_graph == (not args_cli.no_cuda_graph), "use_cuda_graph flag did not take effect"
 
     with launch_simulation(env_cfg, args_cli):
         env = gym.make(args_cli.task, cfg=env_cfg)
@@ -66,8 +68,16 @@ def main() -> None:
         n = art.num_joints
         print(f"[SMOKE] backend physics: {type(env_cfg.sim.physics).__name__}")
         print(f"[SMOKE] joints ({n}): {art.joint_names}")
-        assert n == 7, f"expected 7 FR3 joints, got {n}"
+        # The fitted joints (task's sysid joint_order, mapped to articulation
+        # names) must all exist; extra articulation joints (e.g. a gripper) are
+        # allowed and held at their default target.
+        name_map = dict(getattr(env_cfg.sysid, "sim_joint_name_map", None) or {})
+        fit_joints = [name_map.get(j, j) for j in env_cfg.sysid.joint_order]
+        missing = [j for j in fit_joints if j not in art.joint_names]
+        assert not missing, f"fitted joints missing from articulation: {missing}"
         assert env.unwrapped.action_manager.total_action_dim == n
+        # 4th fitted joint: ready pose -2.356, well inside limits on both robots.
+        jidx = art.joint_names.index(fit_joints[3])
 
         num_envs = env.unwrapped.num_envs
         assert num_envs >= 4, "smoke test needs at least 4 envs"
@@ -81,15 +91,15 @@ def main() -> None:
 
         default = art.data.default_joint_pos.torch.clone()
         target = default.clone()
-        target[:, 3] += 0.2  # joint 4: ready pose -2.356, well inside limits
+        target[:, jidx] += 0.2
         actions = target - default
 
         with torch.inference_mode():
             for _ in range(args_cli.steps):
                 env.step(actions)
 
-        q = art.data.joint_pos.torch[:, 3].detach().cpu()
-        err = (target[:, 3].cpu() - q).abs()
+        q = art.data.joint_pos.torch[:, jidx].detach().cpu()
+        err = (target[:, jidx].cpu() - q).abs()
         print(f"[SMOKE] q_j4 per env after {args_cli.steps} steps: {q.tolist()}")
         print(f"[SMOKE] |target - q| per env: {err.tolist()}")
         assert err[1] < err[0], "stiff env must track better than soft env — per-env gain write ineffective?"

@@ -154,7 +154,6 @@ import isaaclab_tasks  # noqa: F401  (registers tasks)
 from isaaclab_tasks.contrib.sysid.config.franka_fr3.fr3_sysid_env_cfg import build_bounds
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cma_es import CMAESOptimizer  # noqa: E402
 from data_contract import (  # noqa: E402
     build_loss_mask,
     canonical_indices,
@@ -386,6 +385,12 @@ def main() -> None:
     )
 
     with launch_simulation(env_cfg, args_cli):
+        # Deferred import: cma_es pulls in tensorboard, whose grpc/protobuf C
+        # extensions intermittently segfault Kit when they are loaded before
+        # SimulationApp starts. Omniverse modules and their symbol space must
+        # initialize first.
+        from cma_es import CMAESOptimizer
+
         env = gym.make(args_cli.task, cfg=env_cfg)
         device = env.unwrapped.device
         articulation = env.unwrapped.scene["robot"]
@@ -405,8 +410,24 @@ def main() -> None:
 
         joint_order = _resolve_fit_joints(ds)
 
-        sim_joint_ids = torch.tensor([articulation.joint_names.index(n) for n in joint_order], device=device)
-        sim_full_joint_ids = torch.tensor([articulation.joint_names.index(n) for n in data_joint_order], device=device)
+        # Dataset-name -> articulation-name map (empty when they coincide). All
+        # bookkeeping (joint_order, col_indices, bounds, kp_used) stays in
+        # dataset name space; only the sim index lookups go through the map.
+        sim_name_map = dict(getattr(env_cfg.sysid, "sim_joint_name_map", None) or {})
+        data_name_by_sim = {v: k for k, v in sim_name_map.items()}
+
+        def _sim_name(name: str) -> str:
+            return sim_name_map.get(name, name)
+
+        # int32: the isaaclab_physx write_*_to_sim_index kernels take the torch
+        # tensor as-is and warp rejects int64 indices (torch indexing is fine
+        # with int32).
+        sim_joint_ids = torch.tensor(
+            [articulation.joint_names.index(_sim_name(n)) for n in joint_order], device=device, dtype=torch.int32
+        )
+        sim_full_joint_ids = torch.tensor(
+            [articulation.joint_names.index(_sim_name(n)) for n in data_joint_order], device=device, dtype=torch.int32
+        )
         col_indices = [data_joint_order.index(j) for j in joint_order]
         K = len(joint_order)
 
@@ -466,8 +487,9 @@ def main() -> None:
             # array — the write is then redundant but harmless).
             for actuator in articulation.actuators.values():
                 for local_idx, joint_name in enumerate(actuator.joint_names):
-                    if joint_name in joint_order:
-                        k = joint_order.index(joint_name)
+                    data_name = data_name_by_sim.get(joint_name, joint_name)
+                    if data_name in joint_order:
+                        k = joint_order.index(data_name)
                         actuator.stiffness[:, local_idx] = stiffness[:, k]
                         actuator.damping[:, local_idx] = damping[:, k]
             articulation.write_joint_position_to_sim_index(position=initial_dof_pos, joint_ids=sim_joint_ids)

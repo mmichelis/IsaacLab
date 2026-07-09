@@ -93,4 +93,9 @@ class SysIdCfg:
     robot_name: str = MISSING
     # Canonical joint order matching the dataset columns.
     joint_order: list[str] = MISSING
+    # Dataset-name -> articulation-name map, applied when resolving sim joint
+    # indices. Empty when the articulation uses the dataset's (normalized)
+    # names directly. Lets a robot whose USD names differ from the recorded
+    # robot (e.g. panda_joint* arm carrying a gripper) replay fr3_joint* data.
+    sim_joint_name_map: dict[str, str] = {}
     cmaes: CmaEsCfg = CmaEsCfg()

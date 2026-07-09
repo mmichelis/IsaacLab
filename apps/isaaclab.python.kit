@@ -36,7 +36,9 @@ keywords = ["experience", "app", "usd"]
 "isaacsim.sensors.experimental.rtx" = {}
 "isaacsim.simulation_app" = {}
 "isaacsim.storage.native" = {}
-"isaacsim.util.debug_draw" = {}
+# isaacsim.util.debug_draw is not shipped in the pip isaacsim 6.0.1 wheels and only
+# appears in an isaaclab.markers docstring — hard-requiring it aborts the GUI app.
+"isaacsim.util.debug_draw" = { optional = true }
 
 # Isaac Sim Extra
 "isaacsim.asset.importer.mjcf" = {}

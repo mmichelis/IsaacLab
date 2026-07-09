@@ -159,6 +159,21 @@ class CMAESOptimizer:
         self.scores /= self.scores_counter
         self.scores_buffer[self.iteration_counter, :] = self.scores
         gen_min, gen_min_idx = torch.min(self.scores, dim=0)
+        # Persist each generation's best candidate (params, score, rollout) so
+        # the optimization's evolution can be plotted without re-simulation.
+        # 4000 x K float32 per generation — negligible next to the event files.
+        gen_dir = os.path.join(self.writer.log_dir, "generations")
+        os.makedirs(gen_dir, exist_ok=True)
+        torch.save(
+            {
+                "iteration": self.iteration_counter,
+                "sim_params": self.sim_params[gen_min_idx].detach().cpu(),
+                "score": gen_min.item(),
+                "trajectory": self.sim_dof_pos_buffer[gen_min_idx].detach().cpu(),
+                "joint_order": self.joint_order,
+            },
+            os.path.join(gen_dir, f"gen_{self.iteration_counter:03d}.pt"),
+        )
         if gen_min.item() < self.best_score:
             self.best_score = gen_min.item()
             self.best_sim_params = self.sim_params[gen_min_idx].detach().clone()

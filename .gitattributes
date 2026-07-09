@@ -15,3 +15,6 @@ source/isaaclab_tasks/test/golden_images/**/*.png filter=lfs diff=lfs merge=lfs 
 
 *.bat text eol=crlf
 *.sh text eol=lf
+
+# Sysid result figures (see scripts/sysid/SIM2REAL_FINDINGS.md)
+sysid_plots/*.png filter=lfs diff=lfs merge=lfs -text
