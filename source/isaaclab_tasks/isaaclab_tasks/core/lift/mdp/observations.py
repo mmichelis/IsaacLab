@@ -35,6 +35,23 @@ def object_position_in_robot_root_frame(
     return object_pos_b
 
 
+def object_orientation_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """The orientation of the object in the robot's root frame as a quaternion ``(w, x, y, z)``."""
+    robot: RigidObject = env.scene[robot_cfg.name]
+    object: RigidObject = env.scene[object_cfg.name]
+    _, object_quat_b = subtract_frame_transforms(
+        robot.data.root_pos_w.torch,
+        robot.data.root_quat_w.torch,
+        object.data.root_pos_w.torch[:, :3],
+        object.data.root_quat_w.torch,
+    )
+    return object_quat_b
+
+
 def deformable_com_in_robot_root_frame(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),

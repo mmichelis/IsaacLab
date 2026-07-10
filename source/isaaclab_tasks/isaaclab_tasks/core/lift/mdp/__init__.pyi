@@ -6,6 +6,7 @@
 __all__ = [
     # observations
     "object_position_in_robot_root_frame",
+    "object_orientation_in_robot_root_frame",
     "deformable_com_in_robot_root_frame",
     "DeformableSampledPointsInRobotRootFrame",
     # rewards
@@ -32,6 +33,7 @@ from .curriculums import modify_gravity_linear
 from .observations import (
     DeformableSampledPointsInRobotRootFrame,
     deformable_com_in_robot_root_frame,
+    object_orientation_in_robot_root_frame,
     object_position_in_robot_root_frame,
 )
 from .rewards import (
