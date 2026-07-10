@@ -51,7 +51,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         # top height as the mjwarp variant). PhysX positions per-env static geoms via the cloner.
         self.scene.table = AssetBaseCfg(
             prim_path="/World/envs/env_.*/Table",
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(0.7071068, 0.0, 0.0, 0.7071068)),
             spawn=sim_utils.CuboidCfg(
                 size=(0.9, 1.3, 1.05),
                 collision_props=CollisionPropertiesCfg(),
@@ -141,7 +141,7 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         self.scene.table = ArticulationCfg(
             prim_path="/World/envs/env_.*/Table",
             init_state=ArticulationCfg.InitialStateCfg(
-                pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
+                pos=(0.5, 0.0, -0.525), rot=(0.7071068, 0.0, 0.0, 0.7071068), joint_pos={}, joint_vel={}
             ),
             spawn=sim_utils.CuboidCfg(
                 size=(0.9, 1.3, 1.05),
