@@ -70,8 +70,8 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
-        self.scene.robot.actuators["panda_hand"].stiffness = 800.0
-        self.scene.robot.actuators["panda_hand"].damping = 100.0
+        # self.scene.robot.actuators["panda_hand"].stiffness = 800.0
+        # self.scene.robot.actuators["panda_hand"].damping = 100.0
 
         # Set rigid Cube as object.
         self.scene.object = RigidObjectCfg(
@@ -120,7 +120,18 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
+        # self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
+
+        # Drive the arm with joint position deltas (added to the current joint positions each
+        # step) instead of absolute position commands.
+        self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
+            asset_name="robot", joint_names=["panda_joint.*"], scale=0.1
+        )
+        # Continuous gripper control: action in [-1, 1] maps to the finger joint limits
+        # (closed to open) instead of a binary open/close command.
+        self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
+            asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
+        )
 
         self.viewer.eye = (1.0, 0.0, 0.4)
         self.viewer.lookat = (0.2, 0.0, 0.1)
@@ -174,6 +185,14 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             body_name="panda_hand",
             controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=False, ik_method="dls"),
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+        )
+
+        # Restore the binary gripper: the state machine emits a single open/close command.
+        self.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
+            asset_name="robot",
+            joint_names=["panda_finger.*"],
+            open_command_expr={"panda_finger_.*": 0.04},
+            close_command_expr={"panda_finger_.*": 0.015},
         )
 
         # Soften the arm PD so the IK target is tracked gently
