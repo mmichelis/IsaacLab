@@ -193,7 +193,7 @@ class CurriculumCfg:
 
     gravity = CurrTerm(
         func=mdp.modify_gravity_linear,
-        params={"start_gravity_z": -0.01, "end_gravity_z": -9.81, "start_step": 0, "end_step": 20000},
+        params={"start_gravity_z": -0.01, "end_gravity_z": -9.81, "start_step": 0, "end_step": 50000},
     )
 
 

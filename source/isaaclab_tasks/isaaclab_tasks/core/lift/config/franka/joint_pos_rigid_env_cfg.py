@@ -125,7 +125,7 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         # Drive the arm with joint position deltas (added to the current joint positions each
         # step) instead of absolute position commands.
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
-            asset_name="robot", joint_names=["panda_joint.*"], scale=0.1
+            asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
         )
         # Continuous gripper control: action in [-1, 1] maps to the finger joint limits
         # (closed to open) instead of a binary open/close command.
