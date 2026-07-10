@@ -144,7 +144,7 @@ class RewardsCfg:
     object_goal_tracking = RewTerm(
         func=mdp.object_goal_distance,
         params={"std": 0.3, "minimal_height": 0.0, "command_name": "object_pose", "success_threshold": 0.05},
-        weight=16.0,
+        weight=1.0,
     )
 
     object_goal_tracking_fine_grained = RewTerm(
@@ -180,7 +180,7 @@ class TerminationsCfg:
 
     joint_vel_out_of_limit = DoneTerm(
         func=mdp.joint_vel_out_of_manual_limit,
-        params={"max_velocity": 2.5, "asset_cfg": SceneEntityCfg("robot")},
+        params={"max_velocity": 3.0, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 
