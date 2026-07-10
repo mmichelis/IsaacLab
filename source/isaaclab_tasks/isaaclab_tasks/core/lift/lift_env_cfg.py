@@ -180,7 +180,7 @@ class TerminationsCfg:
 
     joint_vel_out_of_limit = DoneTerm(
         func=mdp.joint_vel_out_of_manual_limit,
-        params={"max_velocity": 3.0, "asset_cfg": SceneEntityCfg("robot")},
+        params={"max_velocity": .0, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 
