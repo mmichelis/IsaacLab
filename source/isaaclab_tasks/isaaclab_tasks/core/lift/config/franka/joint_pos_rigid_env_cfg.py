@@ -51,9 +51,11 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         # top height as the mjwarp variant). PhysX positions per-env static geoms via the cloner.
         self.scene.table = AssetBaseCfg(
             prim_path="/World/envs/env_.*/Table",
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(0.7071068, 0.0, 0.0, 0.7071068)),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
             spawn=sim_utils.CuboidCfg(
-                size=(0.9, 1.3, 1.05),
+                # 90 deg z rotation baked into the footprint (swapped x/y) so it holds regardless
+                # of how the static per-env table prim is positioned.
+                size=(1.3, 0.9, 1.05),
                 collision_props=CollisionPropertiesCfg(),
             ),
         )
@@ -70,8 +72,6 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
-        # self.scene.robot.actuators["panda_hand"].stiffness = 800.0
-        # self.scene.robot.actuators["panda_hand"].damping = 100.0
 
         # Set rigid Cube as object.
         self.scene.object = RigidObjectCfg(
@@ -122,6 +122,16 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         super().__post_init__()
         # self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
+        self.scene.robot.actuators["panda_shoulder"].stiffness = 1000.0
+        self.scene.robot.actuators["panda_shoulder"].damping = 60.0
+        self.scene.robot.actuators["panda_shoulder"].armature = 0.1
+        self.scene.robot.actuators["panda_forearm"].stiffness = 300.0
+        self.scene.robot.actuators["panda_forearm"].damping = 4.0
+        self.scene.robot.actuators["panda_forearm"].armature = 0.1
+        self.scene.robot.actuators["panda_hand"].stiffness = 350.0
+        self.scene.robot.actuators["panda_hand"].damping = 20.0
+        self.scene.robot.actuators["panda_hand"].armature = 0.1
+
         # Drive the arm with joint position deltas (added to the current joint positions each
         # step) instead of absolute position commands.
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
@@ -129,9 +139,9 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         )
         # Continuous gripper control: action in [-1, 1] maps to the finger joint limits
         # (closed to open) instead of a binary open/close command.
-        self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
-            asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
-        )
+        # self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
+        #     asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
+        # )
 
         self.viewer.eye = (1.0, 0.0, 0.4)
         self.viewer.lookat = (0.2, 0.0, 0.1)
@@ -141,10 +151,11 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         self.scene.table = ArticulationCfg(
             prim_path="/World/envs/env_.*/Table",
             init_state=ArticulationCfg.InitialStateCfg(
-                pos=(0.5, 0.0, -0.525), rot=(0.7071068, 0.0, 0.0, 0.7071068), joint_pos={}, joint_vel={}
+                pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
             ),
             spawn=sim_utils.CuboidCfg(
-                size=(0.9, 1.3, 1.05),
+                # 90 deg z rotation baked into the footprint (swapped x/y) to match the rigid table.
+                size=(1.3, 0.9, 1.05),
                 collision_props=CollisionPropertiesCfg(),
                 rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=True),
             ),
