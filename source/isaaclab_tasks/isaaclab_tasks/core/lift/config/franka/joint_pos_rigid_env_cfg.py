@@ -120,7 +120,7 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
+        self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
         self.scene.robot.actuators["panda_shoulder"].stiffness = 1000.0
         self.scene.robot.actuators["panda_shoulder"].damping = 60.0
