@@ -126,7 +126,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.25)},
+            "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object", body_names="Object"),
         },
@@ -141,26 +141,26 @@ class RewardsCfg:
 
     # lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.04}, weight=15.0)
 
-    object_goal_tracking = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.3, "minimal_height": 0.0, "command_name": "object_pose", "success_threshold": 0.05},
-        weight=16.0,
-    )
-
-    # object_goal_tracking_fine_grained = RewTerm(
+    # object_goal_tracking = RewTerm(
     #     func=mdp.object_goal_distance,
-    #     params={"std": 0.05, "minimal_height": 0.04, "command_name": "object_pose"},
-    #     weight=5.0,
+    #     params={"std": 0.3, "minimal_height": 0.0, "command_name": "object_pose", "success_threshold": 0.05},
+    #     weight=16.0,
     # )
+
+    object_goal_tracking_fine_grained = RewTerm(
+        func=mdp.object_goal_distance,
+        params={"std": 0.05, "minimal_height": 0.0, "command_name": "object_pose"},
+        weight=5.0,
+    )
 
     # action penalty
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
 
-    joint_vel = RewTerm(
-        func=mdp.joint_vel_l2,
-        weight=-1e-4,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
+    # joint_vel = RewTerm(
+    #     func=mdp.joint_vel_l2,
+    #     weight=-1e-4,
+    #     params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
 
 
 @configclass
@@ -178,6 +178,11 @@ class TerminationsCfg:
         params={"x_bounds": (0.0, 1.0), "y_bounds": (-0.5, 0.5), "asset_cfg": SceneEntityCfg("object")},
     )
 
+    joint_vel_out_of_limit = DoneTerm(
+        func=mdp.joint_vel_out_of_manual_limit,
+        params={"max_velocity": 1.5, "asset_cfg": SceneEntityCfg("robot")},
+    )
+
 
 @configclass
 class CurriculumCfg:
@@ -191,10 +196,10 @@ class CurriculumCfg:
     #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000}
     # )
 
-    gravity = CurrTerm(
-        func=mdp.modify_gravity_linear,
-        params={"start_gravity_z": -0.01, "end_gravity_z": -9.81, "start_step": 0, "end_step": 50000},
-    )
+    # gravity = CurrTerm(
+    #     func=mdp.modify_gravity_linear,
+    #     params={"start_gravity_z": -0.01, "end_gravity_z": -9.81, "start_step": 0, "end_step": 50000},
+    # )
 
 
 ##
