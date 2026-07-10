@@ -95,6 +95,67 @@ class object_goal_distance(ManagerTermBase):
         return is_lifted.float() * (1 - torch.tanh(distance / std))
 
 
+class object_goal_distance_delta(ManagerTermBase):
+    """Reward the agent for moving the object closer to the goal each step.
+
+    Returns the per-step decrease in the object-to-goal distance (previous minus current),
+    gated so it only credits while the object is lifted above ``minimal_height``. Moving the
+    object toward the goal yields a positive reward and away a negative one. The stored
+    distance is re-baselined on the first step after reset so the reset teleport does not
+    produce a spurious reward. Success tracking matches :class:`object_goal_distance`.
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._prev_distance = torch.zeros(env.num_envs, device=env.device)
+        # baseline the stored distance on the first call after each reset
+        self._needs_baseline = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+        self._track_success = cfg.params.get("success_threshold") is not None
+        if self._track_success:
+            self._succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def _goal_distance(
+        self, env: ManagerBasedRLEnv, command_name: str, robot_cfg: SceneEntityCfg, object_cfg: SceneEntityCfg
+    ):
+        robot: RigidObject = env.scene[robot_cfg.name]
+        obj: RigidObject = env.scene[object_cfg.name]
+        command = env.command_manager.get_command(command_name)
+        des_pos_w, _ = combine_frame_transforms(
+            robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
+        )
+        object_pos_w = obj.data.root_pos_w.torch
+        distance = torch.linalg.norm(des_pos_w - object_pos_w, dim=1)
+        return distance, object_pos_w
+
+    def reset(self, env_ids: torch.Tensor):
+        self._needs_baseline[env_ids] = True
+        if self._track_success:
+            self._env.extras.setdefault("log", {})["Metrics/success_rate"] = (
+                self._succeeded[env_ids].float().mean().item()
+            )
+            self._succeeded[env_ids] = False
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        minimal_height: float,
+        command_name: str,
+        robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+        success_threshold: float | None = None,
+    ) -> torch.Tensor:
+        distance, object_pos_w = self._goal_distance(env, command_name, robot_cfg, object_cfg)
+        # freshly reset envs baseline here (after command resampling) so their first delta is zero
+        self._prev_distance = torch.where(self._needs_baseline, distance, self._prev_distance)
+        self._needs_baseline[:] = False
+        is_lifted = object_pos_w[:, 2] > minimal_height
+        if success_threshold is not None:
+            self._succeeded |= is_lifted & (distance < success_threshold)
+        delta = self._prev_distance - distance
+        self._prev_distance = distance
+        return is_lifted.float() * delta
+
+
 def deformable_lifted(
     env: ManagerBasedRLEnv,
     minimal_height: float,
