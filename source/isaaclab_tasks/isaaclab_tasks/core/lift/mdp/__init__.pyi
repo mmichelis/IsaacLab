@@ -9,6 +9,7 @@ __all__ = [
     "object_orientation_in_robot_root_frame",
     "deformable_com_in_robot_root_frame",
     "DeformableSampledPointsInRobotRootFrame",
+    "DeformableOrientationInRobotRootFrame",
     # rewards
     "object_ee_distance",
     "object_goal_distance",
@@ -31,6 +32,7 @@ __all__ = [
 from .curriculums import modify_gravity_linear
 
 from .observations import (
+    DeformableOrientationInRobotRootFrame,
     DeformableSampledPointsInRobotRootFrame,
     deformable_com_in_robot_root_frame,
     object_orientation_in_robot_root_frame,

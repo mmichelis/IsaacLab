@@ -14,7 +14,7 @@ import torch
 import warp as wp
 
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg
-from isaaclab.utils.math import subtract_frame_transforms
+from isaaclab.utils.math import quat_from_matrix, subtract_frame_transforms
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, DeformableObject, RigidObject
@@ -144,3 +144,84 @@ class DeformableSampledPointsInRobotRootFrame(ManagerTermBase):
             flat_sampled_points_w,
         )
         return sampled_points_b.view(env.num_envs, -1)
+
+
+class DeformableOrientationInRobotRootFrame(ManagerTermBase):
+    """Best-fit orientation of a deformable object in the robot's root frame as a quaternion.
+
+    Reconstructs a rigid orientation for a (near-rigid) deformable body by fitting the rotation
+    that best aligns a fixed set of sampled material vertices from their rest configuration to
+    their current positions (Kabsch / orthogonal Procrustes). This lets a policy trained on a
+    rigid object's ``object_orientation`` observation be reused with a deformable object.
+
+    The sampled node indices and their rest offsets are cached on construction and shared across
+    environments (the rest shape is identical per env), so each observed vertex tracks the same
+    material node over time. More points give a more robust fit.
+    """
+
+    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+
+        self.asset_cfg: SceneEntityCfg = cfg.params.get("asset_cfg", SceneEntityCfg("object"))
+        self.robot_cfg: SceneEntityCfg = cfg.params.get("robot_cfg", SceneEntityCfg("robot"))
+        self.num_points: int = cfg.params.get("num_points", 8)
+
+        asset: DeformableObject = env.scene[self.asset_cfg.name]
+        num_nodes = asset.data.nodal_pos_w.shape[1]
+        if not 4 <= self.num_points <= num_nodes:
+            raise ValueError(
+                f"DeformableOrientationInRobotRootFrame needs 4..{num_nodes} points, got {self.num_points}."
+            )
+        # Fixed sampled nodes shared across envs (the rest shape is identical per env).
+        self.node_ids = torch.randperm(num_nodes, device=env.device)[: self.num_points]
+        # Rest offsets of the sampled nodes about their centroid (rest orientation is identity).
+        rest_points = asset.data.default_nodal_state_w.torch[0, self.node_ids, :3]
+        self.rest_offsets = rest_points - rest_points.mean(dim=0, keepdim=True)  # (num_points, 3)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+        robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        num_points: int = 8,
+    ) -> torch.Tensor:
+        """Best-fit deformable orientation in the robot's root frame.
+
+        Args:
+            env: The environment instance.
+            asset_cfg: The deformable object entity.
+            robot_cfg: The robot entity providing the reference frame.
+            num_points: Number of sampled vertices used to fit the frame.
+
+        Returns:
+            Quaternion ``(w, x, y, z)`` of shape ``(num_envs, 4)``.
+        """
+        asset: DeformableObject = env.scene[asset_cfg.name]
+        robot: Articulation = env.scene[robot_cfg.name]
+        if num_points != self.num_points:
+            raise ValueError(
+                f"Requested {num_points} deformable points, but this term was initialized with {self.num_points}."
+            )
+
+        # Current sampled vertices centered on their centroid: (num_envs, num_points, 3).
+        sampled_w = asset.data.nodal_pos_w.torch[:, self.node_ids, :]
+        cur_offsets = sampled_w - sampled_w.mean(dim=1, keepdim=True)
+
+        # Kabsch: rotation aligning rest offsets to current offsets. cov = sum_k rest_k cur_k^T.
+        cov = torch.einsum("ki,nkj->nij", self.rest_offsets, cur_offsets)
+        u, _, vh = torch.linalg.svd(cov)
+        v = vh.transpose(-2, -1)
+        ut = u.transpose(-2, -1)
+        # Proper-rotation (det +1) correction: flip the sign of the last column of V.
+        signs = torch.ones_like(u[:, 0, :])
+        signs[:, -1] = torch.linalg.det(torch.matmul(v, ut))
+        rot = torch.matmul(v * signs.unsqueeze(1), ut)
+        object_quat_w = quat_from_matrix(rot)
+
+        _, object_quat_b = subtract_frame_transforms(
+            wp.to_torch(robot.data.root_pos_w),
+            wp.to_torch(robot.data.root_quat_w),
+            wp.to_torch(asset.data.root_pos_w),
+            object_quat_w,
+        )
+        return object_quat_b

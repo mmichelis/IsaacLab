@@ -13,10 +13,13 @@ matching.
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
 from isaaclab_newton.sensors.contact_sensor import ContactSensorCfg
+from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
+from isaaclab_newton.sim.spawners.materials import NewtonDeformableBodyMaterialCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.sensors import FrameTransformerCfg
@@ -261,6 +264,103 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
                 shape_material_ke=8e3,
             ),
             num_substeps=2,
+        )
+
+
+@configclass
+class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
+    """Proxy-coupled variant where the cube is a volumetric deformable body instead of rigid.
+
+    Mirrors :class:`FrankaCubeLiftProxyEnvCfg` (mjwarp robot source, proxy gripper coupling, VBD
+    destination), but the rigid DexCube is replaced by a solid VBD deformable cuboid of the same
+    edge length (0.048 m) and a stiff material (Young's modulus 1e8 Pa). Since the object is now a
+    particle deformable it auto-routes to the VBD solver, so the coupling needs no explicit
+    destination body selector. The object observation becomes the mean of the cube's vertices and
+    the reset re-seeds the nodal state instead of a rigid body pose.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        from isaaclab.managers import EventTermCfg as EventTerm
+        from isaaclab.managers import ObservationTermCfg as ObsTerm
+        from isaaclab.managers import SceneEntityCfg
+
+        # Replace the rigid DexCube with a solid VBD deformable cuboid of the same footprint
+        # (0.06 m nominal * 0.8 scale = 0.048 m edge). Stiffness is set via Lame parameters derived
+        # from a Young's modulus of 1e8 Pa at Poisson 0.25: k_mu = E/(2(1+nu)) = 4e7,
+        # k_lambda = E*nu/((1+nu)(1-2nu)) = 4e7.
+        self.scene.object = DeformableObjectCfg(
+            prim_path="/World/envs/env_.*/Object",
+            init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.055)),
+            spawn=sim_utils.MeshCuboidCfg(
+                size=(0.048, 0.048, 0.048),
+                deformable_props=NewtonDeformableBodyPropertiesCfg(),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.6, 0.9)),
+                physics_material=NewtonDeformableBodyMaterialCfg(
+                    density=300.0,
+                    k_mu=4.0e7,
+                    k_lambda=4.0e7,
+                    particle_radius=0.01,
+                ),
+            ),
+        )
+
+        # Deformable particles auto-route to the VBD (dst) solver, so drop the rigid dst body
+        # selector and switch to a soft-contact model. Same proxy gripper coupling as the parent.
+        self.sim.physics = CoupledNewtonCfg(
+            solver_cfg=CoupledProxySolverCfg(
+                src_solver_cfg=MJWarpSolverCfg(
+                    cone="elliptic",
+                    ls_iterations=20,
+                    integrator="implicitfast",
+                ),
+                dst_solver_cfg=VBDSolverCfg(iterations=10),
+                src_bodies=["/World/envs/env_.*/Robot"],
+                proxy_bodies=[
+                    "/World/envs/env_.*/Robot/panda_hand",
+                    "/World/envs/env_.*/Robot/panda_(left|right)finger",
+                ],
+                proxy_collide_interval=5,
+            ),
+            model_cfg=NewtonModelCfg(
+                soft_contact_ke=1e4,
+                soft_contact_kd=1e-5,
+                soft_contact_mu=5.0,
+                shape_material_ke=4e4,
+                shape_material_kd=1e-5,
+                shape_material_mu=5.0,
+            ),
+            num_substeps=10,
+        )
+
+        # Object observation: mean of the deformable cube's vertices in the robot root frame.
+        self.observations.policy.object_position = ObsTerm(
+            func=mdp.deformable_com_in_robot_root_frame,
+            params={"asset_cfg": SceneEntityCfg("object")},
+        )
+        # Reconstruct a rigid orientation for the deformable cube by fitting a coordinate frame to
+        # a few of its vertices (Kabsch), so the same policy that expects object_orientation works.
+        self.observations.policy.object_orientation = ObsTerm(
+            func=mdp.DeformableOrientationInRobotRootFrame,
+            params={"asset_cfg": SceneEntityCfg("object"), "num_points": 8},
+        )
+
+        # Re-seed the deformable node cloud on reset (replaces the VBD rigid-body reset), reusing
+        # the inherited x/y sampling range. The parent's proxy-velocity reset still applies.
+        pose_range = self.events.reset_object_position.params["pose_range"]
+        self.events.reset_object_position = EventTerm(
+            func=mdp.reset_nodal_state_uniform,
+            mode="reset",
+            params={
+                "position_range": {
+                    "x": pose_range.get("x", (0.0, 0.0)),
+                    "y": pose_range.get("y", (0.0, 0.0)),
+                    "z": (0.0, 0.0),
+                },
+                "velocity_range": {},
+                "asset_cfg": SceneEntityCfg("object"),
+            },
         )
 
 
