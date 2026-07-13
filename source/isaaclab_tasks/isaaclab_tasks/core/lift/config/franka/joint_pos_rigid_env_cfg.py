@@ -27,6 +27,13 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
+from isaaclab_contrib.coupling import CoupledProxySolverCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import (
+    CoupledNewtonCfg,
+    NewtonModelCfg,
+    VBDSolverCfg,
+)
+
 from isaaclab_tasks.core.lift import mdp
 from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 
@@ -139,11 +146,15 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
             asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
         )
 
-        # The mjwarp variant renders through the Newton GL viewer, whose camera comes from
-        # NewtonVisualizerCfg (not ViewerCfg). Lowered eye frames the tabletop workspace; the
-        # same eye/lookat also seed the Newton --video recorder. Record at 1080p.
-        cam = dict(eye=(3.5, -3.0, 1.5), lookat=(0.4, 0.0, -0.25), window_width=1920, window_height=1080)
-        self.sim.visualizer_cfgs = [NewtonVisualizerCfg(**cam)]
+        # Camera pose (lowered eye framing the tabletop workspace). When Kit is running,
+        # ViewportCameraController pushes ViewerCfg.eye/lookat onto the Newton viewer via
+        # sim.set_camera_view(), overriding NewtonVisualizerCfg. So ViewerCfg is the master pose
+        # (origin_type "world" -> absolute world coords); the Newton cfg carries the same values
+        # for the kitless path and seeds the --video recorder. Record at 1080p.
+        eye, lookat = (3.5, -3.0, 1.5), (0.4, 0.0, -0.25)
+        self.viewer.eye = eye
+        self.viewer.lookat = lookat
+        self.sim.visualizer_cfgs = [NewtonVisualizerCfg(eye=eye, lookat=lookat, window_width=1920, window_height=1080)]
         self.video_recorder.window_width = 1920
         self.video_recorder.window_height = 1080
 
@@ -164,56 +175,61 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
             articulation_root_prim_path="",
         )
 
-        # self.sim.physics = NewtonCfg(
-        #     solver_cfg=MJWarpSolverCfg(
-        #         cone="elliptic",
-        #         integrator="implicitfast",
-        #         # impratio=1.0,
-        #         # enable_multiccd=True,
-        #         use_mujoco_contacts=False,
-        #     ),
-        #     num_substeps=2,
-        #     collision_decimation=1,
-        #     default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
-        # )
-
-        from isaaclab_contrib.coupling import CoupledProxySolverCfg
-        from isaaclab_contrib.deformable.newton_manager_cfg import (
-            CoupledMJWarpVBDSolverCfg,
-            CoupledNewtonCfg,
-            NewtonModelCfg,
-            VBDSolverCfg,
-        )
-        self.sim.physics = CoupledNewtonCfg(
-        solver_cfg=CoupledProxySolverCfg(
-            src_solver_cfg=MJWarpSolverCfg(
+        # Pure mjwarp solver (the coupled-proxy variant lives in FrankaCubeLiftProxyEnvCfg).
+        self.sim.physics = NewtonCfg(
+            solver_cfg=MJWarpSolverCfg(
                 cone="elliptic",
-                ls_iterations=20,
                 integrator="implicitfast",
+                use_mujoco_contacts=False,
             ),
-            dst_solver_cfg=VBDSolverCfg(
-                iterations=10,
+            num_substeps=2,
+            collision_decimation=1,
+            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+        )
+
+
+@configclass
+class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
+    """Same scene as the mjwarp variant, but the object is coupled to a VBD proxy solver.
+
+    The robot and table are simulated with mjwarp (source solver) while the DexCube is
+    handed to a VBD (destination) solver; a proxy coupler exchanges contacts between the
+    two so a soft/deformable-style object can interact with the rigid mjwarp scene.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.sim.physics = CoupledNewtonCfg(
+            solver_cfg=CoupledProxySolverCfg(
+                src_solver_cfg=MJWarpSolverCfg(
+                    cone="elliptic",
+                    ls_iterations=20,
+                    integrator="implicitfast",
+                ),
+                dst_solver_cfg=VBDSolverCfg(
+                    iterations=10,
+                ),
+                src_bodies=["/World/envs/env_.*/Robot", "/World/envs/env_.*/Table"],
+                dst_bodies=["/World/envs/env_.*/Object"],
+                proxy_bodies=[
+                    "/World/envs/env_.*/Robot/panda_hand",
+                    "/World/envs/env_.*/Robot/panda_(left|right)finger",
+                    "/World/envs/env_.*/Table",
+                ],
+                proxy_collide_interval=5,
             ),
-            src_bodies=["/World/envs/env_.*/Robot", "/World/envs/env_.*/Table"],
-            dst_bodies=["/World/envs/env_.*/Object"],
-            proxy_bodies=[
-                "/World/envs/env_.*/Robot/panda_hand",
-                "/World/envs/env_.*/Robot/panda_(left|right)finger",
-                "/World/envs/env_.*/Table"
-            ],
-            proxy_collide_interval=5,
-        ),
-        # model_cfg=NewtonModelCfg(
-        #     soft_contact_ke=1e4,
-        #     soft_contact_kd=1e-5,
-        #     soft_contact_mu=5.0,
-        #     shape_material_ke=4e4,
-        #     shape_material_kd=1e-5,
-        #     shape_material_mu=5.0,
-        # ),
-        num_substeps=4,
-        default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
-    )
+            model_cfg=NewtonModelCfg(
+                soft_contact_ke=1e4,
+                soft_contact_kd=1e-5,
+                soft_contact_mu=5.0,
+                shape_material_ke=4e4,
+                shape_material_kd=1e-5,
+                shape_material_mu=5.0,
+            ),
+            num_substeps=4,
+            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+        )
 
 
 @configclass
