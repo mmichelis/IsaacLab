@@ -195,10 +195,34 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
     The robot and table are simulated with mjwarp (source solver) while the DexCube is
     handed to a VBD (destination) solver; a proxy coupler exchanges contacts between the
     two so a soft/deformable-style object can interact with the rigid mjwarp scene.
+
+    The cube's reset is overridden: since it is owned by the VBD solver, IsaacLab's default
+    rigid-body reset never reaches its state, so we re-seed the VBD body state instead.
     """
 
     def __post_init__(self):
         super().__post_init__()
+
+        # The DexCube now lives on the VBD (dst) side of the coupled solver, so the inherited
+        # rigid-body reset (reset_root_state_uniform) never touches its state. Re-seed the VBD
+        # body_q/joint_q (and AVBD companions) via the soft-object reset path, keeping the same
+        # sampling range, and clear the proxy teleport velocity left by the robot-joint reset.
+        from isaaclab.managers import EventTermCfg as EventTerm
+        from isaaclab.managers import SceneEntityCfg
+
+        from isaaclab_tasks.core.lift.config.franka_soft import mdp as soft_mdp
+
+        self.events.reset_object_position = EventTerm(
+            func=soft_mdp.reset_rigid_body_uniform,
+            mode="reset",
+            params={
+                "pose_range": self.events.reset_object_position.params["pose_range"],
+                "asset_cfg": SceneEntityCfg("object"),
+            },
+        )
+        # Runs after reset_all/reset_object_position: snaps each proxy body's body_q_prev onto
+        # its post-reset pose so the coupler does not fling the cube from the arm teleport.
+        self.events.reset_proxy_velocity = EventTerm(func=soft_mdp.reset_proxy_body_prev, mode="reset")
 
         self.sim.physics = CoupledNewtonCfg(
             solver_cfg=CoupledProxySolverCfg(
