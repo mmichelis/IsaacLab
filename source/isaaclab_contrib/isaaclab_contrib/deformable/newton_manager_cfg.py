@@ -3,13 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Configuration classes for VBD, coupled solver, and global Newton model parameters."""
+"""Configuration classes for the VBD solver and global Newton model parameters."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonSolverCfg
+from isaaclab_newton.physics import NewtonSolverCfg
 
 from isaaclab.utils.configclass import configclass
 
@@ -115,53 +115,3 @@ class VBDSolverCfg(NewtonModelSolverCfg):
 
     rigid_contact_k_start: float = 1.0e2
     """Initial stiffness seed for all rigid body contacts [N/m]."""
-
-
-@configclass
-class CoupledMJWarpVBDSolverCfg(NewtonModelSolverCfg):
-    """Configuration for the coupled MJWarp + VBD solver.
-
-    Alternates a rigid-body solver (:class:`MJWarpSolverCfg`) and VBD per substep.
-    The coupling direction is controlled by :attr:`coupling_mode`.
-    """
-
-    class_type: type[NewtonManager] | str = "{DIR}.coupled_mjwarp_vbd_manager:NewtonCoupledMJWarpVBDManager"
-    """Manager class for the coupled MJWarp + VBD solver."""
-
-    rigid_solver_cfg: MJWarpSolverCfg = MJWarpSolverCfg()
-    """Rigid-body sub-solver configuration."""
-
-    soft_solver_cfg: VBDSolverCfg = VBDSolverCfg(integrate_with_external_rigid_solver=True)
-    """VBD sub-solver configuration for cloth/particle dynamics."""
-
-    coupling_mode: str = "two_way"
-    """Coupling direction between the rigid and VBD solvers.
-
-    - ``"one_way"``: Rigid -> soft only.
-    - ``"two_way"``: Same-substep two-way coupling with normal + Coulomb friction.
-    """
-
-
-@configclass
-class CoupledFeatherstoneVBDSolverCfg(NewtonModelSolverCfg):
-    """Configuration for the coupled Featherstone + VBD solver.
-
-    Alternates a rigid-body solver (:class:`FeatherstoneSolverCfg`) and VBD per
-    substep. The coupling direction is controlled by :attr:`coupling_mode`.
-    """
-
-    class_type: type[NewtonManager] | str = "{DIR}.coupled_featherstone_vbd_manager:NewtonCoupledFeatherstoneVBDManager"
-    """Manager class for the coupled Featherstone + VBD solver."""
-
-    rigid_solver_cfg: FeatherstoneSolverCfg = FeatherstoneSolverCfg()
-    """Rigid-body sub-solver configuration."""
-
-    soft_solver_cfg: VBDSolverCfg = VBDSolverCfg(integrate_with_external_rigid_solver=True)
-    """VBD sub-solver configuration for cloth/particle dynamics."""
-
-    coupling_mode: str = "kinematic"
-    """Coupling direction between the rigid and VBD solvers.
-
-    Accepts the same values as :attr:`CoupledMJWarpVBDSolverCfg.coupling_mode`,
-    plus ``"kinematic"`` (rigid -> soft only, rigid bodies kinematically updated).
-    """

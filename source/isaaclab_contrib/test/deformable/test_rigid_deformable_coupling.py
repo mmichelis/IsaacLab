@@ -28,56 +28,79 @@ from isaaclab.assets import RigidObjectCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.sim import SimulationCfg, build_simulation_context
 
-from isaaclab_contrib.deformable import (
-    CoupledFeatherstoneVBDSolverCfg,
-    CoupledMJWarpVBDSolverCfg,
-    DeformableObject,
-    VBDSolverCfg,
+from isaaclab_contrib.coupling import (
+    CoupledAdmmSolverCfg,
+    CoupledProxyCfg,
+    CoupledProxySolverCfg,
+    CoupledSolverEntryCfg,
 )
+from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg
 
 from isaaclab_assets import FRANKA_PANDA_CFG  # isort:skip
 
 
-def _make_coupled_cfg(coupling_mode: str, rigid_solver: str = "mjwarp") -> SimulationCfg:
-    """Create a simulation config for a coupled rigid-deformable solver."""
+# Newton body-label regexes selecting the rigid bodies owned by each scene's rigid entry.
+_ROBOT_BODIES = "/World/env_.*/Robot"
+_RIGID_CUBE_BODIES = "/World/env_.*/rigid_cube"
+
+
+def _rigid_solver_cfg(rigid_solver: str):
+    """Build the rigid entry's Newton solver config."""
     if rigid_solver == "mjwarp":
-        solver_cfg = CoupledMJWarpVBDSolverCfg(
-            rigid_solver_cfg=MJWarpSolverCfg(
-                njmax=40,
-                nconmax=20,
-                ls_iterations=20,
-                cone="pyramidal",
-                impratio=1,
-                integrator="implicitfast",
-            ),
-            soft_solver_cfg=VBDSolverCfg(
-                iterations=3,
-                integrate_with_external_rigid_solver=True,
-                particle_enable_self_contact=False,
-                particle_collision_detection_interval=-1,
-            ),
-            coupling_mode=coupling_mode,
+        return MJWarpSolverCfg(
+            njmax=40,
+            nconmax=20,
+            ls_iterations=20,
+            cone="pyramidal",
+            impratio=1,
+            integrator="implicitfast",
         )
-    elif rigid_solver == "featherstone":
-        solver_cfg = CoupledFeatherstoneVBDSolverCfg(
-            rigid_solver_cfg=FeatherstoneSolverCfg(),
-            soft_solver_cfg=VBDSolverCfg(
-                iterations=3,
-                integrate_with_external_rigid_solver=True,
-                particle_enable_self_contact=False,
-                particle_collision_detection_interval=-1,
-            ),
-            coupling_mode=coupling_mode,
+    if rigid_solver == "featherstone":
+        return FeatherstoneSolverCfg()
+    raise ValueError(f"Unknown rigid solver: {rigid_solver}")
+
+
+def _make_coupled_cfg(coupling: str, rigid_solver: str, rigid_bodies: str) -> SimulationCfg:
+    """Create a simulation config for a named coupled rigid-deformable solver.
+
+    Args:
+        coupling: ``"proxy"`` for virtual-proxy (one-way) or ``"admm"`` for
+            two-way ADMM coupling.
+        rigid_solver: ``"mjwarp"`` or ``"featherstone"`` rigid entry solver.
+        rigid_bodies: Newton body-label regex owned by the rigid entry.
+    """
+    entries = [
+        CoupledSolverEntryCfg(
+            name="rigid",
+            solver_cfg=_rigid_solver_cfg(rigid_solver),
+            bodies=[rigid_bodies],
+        ),
+        CoupledSolverEntryCfg(
+            name="soft",
+            solver_cfg=VBDSolverCfg(iterations=3),
+            all_particles=True,
+            include_static_shapes=True,
+        ),
+    ]
+
+    if coupling == "proxy":
+        solver_cfg = CoupledProxySolverCfg(
+            entries=entries,
+            proxies=[CoupledProxyCfg(source="rigid", destination="soft", bodies=[rigid_bodies])],
+            iterations=1,
         )
+    elif coupling == "admm":
+        solver_cfg = CoupledAdmmSolverCfg(entries=entries)
     else:
-        raise ValueError(f"Unknown rigid solver: {rigid_solver}")
+        raise ValueError(f"Unknown coupling: {coupling}")
 
     return SimulationCfg(
         dt=1.0 / 60.0,
         physics=NewtonCfg(
             solver_cfg=solver_cfg,
             num_substeps=5,
-            use_cuda_graph=True,
+            # ADMM coupling is not yet compatible with CUDA-graph capture.
+            use_cuda_graph=coupling != "admm",
         ),
     )
 
@@ -90,17 +113,14 @@ def _coupled_sim_context(cfg: SimulationCfg, device="cuda:0"):
 
 @pytest.fixture
 def sim(request):
-    """Create a coupled solver simulation context.
+    """Create a coupled solver simulation context for the robot scene.
 
-    Defaults to one-way coupling. Tests can parametrize this fixture with
-    ``"two_way"`` when both coupling paths should be exercised.
+    Defaults to MJWarp virtual-proxy coupling. Tests can parametrize this
+    fixture with a ``(rigid_solver, coupling)`` tuple to exercise other
+    combinations.
     """
-    param = getattr(request, "param", "one_way")
-    if isinstance(param, tuple):
-        rigid_solver, coupling_mode = param
-    else:
-        rigid_solver, coupling_mode = "mjwarp", param
-    with _coupled_sim_context(_make_coupled_cfg(coupling_mode, rigid_solver)) as sim:
+    rigid_solver, coupling = getattr(request, "param", ("mjwarp", "proxy"))
+    with _coupled_sim_context(_make_coupled_cfg(coupling, rigid_solver, _ROBOT_BODIES)) as sim:
         sim._app_control_on_stop_handle = None
         yield sim
 
@@ -222,12 +242,12 @@ def generate_lateral_rigid_and_deformable_cubes(
 @pytest.mark.smoke
 @pytest.mark.parametrize(
     "sim",
-    [("featherstone", "kinematic")],
+    [("featherstone", "proxy")],
     indirect=True,
-    ids=["featherstone_kinematic"],
+    ids=["featherstone_proxy"],
 )
-def test_smoke_featherstone_kinematic(sim):
-    """Smoke test: Featherstone + VBD kinematic coupling initializes and steps."""
+def test_smoke_featherstone_proxy(sim):
+    """Smoke test: Featherstone + VBD proxy coupling initializes and steps."""
     robot, colliding_cube, free_cube = generate_robot_and_two_cubes()
     sim.reset()
 
@@ -248,16 +268,20 @@ def test_smoke_featherstone_kinematic(sim):
     assert free_cube.data.root_pos_w.torch[0, 2].item() < initial_z_free - 0.01
 
 
-def _run_lateral_rigid_cube_response(coupling_mode: str, rigid_solver: str) -> float:
-    """Run a compact lateral contact scene and return rigid cube X displacement."""
-    with _coupled_sim_context(_make_coupled_cfg(coupling_mode, rigid_solver)) as sim:
+def _run_lateral_rigid_cube_response(rigid_solver: str, deformable_vel_x: float) -> float:
+    """Run a compact lateral ADMM contact scene and return rigid cube X displacement.
+
+    The deformable cube is launched toward the rigid cube with ``deformable_vel_x``
+    [m/s]; a zero velocity gives a stationary-contact baseline.
+    """
+    with _coupled_sim_context(_make_coupled_cfg("admm", rigid_solver, _RIGID_CUBE_BODIES)) as sim:
         sim._app_control_on_stop_handle = None
         rigid_cube, deformable_cube = generate_lateral_rigid_and_deformable_cubes()
         sim.reset()
 
         initial_rigid_x = rigid_cube.data.root_pos_w.torch[0, 0].item()
         nodal_vel = torch.zeros_like(deformable_cube.data.nodal_vel_w.torch)
-        nodal_vel[..., 0] = 2.0
+        nodal_vel[..., 0] = deformable_vel_x
         deformable_cube.write_nodal_velocity_to_sim_index(nodal_vel)
 
         for _ in range(60):
@@ -269,13 +293,18 @@ def _run_lateral_rigid_cube_response(coupling_mode: str, rigid_solver: str) -> f
 
 
 @pytest.mark.parametrize("rigid_solver", ["mjwarp", "featherstone"])
-def test_two_way_coupling_applies_reaction_to_rigid_body(rigid_solver: str):
-    """Test that two-way coupling laterally pushes a rigid body."""
-    one_way_dx = _run_lateral_rigid_cube_response("one_way", rigid_solver)
-    two_way_dx = _run_lateral_rigid_cube_response("two_way", rigid_solver)
+def test_admm_coupling_applies_reaction_to_rigid_body(rigid_solver: str):
+    """Test that two-way ADMM coupling laterally pushes a rigid body.
 
-    assert abs(one_way_dx) < 1e-2
-    assert two_way_dx > one_way_dx + 1e-2
+    A deformable cube driven into a light free rigid cube transmits its lateral
+    momentum through the two-way ADMM contact and pushes the rigid cube. With a
+    stationary deformable there is no lateral contact, so the rigid cube stays put.
+    """
+    static_dx = _run_lateral_rigid_cube_response(rigid_solver, deformable_vel_x=0.0)
+    pushed_dx = _run_lateral_rigid_cube_response(rigid_solver, deformable_vel_x=2.0)
+
+    assert abs(static_dx) < 1e-2
+    assert pushed_dx > static_dx + 1e-2
 
 
 def test_deformable_deflected_by_rigid_contact(sim):

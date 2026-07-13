@@ -1,3 +1,13 @@
+Removed
+^^^^^^^
+
+* Removed ``CoupledMJWarpVBDSolverCfg`` and ``CoupledFeatherstoneVBDSolverCfg``
+  (and their managers) in favor of the generalized coupling API in
+  :mod:`isaaclab_contrib.coupling`. Use
+  :class:`~isaaclab_contrib.coupling.coupled_manager_cfg.CoupledProxySolverCfg`
+  or :class:`~isaaclab_contrib.coupling.coupled_manager_cfg.CoupledAdmmSolverCfg`
+  instead.
+
 Changed
 ^^^^^^^
 

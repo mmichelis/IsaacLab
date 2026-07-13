@@ -122,58 +122,31 @@ Custom Coupled Solvers
 ----------------------
 
 Coupled solvers use the same abstraction. Instead of wrapping one Newton solver,
-a coupled manager constructs two or more sub-solvers and overrides
-``_step_solver()`` to define the substep order.
-That means a custom coupling usually needs only a config that stores existing
-solver configs plus a manager that defines how data flows between them; the
-component solvers can stay unchanged.
+a coupled manager constructs two or more sub-solvers and connects them. The
+generalized coupling API in :mod:`isaaclab_contrib.coupling` provides
+:class:`~isaaclab_contrib.coupling.NewtonCoupledSolverManager`, which partitions
+the Newton model among named entries and couples them without requiring a
+bespoke manager per solver pairing.
 
-The MJWarp + VBD deformable manager is a concrete example:
+The MJWarp + VBD deformable coupling is a concrete example:
 
-* :class:`~isaaclab_contrib.deformable.CoupledMJWarpVBDSolverCfg` stores a
-  ``rigid_solver_cfg`` for :class:`~isaaclab_newton.physics.MJWarpSolverCfg`, a
-  ``soft_solver_cfg`` for :class:`~isaaclab_contrib.deformable.VBDSolverCfg`,
-  and a ``coupling_mode``.
-* ``NewtonCoupledMJWarpVBDManager._build_solver()`` constructs
-  ``SolverMuJoCo`` and ``SolverVBD`` from those sub-configs.
-* ``_step_solver()`` dispatches to either one-way or two-way coupling.
+* :class:`~isaaclab_contrib.coupling.CoupledProxySolverCfg` (or
+  :class:`~isaaclab_contrib.coupling.CoupledAdmmSolverCfg`) holds a list of named
+  :class:`~isaaclab_contrib.coupling.CoupledSolverEntryCfg` entries, each with its
+  own ``solver_cfg`` (e.g. :class:`~isaaclab_newton.physics.MJWarpSolverCfg` for
+  the rigid entry and :class:`~isaaclab_contrib.deformable.VBDSolverCfg` for the
+  soft entry) and explicit model-ownership selectors.
+* :class:`~isaaclab_contrib.coupling.NewtonCoupledSolverManager` builds each
+  sub-solver, partitions the model among the entries, and connects them through
+  named :class:`~isaaclab_contrib.coupling.CoupledProxyCfg` proxy mappings
+  (proxy coupling) or auto-detected contact pairs (ADMM coupling).
 * The base ``NewtonManager`` still owns state allocation, substep iteration,
   Fabric synchronization, and reset/clear lifecycle.
 
-The two-way MJWarp + VBD substep stays compact because it is expressed as a
-short coupling algorithm:
-
-.. admonition:: Algorithm: Two-Way MJWarp + VBD Substep
-   :class: note
-
-   **Inputs:** rigid body state, deformable particle state, and the shared
-   Newton collision pipeline.
-
-   **Output:** updated rigid body and deformable particle state for one Newton
-   substep.
-
-   1. **Reset force accumulators.**
-      Clear the rigid body and particle force buffers before evaluating the
-      next contact pass.
-
-   2. **Detect coupled contacts.**
-      Run Newton collision detection once over the current rigid and
-      deformable state.
-
-   3. **Apply soft-to-rigid reactions.**
-      Inject body-particle contact reactions into ``body_f`` so the rigid
-      bodies can be pushed back by the deformable contact penalties.
-
-   4. **Advance the rigid solver.**
-      Step the MJWarp rigid solver with the coupled contact forces applied.
-
-   5. **Preserve shared contacts for the soft solve.**
-      Clear particle forces written during the rigid step while keeping the
-      detected contact information available.
-
-   6. **Advance the deformable solver.**
-      Step the VBD soft solver against the same coupled contacts.
-
+Proxy coupling exposes selected source bodies (e.g. gripper fingers) to the
+destination solver as virtual proxies and returns contact feedback as lagged
+impulses, so the bulk of a rigid articulation is solved without seeing particle
+contacts. See :ref:`newton-vbd-proxy-coupling` for the selector walk-through.
 
 This keeps the custom part focused on the coupling policy. The manager does not
 need to reimplement scene loading, asset buffers, reset handling, or the outer
@@ -198,17 +171,17 @@ For the surface-deformable cloth variant, use ``--task Isaac-Lift-Cloth-Franka``
 
 
 This environment configures
-:class:`~isaaclab_contrib.deformable.CoupledMJWarpVBDSolverCfg` with
-``coupling_mode="two_way"``.
+:class:`~isaaclab_contrib.coupling.CoupledProxySolverCfg`, exposing the gripper
+bodies as proxies to the VBD solver.
 
 Tuning the Franka Soft-Body Lift
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tune the coupled contact behavior before training a policy:
 
-* Start with ``coupling_mode="two_way"``. Compared with one-way coupling, two-way
-  coupling can prevent clipping more easily because body-particle contact
-  penalties can push the robot back instead of only moving the deformable.
+* Expose the gripper bodies as proxies so body-particle contact penalties can
+  push the robot back instead of only moving the deformable, which prevents
+  clipping more easily.
 * Use a small scripted grasp/lift check before training to confirm that grasping
   is possible and to inspect what clips when the grasp fails.
 * Lower the arm actuator stiffness enough that the arm can respond to contact

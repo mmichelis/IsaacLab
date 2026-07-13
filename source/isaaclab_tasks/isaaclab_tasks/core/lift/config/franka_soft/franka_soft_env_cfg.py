@@ -42,7 +42,6 @@ from isaaclab_contrib.coupling import (
     CoupledSolverEntryCfg,
 )
 from isaaclab_contrib.deformable.newton_manager_cfg import (
-    CoupledMJWarpVBDSolverCfg,
     NewtonModelCfg,
     VBDSolverCfg,
 )
@@ -111,37 +110,9 @@ class DeformableCfg(PresetCfg):
 
 @configclass
 class PhysicsCfg(PresetCfg):
-    # Newton physics: MJWarp rigid + VBD soft, two-way coupled
+    # Newton physics: MJWarp rigid + VBD soft, coupled via virtual proxies
     # (matches newton/examples/softbody/example_softbody_franka.py)
     newton_mjwarp_vbd: NewtonCfg = NewtonCfg(
-        solver_cfg=CoupledMJWarpVBDSolverCfg(
-            rigid_solver_cfg=MJWarpSolverCfg(
-                njmax=40,
-                nconmax=20,
-                ls_iterations=20,
-                cone="pyramidal",
-                impratio=1,
-                integrator="implicitfast",
-                ccd_iterations=100,
-            ),
-            soft_solver_cfg=VBDSolverCfg(
-                iterations=10,
-                integrate_with_external_rigid_solver=True,
-                particle_enable_self_contact=False,
-                particle_collision_detection_interval=-1,
-            ),
-            coupling_mode="two_way",
-            model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e4,
-                soft_contact_kd=1e-5,
-                soft_contact_mu=5.0,
-            ),
-        ),
-        default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=1e-5, mu=5.0),
-        num_substeps=10,
-    )
-
-    newton_mjwarp_vbd_proxy: NewtonCfg = NewtonCfg(
         solver_cfg=CoupledProxySolverCfg(
             entries=[
                 CoupledSolverEntryCfg(
@@ -185,6 +156,8 @@ class PhysicsCfg(PresetCfg):
     )
 
     physx: PhysxCfg = PhysxCfg()
+
+    newton_mjwarp_vbd_proxy = newton_mjwarp_vbd
 
     default = newton_mjwarp_vbd_proxy
 
@@ -472,8 +445,9 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physics = PhysicsCfg()
 
         # The coupled proxy solver resolves SceneEntityCfg selectors against the scene at
-        # solver-build time. Wire the scene on the named preset (used when selected by name)
+        # solver-build time. Wire the scene on each named preset (used when selected by name)
         # and on the ``default`` alias the resolver falls back to when no preset is given.
+        self.sim.physics.newton_mjwarp_vbd.solver_cfg.scene_cfg = self.scene
         self.sim.physics.newton_mjwarp_vbd_proxy.solver_cfg.scene_cfg = self.scene
         self.sim.physics.default.solver_cfg.scene_cfg = self.scene
 
