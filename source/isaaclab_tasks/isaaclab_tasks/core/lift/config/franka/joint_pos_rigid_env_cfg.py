@@ -13,6 +13,7 @@ matching.
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
 from isaaclab_newton.sensors.contact_sensor import ContactSensorCfg
+from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -125,8 +126,8 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         self.scene.robot.actuators["panda_shoulder"].stiffness = 1000.0
         self.scene.robot.actuators["panda_shoulder"].damping = 60.0
         self.scene.robot.actuators["panda_shoulder"].armature = 0.1
-        self.scene.robot.actuators["panda_forearm"].stiffness = 300.0
-        self.scene.robot.actuators["panda_forearm"].damping = 4.0
+        self.scene.robot.actuators["panda_forearm"].stiffness = 1000.0
+        self.scene.robot.actuators["panda_forearm"].damping = 60.0
         self.scene.robot.actuators["panda_forearm"].armature = 0.1
         self.scene.robot.actuators["panda_hand"].stiffness = 350.0
         self.scene.robot.actuators["panda_hand"].damping = 20.0
@@ -137,14 +138,14 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
             asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
         )
-        # Continuous gripper control: action in [-1, 1] maps to the finger joint limits
-        # (closed to open) instead of a binary open/close command.
-        # self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
-        #     asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
-        # )
 
-        self.viewer.eye = (1.0, 0.0, 0.4)
-        self.viewer.lookat = (0.2, 0.0, 0.1)
+        # The mjwarp variant renders through the Newton GL viewer, whose camera comes from
+        # NewtonVisualizerCfg (not ViewerCfg). Lowered eye frames the tabletop workspace; the
+        # same eye/lookat also seed the Newton --video recorder. Record at 1080p.
+        cam = dict(eye=(3.5, -3.0, 1.5), lookat=(0.4, 0.0, -0.25), window_width=1920, window_height=1080)
+        self.sim.visualizer_cfgs = [NewtonVisualizerCfg(**cam)]
+        self.video_recorder.window_width = 1920
+        self.video_recorder.window_height = 1080
 
         # mjwarp does not position per-env static geoms, so re-create the table as a jointless
         # articulation, which mjwarp positions per-env.
@@ -157,24 +158,62 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
                 # 90 deg z rotation baked into the footprint (swapped x/y) to match the rigid table.
                 size=(1.3, 0.9, 1.05),
                 collision_props=CollisionPropertiesCfg(),
-                rigid_props=RigidBodyPropertiesCfg(rigid_body_enabled=True),
+                rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
             ),
             actuators={},
             articulation_root_prim_path="",
         )
 
-        self.sim.physics = NewtonCfg(
-            solver_cfg=MJWarpSolverCfg(
-                cone="elliptic",
-                integrator="implicitfast",
-                # impratio=1.0,
-                # enable_multiccd=True,
-                use_mujoco_contacts=False,
-            ),
-            num_substeps=2,
-            collision_decimation=1,
-            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+        # self.sim.physics = NewtonCfg(
+        #     solver_cfg=MJWarpSolverCfg(
+        #         cone="elliptic",
+        #         integrator="implicitfast",
+        #         # impratio=1.0,
+        #         # enable_multiccd=True,
+        #         use_mujoco_contacts=False,
+        #     ),
+        #     num_substeps=2,
+        #     collision_decimation=1,
+        #     default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+        # )
+
+        from isaaclab_contrib.coupling import CoupledProxySolverCfg
+        from isaaclab_contrib.deformable.newton_manager_cfg import (
+            CoupledMJWarpVBDSolverCfg,
+            CoupledNewtonCfg,
+            NewtonModelCfg,
+            VBDSolverCfg,
         )
+        self.sim.physics = CoupledNewtonCfg(
+        solver_cfg=CoupledProxySolverCfg(
+            src_solver_cfg=MJWarpSolverCfg(
+                cone="elliptic",
+                ls_iterations=20,
+                integrator="implicitfast",
+            ),
+            dst_solver_cfg=VBDSolverCfg(
+                iterations=10,
+            ),
+            src_bodies=["/World/envs/env_.*/Robot", "/World/envs/env_.*/Table"],
+            dst_bodies=["/World/envs/env_.*/Object"],
+            proxy_bodies=[
+                "/World/envs/env_.*/Robot/panda_hand",
+                "/World/envs/env_.*/Robot/panda_(left|right)finger",
+                "/World/envs/env_.*/Table"
+            ],
+            proxy_collide_interval=5,
+        ),
+        # model_cfg=NewtonModelCfg(
+        #     soft_contact_ke=1e4,
+        #     soft_contact_kd=1e-5,
+        #     soft_contact_mu=5.0,
+        #     shape_material_ke=4e4,
+        #     shape_material_kd=1e-5,
+        #     shape_material_mu=5.0,
+        # ),
+        num_substeps=4,
+        default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+    )
 
 
 @configclass

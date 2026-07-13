@@ -11,7 +11,6 @@ from isaaclab_physx.physics import PhysxCfg
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
-from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -147,7 +146,7 @@ class RewardsCfg:
         params={"minimal_height": 0.0, "command_name": "object_pose", "success_threshold": 0.05},
         weight=500.0,
     )
-    
+
     object_goal_tracking = RewTerm(
         func=mdp.object_goal_distance,
         params={"std": 0.3, "minimal_height": 0.0, "command_name": "object_pose", "success_threshold": 0.05},
