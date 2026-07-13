@@ -255,10 +255,10 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
                     "/World/envs/env_.*/Robot/panda_hand",
                     "/World/envs/env_.*/Robot/panda_(left|right)finger",
                 ],
-                proxy_iterations=4,
+                proxy_iterations=5,
             ),
             model_cfg=NewtonModelCfg(
-                shape_material_ke=1e4,
+                shape_material_ke=8e3,
             ),
             num_substeps=2,
         )

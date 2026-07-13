@@ -26,6 +26,7 @@ class NewtonGlPerspectiveVideo:
         self.cfg = cfg
         self._viewer = None
         self._init_attempted = False
+        self._markers_unavailable = False
 
     def _ensure_viewer(self) -> None:
         if self._init_attempted:
@@ -113,8 +114,29 @@ class NewtonGlPerspectiveVideo:
         viewer = self._viewer
         viewer.begin_frame(dt)
         viewer.log_state(state)
+        self._log_markers(viewer)
         viewer.end_frame()
         return viewer.get_frame().numpy()
+
+    def _log_markers(self, viewer) -> None:
+        """Draw Newton visualization markers (e.g. goal-pose frames) into the recorded frame.
+
+        The recorder owns a separate ``ViewerGL`` from the interactive Newton visualizer, so
+        marker draw calls issued by the visualizer never reach it. Re-issue them here against
+        the marker state populated during the sim render step. No-op when the marker backend is
+        unavailable (e.g. no Newton visualizer active, so no marker state exists).
+        """
+        if self._markers_unavailable:
+            return
+        try:
+            from isaaclab_visualizers.newton.newton_visualization_markers import render_newton_visualization_markers
+        except ImportError:
+            self._markers_unavailable = True
+            return
+        from isaaclab_newton.physics import NewtonManager
+
+        # visible_env_ids=None renders every env's markers, matching the full model the recorder shows.
+        render_newton_visualization_markers(viewer, visible_env_ids=None, num_envs=NewtonManager.get_num_envs())
 
 
 def create_newton_gl_perspective_video(cfg: NewtonGlPerspectiveVideoCfg) -> NewtonGlPerspectiveVideo:
