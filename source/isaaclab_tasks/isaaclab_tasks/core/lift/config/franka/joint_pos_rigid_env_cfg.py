@@ -27,7 +27,7 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
-from isaaclab_contrib.coupling import CoupledProxySolverCfg
+from isaaclab_contrib.coupling import CoupledAdmmSolverCfg, CoupledProxySolverCfg
 from isaaclab_contrib.deformable.newton_manager_cfg import (
     CoupledNewtonCfg,
     NewtonModelCfg,
@@ -256,6 +256,81 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
                     "/World/envs/env_.*/Robot/panda_(left|right)finger",
                 ],
                 proxy_iterations=5,
+            ),
+            model_cfg=NewtonModelCfg(
+                shape_material_ke=8e3,
+            ),
+            num_substeps=2,
+        )
+
+
+@configclass
+class FrankaCubeLiftAdmmEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
+    """Same scene as the mjwarp variant, but the object is coupled to a VBD solver via ADMM.
+
+    The counterpart to :class:`FrankaCubeLiftProxyEnvCfg`: the robot is simulated with mjwarp
+    (source solver) and the DexCube plus the static table are handed to a VBD (destination)
+    solver, but here the two are coupled by the linearized ADMM solver instead of the proxy
+    coupler. A single source-to-destination contact pair transmits the grasp forces, so no
+    proxy bodies are needed. The table is a body-less static collider owned by VBD as world
+    geometry.
+
+    The cube's reset is overridden: since it is owned by the VBD solver, IsaacLab's default
+    rigid-body reset never reaches its state, so we re-seed the VBD body state instead.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Replace the inherited kinematic mjwarp table with a body-less static collider. With no
+        # rigid body its collision shape gets body == -1, so the coupled manager auto-routes it into
+        # the VBD (dst) solver as static world geometry (the cube rests on it there). The robot no
+        # longer collides with the table in mjwarp.
+        self.scene.table = AssetBaseCfg(
+            prim_path="/World/envs/env_.*/Table",
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
+            spawn=sim_utils.CuboidCfg(
+                size=(1.3, 0.9, 1.05),
+                collision_props=CollisionPropertiesCfg(),
+            ),
+        )
+
+        # The DexCube now lives on the VBD (dst) side of the coupled solver, so the inherited
+        # rigid-body reset (reset_root_state_uniform) never touches its state. Re-seed the VBD
+        # body_q via the soft-object reset path, keeping the same sampling range. Unlike the proxy
+        # variant there are no proxy bodies, so no proxy-velocity reset is needed.
+        from isaaclab.managers import EventTermCfg as EventTerm
+        from isaaclab.managers import SceneEntityCfg
+
+        from isaaclab_tasks.core.lift.config.franka_soft import mdp as soft_mdp
+
+        self.events.reset_object_position = EventTerm(
+            func=soft_mdp.reset_rigid_body_uniform,
+            mode="reset",
+            params={
+                "pose_range": self.events.reset_object_position.params["pose_range"],
+                "asset_cfg": SceneEntityCfg("object"),
+            },
+        )
+
+        self.sim.physics = CoupledNewtonCfg(
+            solver_cfg=CoupledAdmmSolverCfg(
+                src_solver_cfg=MJWarpSolverCfg(
+                    cone="elliptic",
+                    ls_iterations=20,
+                    integrator="implicitfast",
+                    use_mujoco_contacts=False,
+                ),
+                dst_solver_cfg=VBDSolverCfg(
+                    iterations=10,
+                    rigid_avbd_beta=0.0,
+                ),
+                src_bodies=["/World/envs/env_.*/Robot"],
+                dst_bodies=["/World/envs/env_.*/Object"],
+                iterations=16,
+                rho=5e2,
+                gamma=0.01,
+                baumgarte=0.0,
             ),
             model_cfg=NewtonModelCfg(
                 shape_material_ke=8e3,
