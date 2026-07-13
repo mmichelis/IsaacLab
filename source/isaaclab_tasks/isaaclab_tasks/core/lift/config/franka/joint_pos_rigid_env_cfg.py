@@ -192,9 +192,10 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
 class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
     """Same scene as the mjwarp variant, but the object is coupled to a VBD proxy solver.
 
-    The robot and table are simulated with mjwarp (source solver) while the DexCube is
-    handed to a VBD (destination) solver; a proxy coupler exchanges contacts between the
-    two so a soft/deformable-style object can interact with the rigid mjwarp scene.
+    The robot is simulated with mjwarp (source solver) while the DexCube and the static
+    table are handed to a VBD (destination) solver; a proxy coupler exchanges contacts
+    between the two so a soft/deformable-style object can interact with the rigid mjwarp
+    scene. The table is a body-less static collider owned by VBD as world geometry.
 
     The cube's reset is overridden: since it is owned by the VBD solver, IsaacLab's default
     rigid-body reset never reaches its state, so we re-seed the VBD body state instead.
@@ -202,6 +203,19 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+
+        # Replace the inherited kinematic mjwarp table with a body-less static collider. With no
+        # rigid body its collision shape gets body == -1, so the coupled manager auto-routes it into
+        # the VBD (dst) solver as static world geometry (the cube rests on it there). The robot no
+        # longer collides with the table in mjwarp.
+        self.scene.table = AssetBaseCfg(
+            prim_path="/World/envs/env_.*/Table",
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
+            spawn=sim_utils.CuboidCfg(
+                size=(1.3, 0.9, 1.05),
+                collision_props=CollisionPropertiesCfg(),
+            ),
+        )
 
         # The DexCube now lives on the VBD (dst) side of the coupled solver, so the inherited
         # rigid-body reset (reset_root_state_uniform) never touches its state. Re-seed the VBD
@@ -233,26 +247,20 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
                 ),
                 dst_solver_cfg=VBDSolverCfg(
                     iterations=10,
+                    rigid_avbd_beta=0.0,
                 ),
-                src_bodies=["/World/envs/env_.*/Robot", "/World/envs/env_.*/Table"],
+                src_bodies=["/World/envs/env_.*/Robot"],
                 dst_bodies=["/World/envs/env_.*/Object"],
                 proxy_bodies=[
                     "/World/envs/env_.*/Robot/panda_hand",
                     "/World/envs/env_.*/Robot/panda_(left|right)finger",
-                    "/World/envs/env_.*/Table",
                 ],
-                proxy_collide_interval=5,
+                proxy_iterations=4,
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e4,
-                soft_contact_kd=1e-5,
-                soft_contact_mu=5.0,
-                shape_material_ke=4e4,
-                shape_material_kd=1e-5,
-                shape_material_mu=5.0,
+                shape_material_ke=1e4,
             ),
-            num_substeps=4,
-            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
+            num_substeps=2,
         )
 
 
