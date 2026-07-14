@@ -173,7 +173,6 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
             ),
             num_substeps=2,
             collision_decimation=1,
-            default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=400.0),
         )
 
 
@@ -449,18 +448,10 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
         )
 
-        # Restore the binary gripper: the state machine emits a single open/close command.
-        self.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
-            asset_name="robot",
-            joint_names=["panda_finger.*"],
-            open_command_expr={"panda_finger_.*": 0.04},
-            close_command_expr={"panda_finger_.*": 0.015},
-        )
-
         # Soften the arm PD so the IK target is tracked gently
-        for actuator_name in ("panda_shoulder", "panda_forearm"):
-            self.scene.robot.actuators[actuator_name].stiffness = 100.0
-            self.scene.robot.actuators[actuator_name].damping = 40.0
+        # for actuator_name in ("panda_shoulder", "panda_forearm"):
+        #     self.scene.robot.actuators[actuator_name].stiffness = 100.0
+        #     self.scene.robot.actuators[actuator_name].damping = 40.0
 
         # Contact sensor on the gripper fingers, filtered to the cube, to read the
         # gripper-on-cube normal contact forces (per finger).
