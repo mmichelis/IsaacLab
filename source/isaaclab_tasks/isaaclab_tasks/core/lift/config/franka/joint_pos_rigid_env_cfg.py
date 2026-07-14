@@ -146,6 +146,11 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
             asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
         )
+        # Continuous gripper control: action in [-1, 1] maps to the finger joint limits
+        # (closed to open) instead of a binary open/close command.
+        self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
+            asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
+        )
 
         # mjwarp does not position per-env static geoms, so re-create the table as a jointless
         # articulation, which mjwarp positions per-env.
