@@ -133,15 +133,15 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         super().__post_init__()
         self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
-        self.scene.robot.actuators["panda_shoulder"].stiffness = 1000.0
-        self.scene.robot.actuators["panda_shoulder"].damping = 60.0
-        self.scene.robot.actuators["panda_shoulder"].armature = 0.1
-        self.scene.robot.actuators["panda_forearm"].stiffness = 1000.0
-        self.scene.robot.actuators["panda_forearm"].damping = 60.0
-        self.scene.robot.actuators["panda_forearm"].armature = 0.1
-        self.scene.robot.actuators["panda_hand"].stiffness = 350.0
-        self.scene.robot.actuators["panda_hand"].damping = 20.0
-        self.scene.robot.actuators["panda_hand"].armature = 0.1
+        # self.scene.robot.actuators["panda_shoulder"].stiffness = 1000.0
+        # self.scene.robot.actuators["panda_shoulder"].damping = 60.0
+        # self.scene.robot.actuators["panda_shoulder"].armature = 0.1
+        # self.scene.robot.actuators["panda_forearm"].stiffness = 1000.0
+        # self.scene.robot.actuators["panda_forearm"].damping = 60.0
+        # self.scene.robot.actuators["panda_forearm"].armature = 0.1
+        # self.scene.robot.actuators["panda_hand"].stiffness = 350.0
+        # self.scene.robot.actuators["panda_hand"].damping = 20.0
+        # self.scene.robot.actuators["panda_hand"].armature = 0.1
 
         # Drive the arm with joint position deltas (added to the current joint positions each
         # step) instead of absolute position commands.

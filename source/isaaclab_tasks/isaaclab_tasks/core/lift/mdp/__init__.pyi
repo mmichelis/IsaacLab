@@ -22,6 +22,7 @@ __all__ = [
     # terminations
     "object_reached_goal",
     "object_outside_table_bounds",
+    "joint_vel_out_of_sim_limit",
     "deformable_com_below_minimum",
     "deformable_outside_table_bounds",
     "ee_below_minimum",
@@ -52,6 +53,7 @@ from .terminations import (
     deformable_com_below_minimum,
     deformable_outside_table_bounds,
     ee_below_minimum,
+    joint_vel_out_of_sim_limit,
     object_outside_table_bounds,
     object_reached_goal,
 )

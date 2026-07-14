@@ -20,7 +20,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import combine_frame_transforms
 
 if TYPE_CHECKING:
-    from isaaclab.assets import DeformableObject, RigidObject
+    from isaaclab.assets import Articulation, DeformableObject, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.sensors import FrameTransformer
 
@@ -58,6 +58,18 @@ def object_reached_goal(
 
     # rewarded if the object is lifted above the threshold
     return distance < threshold
+
+
+def joint_vel_out_of_sim_limit(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Terminate when joint velocities exceed actuator simulator limits [m/s or rad/s, depending on joint type]."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_ids = asset_cfg.joint_ids if asset_cfg.joint_ids is not None else slice(None)
+    limits = torch.full_like(asset.data.joint_vel.torch, torch.inf)
+    for actuator in asset.actuators.values():
+        limits[:, actuator.joint_indices] = actuator.velocity_limit_sim
+    return torch.any(torch.abs(asset.data.joint_vel.torch[:, joint_ids]) > limits[:, joint_ids], dim=1)
 
 
 def object_outside_table_bounds(

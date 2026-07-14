@@ -17,6 +17,7 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
@@ -185,8 +186,8 @@ class TerminationsCfg:
     )
 
     joint_vel_out_of_limit = DoneTerm(
-        func=mdp.joint_vel_out_of_manual_limit,
-        params={"max_velocity": 5.0, "asset_cfg": SceneEntityCfg("robot")},
+        func=mdp.joint_vel_out_of_sim_limit,
+        params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
 
@@ -194,9 +195,9 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    # action_rate = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 10000}
-    # )
+    action_rate = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 10000}
+    )
 
     # joint_vel = CurrTerm(
     #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000}
