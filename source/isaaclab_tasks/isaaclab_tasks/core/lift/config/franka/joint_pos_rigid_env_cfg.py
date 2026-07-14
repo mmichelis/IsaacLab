@@ -298,10 +298,10 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                 deformable_props=NewtonDeformableBodyPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.6, 0.9)),
                 physics_material=NewtonDeformableBodyMaterialCfg(
-                    density=300.0,
-                    k_mu=4.0e7,
-                    k_lambda=4.0e7,
-                    particle_radius=0.01,
+                    density=10.0,
+                    k_mu=1.0e7,
+                    k_lambda=1.0e7,
+                    particle_radius=0.005,
                 ),
             ),
         )
@@ -315,23 +315,26 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                     ls_iterations=20,
                     integrator="implicitfast",
                 ),
-                dst_solver_cfg=VBDSolverCfg(iterations=10),
+                dst_solver_cfg=VBDSolverCfg(
+                    iterations=20,
+                    rigid_avbd_beta=0.0,
+                ),
                 src_bodies=["/World/envs/env_.*/Robot"],
                 proxy_bodies=[
                     "/World/envs/env_.*/Robot/panda_hand",
                     "/World/envs/env_.*/Robot/panda_(left|right)finger",
                 ],
-                proxy_collide_interval=5,
+                proxy_iterations=10,
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e4,
-                soft_contact_kd=1e-5,
+                soft_contact_ke=4e4,
+                soft_contact_kd=1e-1,
                 soft_contact_mu=5.0,
-                shape_material_ke=4e4,
-                shape_material_kd=1e-5,
+                shape_material_ke=1e4,
+                shape_material_kd=1e-1,
                 shape_material_mu=5.0,
             ),
-            num_substeps=10,
+            num_substeps=6,
         )
 
         # Object observation: mean of the deformable cube's vertices in the robot root frame.
