@@ -163,14 +163,6 @@ class RewardsCfg:
     # action penalty
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
 
-    termination_penalty = RewTerm(
-        func=mdp.is_terminated_term,
-        weight=-10.0,
-        params={
-            "term_keys": ["joint_vel_out_of_limit", "object_dropping", "object_out_of_bounds"],
-        },
-    )
-
     # joint_vel = RewTerm(
     #     func=mdp.joint_vel_l2,
     #     weight=-1e-4,
