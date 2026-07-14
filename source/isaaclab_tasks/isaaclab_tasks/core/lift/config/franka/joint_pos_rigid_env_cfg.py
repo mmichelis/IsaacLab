@@ -287,9 +287,8 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
         from isaaclab.managers import SceneEntityCfg
 
         # Replace the rigid DexCube with a solid VBD deformable cuboid of the same footprint
-        # (0.06 m nominal * 0.8 scale = 0.048 m edge). Stiffness is set via Lame parameters derived
-        # from a Young's modulus of 1e8 Pa at Poisson 0.25: k_mu = E/(2(1+nu)) = 4e7,
-        # k_lambda = E*nu/((1+nu)(1-2nu)) = 4e7.
+        YOUNGS_MODULUS = 5.0e6  # [Pa]
+        POISSONS_RATIO = 0.45
         self.scene.object = DeformableObjectCfg(
             prim_path="/World/envs/env_.*/Object",
             init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.055)),
@@ -298,10 +297,10 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                 deformable_props=NewtonDeformableBodyPropertiesCfg(),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.6, 0.9)),
                 physics_material=NewtonDeformableBodyMaterialCfg(
-                    density=10.0,
-                    k_mu=1.0e7,
-                    k_lambda=1.0e7,
-                    particle_radius=0.005,
+                    density=1.0,
+                    k_mu=YOUNGS_MODULUS / (2.0 * (1.0 + POISSONS_RATIO)),
+                    k_lambda=YOUNGS_MODULUS * POISSONS_RATIO / ((1.0 + POISSONS_RATIO) * (1.0 - 2.0 * POISSONS_RATIO)),
+                    particle_radius=0.002,
                 ),
             ),
         )
@@ -316,7 +315,7 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                     integrator="implicitfast",
                 ),
                 dst_solver_cfg=VBDSolverCfg(
-                    iterations=20,
+                    iterations=40,
                     rigid_avbd_beta=0.0,
                 ),
                 src_bodies=["/World/envs/env_.*/Robot"],
@@ -324,17 +323,17 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                     "/World/envs/env_.*/Robot/panda_hand",
                     "/World/envs/env_.*/Robot/panda_(left|right)finger",
                 ],
-                proxy_iterations=10,
+                proxy_iterations=32,
             ),
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=4e4,
+                soft_contact_ke=1e4,
                 soft_contact_kd=1e-1,
                 soft_contact_mu=5.0,
                 shape_material_ke=1e4,
                 shape_material_kd=1e-1,
                 shape_material_mu=5.0,
             ),
-            num_substeps=6,
+            num_substeps=8,
         )
 
         # Object observation: mean of the deformable cube's vertices in the robot root frame.
