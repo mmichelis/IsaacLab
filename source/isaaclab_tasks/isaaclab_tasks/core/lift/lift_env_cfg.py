@@ -165,7 +165,7 @@ class RewardsCfg:
 
     termination_penalty = RewTerm(
         func=mdp.is_terminated_term,
-        weight=-5.0,
+        weight=-10.0,
         params={
             "term_keys": ["joint_vel_out_of_limit", "object_dropping", "object_out_of_bounds"],
         },
@@ -204,7 +204,7 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 20000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 25000}
     )
 
     # joint_vel = CurrTerm(

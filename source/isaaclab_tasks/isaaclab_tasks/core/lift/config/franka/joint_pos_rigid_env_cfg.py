@@ -124,6 +124,14 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
             ],
         )
 
+        # Camera pose (lowered eye framing the tabletop workspace). 
+        eye, lookat = (3.5, -3.0, 1.5), (0.4, 0.0, -0.25)
+        self.viewer.eye = eye
+        self.viewer.lookat = lookat
+        self.sim.visualizer_cfgs = [NewtonVisualizerCfg(eye=eye, lookat=lookat, window_width=1920, window_height=1080)]
+        self.video_recorder.window_width = 1920
+        self.video_recorder.window_height = 1080
+
 
 @configclass
 class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
@@ -133,33 +141,11 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
         super().__post_init__()
         self.scene.robot.spawn.rigid_props = sim_utils.MujocoRigidBodyPropertiesCfg(gravcomp=1.0)
 
-        # self.scene.robot.actuators["panda_shoulder"].stiffness = 1000.0
-        # self.scene.robot.actuators["panda_shoulder"].damping = 60.0
-        # self.scene.robot.actuators["panda_shoulder"].armature = 0.1
-        # self.scene.robot.actuators["panda_forearm"].stiffness = 1000.0
-        # self.scene.robot.actuators["panda_forearm"].damping = 60.0
-        # self.scene.robot.actuators["panda_forearm"].armature = 0.1
-        # self.scene.robot.actuators["panda_hand"].stiffness = 350.0
-        # self.scene.robot.actuators["panda_hand"].damping = 20.0
-        # self.scene.robot.actuators["panda_hand"].armature = 0.1
-
         # Drive the arm with joint position deltas (added to the current joint positions each
         # step) instead of absolute position commands.
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
             asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
         )
-
-        # Camera pose (lowered eye framing the tabletop workspace). When Kit is running,
-        # ViewportCameraController pushes ViewerCfg.eye/lookat onto the Newton viewer via
-        # sim.set_camera_view(), overriding NewtonVisualizerCfg. So ViewerCfg is the master pose
-        # (origin_type "world" -> absolute world coords); the Newton cfg carries the same values
-        # for the kitless path and seeds the --video recorder. Record at 1080p.
-        eye, lookat = (3.5, -3.0, 1.5), (0.4, 0.0, -0.25)
-        self.viewer.eye = eye
-        self.viewer.lookat = lookat
-        self.sim.visualizer_cfgs = [NewtonVisualizerCfg(eye=eye, lookat=lookat, window_width=1920, window_height=1080)]
-        self.video_recorder.window_width = 1920
-        self.video_recorder.window_height = 1080
 
         # mjwarp does not position per-env static geoms, so re-create the table as a jointless
         # articulation, which mjwarp positions per-env.
