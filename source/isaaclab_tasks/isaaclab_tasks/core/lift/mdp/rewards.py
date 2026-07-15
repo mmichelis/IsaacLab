@@ -103,6 +103,7 @@ class object_goal_distance_delta(ManagerTermBase):
     object toward the goal yields a positive reward and away a negative one. The stored
     distance is re-baselined on the first step after reset so the reset teleport does not
     produce a spurious reward. Success tracking matches :class:`object_goal_distance`.
+    If ``object_cfg`` selects one body, that body's pose is used instead of the root pose.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
@@ -110,6 +111,18 @@ class object_goal_distance_delta(ManagerTermBase):
         self._prev_distance = torch.zeros(env.num_envs, device=env.device)
         # baseline the stored distance on the first call after each reset
         self._needs_baseline = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+        self._object_body_id: int | None = None
+        object_cfg = cfg.params.get("object_cfg")
+        if object_cfg is not None and object_cfg.body_names is not None:
+            obj: RigidObject = env.scene[object_cfg.name]
+            if object_cfg.body_ids == slice(None):
+                if obj.num_bodies != 1:
+                    raise ValueError("The object goal distance delta reward requires exactly one selected body.")
+                self._object_body_id = 0
+            elif len(object_cfg.body_ids) == 1:
+                self._object_body_id = object_cfg.body_ids[0]
+            else:
+                raise ValueError("The object goal distance delta reward requires exactly one selected body.")
         self._track_success = cfg.params.get("success_threshold") is not None
         if self._track_success:
             self._succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
@@ -123,7 +136,10 @@ class object_goal_distance_delta(ManagerTermBase):
         des_pos_w, _ = combine_frame_transforms(
             robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
         )
-        object_pos_w = obj.data.root_pos_w.torch
+        if self._object_body_id is None:
+            object_pos_w = obj.data.root_pos_w.torch
+        else:
+            object_pos_w = obj.data.body_pos_w.torch[:, self._object_body_id]
         distance = torch.linalg.norm(des_pos_w - object_pos_w, dim=1)
         return distance, object_pos_w
 

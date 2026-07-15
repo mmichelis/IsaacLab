@@ -233,6 +233,7 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             ),
             num_substeps=2,
         )
+        self.rewards.object_goal_tracking_delta.params["object_cfg"] = SceneEntityCfg("object", body_names="Object")
 
 
 @configclass
@@ -249,6 +250,8 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+
+        self.rewards.object_goal_tracking_delta.params["object_cfg"] = SceneEntityCfg("object")
 
         from isaaclab.managers import EventTermCfg as EventTerm
         from isaaclab.managers import ObservationTermCfg as ObsTerm
