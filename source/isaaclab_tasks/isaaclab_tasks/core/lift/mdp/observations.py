@@ -40,7 +40,7 @@ def object_orientation_in_robot_root_frame(
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """The orientation of the object in the robot's root frame as a quaternion ``(w, x, y, z)``."""
+    """The orientation of the object in the robot's root frame as a quaternion ``(x, y, z, w)``."""
     robot: RigidObject = env.scene[robot_cfg.name]
     object: RigidObject = env.scene[object_cfg.name]
     _, object_quat_b = subtract_frame_transforms(
@@ -194,7 +194,7 @@ class DeformableOrientationInRobotRootFrame(ManagerTermBase):
             num_points: Number of sampled vertices used to fit the frame.
 
         Returns:
-            Quaternion ``(w, x, y, z)`` of shape ``(num_envs, 4)``.
+            Quaternion ``(x, y, z, w)`` of shape ``(num_envs, 4)``.
         """
         asset: DeformableObject = env.scene[asset_cfg.name]
         robot: Articulation = env.scene[robot_cfg.name]
@@ -214,8 +214,12 @@ class DeformableOrientationInRobotRootFrame(ManagerTermBase):
         ut = u.transpose(-2, -1)
         # Proper-rotation (det +1) correction: flip the sign of the last column of V.
         signs = torch.ones_like(u[:, 0, :])
-        signs[:, -1] = torch.linalg.det(torch.matmul(v, ut))
+        signs[:, -1] = torch.sign(torch.linalg.det(torch.matmul(v, ut)))
         rot = torch.matmul(v * signs.unsqueeze(1), ut)
+        x = torch.nn.functional.normalize(rot[:, :, 0], dim=-1)
+        y = rot[:, :, 1]
+        y = torch.nn.functional.normalize(y - torch.sum(x * y, dim=-1, keepdim=True) * x, dim=-1)
+        rot = torch.stack((x, y, torch.linalg.cross(x, y)), dim=-1)
         object_quat_w = quat_from_matrix(rot)
 
         _, object_quat_b = subtract_frame_transforms(

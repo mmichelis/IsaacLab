@@ -16,3 +16,5 @@ Fixed
 ^^^^^
 
 * Fixed quadratic VBD body-particle contact allocation across replicated worlds.
+* Fixed non-finite deformable orientation observations caused by numerical drift
+  in the fitted rotation.
