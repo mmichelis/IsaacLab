@@ -22,6 +22,7 @@ from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim import CollisionPropertiesCfg
@@ -30,12 +31,13 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
-from isaaclab_contrib.coupling import CoupledAdmmSolverCfg, CoupledProxySolverCfg
-from isaaclab_contrib.deformable.newton_manager_cfg import (
-    CoupledNewtonCfg,
-    NewtonModelCfg,
-    VBDSolverCfg,
+from isaaclab_contrib.coupling import (
+    CouplerAdmmCfg,
+    CouplerEntryCfg,
+    CouplerProxyCfg,
+    CouplerProxyMappingCfg,
 )
+from isaaclab_contrib.deformable.newton_manager_cfg import NewtonModelCfg, VBDSolverCfg
 
 from isaaclab_tasks.core.lift import mdp
 from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
@@ -124,7 +126,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
             ],
         )
 
-        # Camera pose (lowered eye framing the tabletop workspace). 
+        # Camera pose (lowered eye framing the tabletop workspace).
         eye, lookat = (3.5, -3.0, 1.5), (0.4, 0.0, -0.25)
         self.viewer.eye = eye
         self.viewer.lookat = lookat
@@ -190,8 +192,6 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
     between the two so a soft/deformable-style object can interact with the rigid mjwarp
     scene. The table is a body-less static collider owned by VBD as world geometry.
 
-    The cube's reset is overridden: since it is owned by the VBD solver, IsaacLab's default
-    rigid-body reset never reaches its state, so we re-seed the VBD body state instead.
     """
 
     def __post_init__(self):
@@ -210,45 +210,39 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             ),
         )
 
-        # The DexCube now lives on the VBD (dst) side of the coupled solver, so the inherited
-        # rigid-body reset (reset_root_state_uniform) never touches its state. Re-seed the VBD
-        # body_q/joint_q (and AVBD companions) via the soft-object reset path, keeping the same
-        # sampling range, and clear the proxy teleport velocity left by the robot-joint reset.
-        from isaaclab.managers import EventTermCfg as EventTerm
-        from isaaclab.managers import SceneEntityCfg
-
-        from isaaclab_tasks.core.lift.config.franka_soft import mdp as soft_mdp
-
-        self.events.reset_object_position = EventTerm(
-            func=soft_mdp.reset_rigid_body_uniform,
-            mode="reset",
-            params={
-                "pose_range": self.events.reset_object_position.params["pose_range"],
-                "asset_cfg": SceneEntityCfg("object"),
-            },
-        )
-        # Runs after reset_all/reset_object_position: snaps each proxy body's body_q_prev onto
-        # its post-reset pose so the coupler does not fling the cube from the arm teleport.
-        self.events.reset_proxy_velocity = EventTerm(func=soft_mdp.reset_proxy_body_prev, mode="reset")
-
-        self.sim.physics = CoupledNewtonCfg(
-            solver_cfg=CoupledProxySolverCfg(
-                src_solver_cfg=MJWarpSolverCfg(
-                    cone="elliptic",
-                    ls_iterations=20,
-                    integrator="implicitfast",
-                ),
-                dst_solver_cfg=VBDSolverCfg(
-                    iterations=10,
-                    rigid_avbd_beta=0.0,
-                ),
-                src_bodies=["/World/envs/env_.*/Robot"],
-                dst_bodies=["/World/envs/env_.*/Object"],
-                proxy_bodies=[
-                    "/World/envs/env_.*/Robot/panda_hand",
-                    "/World/envs/env_.*/Robot/panda_(left|right)finger",
+        self.sim.physics = NewtonCfg(
+            solver_cfg=CouplerProxyCfg(
+                scene_cfg=self.scene,
+                entries=[
+                    CouplerEntryCfg(
+                        name="rigid",
+                        solver_cfg=MJWarpSolverCfg(
+                            cone="elliptic",
+                            ls_iterations=20,
+                            integrator="implicitfast",
+                        ),
+                        bodies=[SceneEntityCfg("robot")],
+                    ),
+                    CouplerEntryCfg(
+                        name="object",
+                        solver_cfg=VBDSolverCfg(iterations=10),
+                        bodies=[SceneEntityCfg("object")],
+                        include_static_shapes=True,
+                    ),
                 ],
-                proxy_iterations=1,
+                proxies=[
+                    CouplerProxyMappingCfg(
+                        source="rigid",
+                        destination="object",
+                        bodies=[
+                            SceneEntityCfg(
+                                "robot",
+                                body_names=["panda_hand", "panda_(left|right)finger"],
+                            )
+                        ],
+                    )
+                ],
+                iterations=1,
             ),
             num_substeps=2,
         )
@@ -271,7 +265,6 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
 
         from isaaclab.managers import EventTermCfg as EventTerm
         from isaaclab.managers import ObservationTermCfg as ObsTerm
-        from isaaclab.managers import SceneEntityCfg
 
         # Replace the rigid DexCube with a solid VBD deformable cuboid of the same footprint
         YOUNGS_MODULUS = 5.0e6  # [Pa]
@@ -292,34 +285,46 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
             ),
         )
 
-        # Deformable particles auto-route to the VBD (dst) solver, so drop the rigid dst body
-        # selector and switch to a soft-contact model. Same proxy gripper coupling as the parent.
-        self.sim.physics = CoupledNewtonCfg(
-            solver_cfg=CoupledProxySolverCfg(
-                src_solver_cfg=MJWarpSolverCfg(
-                    cone="elliptic",
-                    ls_iterations=20,
-                    integrator="implicitfast",
-                ),
-                dst_solver_cfg=VBDSolverCfg(
-                    iterations=40,
-                    rigid_avbd_beta=0.0,
-                ),
-                src_bodies=["/World/envs/env_.*/Robot"],
-                proxy_bodies=[
-                    "/World/envs/env_.*/Robot/panda_hand",
-                    "/World/envs/env_.*/Robot/panda_(left|right)finger",
+        self.sim.physics = NewtonCfg(
+            solver_cfg=CouplerProxyCfg(
+                scene_cfg=self.scene,
+                entries=[
+                    CouplerEntryCfg(
+                        name="rigid",
+                        solver_cfg=MJWarpSolverCfg(
+                            cone="elliptic",
+                            ls_iterations=20,
+                            integrator="implicitfast",
+                        ),
+                        bodies=[SceneEntityCfg("robot")],
+                    ),
+                    CouplerEntryCfg(
+                        name="soft",
+                        solver_cfg=VBDSolverCfg(iterations=40),
+                        all_particles=True,
+                        include_static_shapes=True,
+                    ),
                 ],
-                proxy_iterations=32,
+                proxies=[
+                    CouplerProxyMappingCfg(
+                        source="rigid",
+                        destination="soft",
+                        bodies=[
+                            SceneEntityCfg(
+                                "robot",
+                                body_names=["panda_hand", "panda_(left|right)finger"],
+                            )
+                        ],
+                    )
+                ],
+                iterations=32,
+                model_cfg=NewtonModelCfg(
+                    soft_contact_ke=1e4,
+                    soft_contact_kd=1e-1,
+                    soft_contact_mu=5.0,
+                ),
             ),
-            model_cfg=NewtonModelCfg(
-                soft_contact_ke=1e4,
-                soft_contact_kd=1e-1,
-                soft_contact_mu=5.0,
-                shape_material_ke=1e4,
-                shape_material_kd=1e-1,
-                shape_material_mu=5.0,
-            ),
+            default_shape_cfg=NewtonShapeCfg(ke=1e4, kd=1e-1, mu=5.0),
             num_substeps=8,
         )
 
@@ -335,8 +340,7 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
             params={"asset_cfg": SceneEntityCfg("object"), "num_points": 8},
         )
 
-        # Re-seed the deformable node cloud on reset (replaces the VBD rigid-body reset), reusing
-        # the inherited x/y sampling range. The parent's proxy-velocity reset still applies.
+        # Re-seed the deformable node cloud using the inherited x/y sampling range.
         pose_range = self.events.reset_object_position.params["pose_range"]
         self.events.reset_object_position = EventTerm(
             func=mdp.reset_nodal_state_uniform,
@@ -364,8 +368,6 @@ class FrankaCubeLiftAdmmEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
     proxy bodies are needed. The table is a body-less static collider owned by VBD as world
     geometry.
 
-    The cube's reset is overridden: since it is owned by the VBD solver, IsaacLab's default
-    rigid-body reset never reaches its state, so we re-seed the VBD body state instead.
     """
 
     def __post_init__(self):
@@ -384,47 +386,35 @@ class FrankaCubeLiftAdmmEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
             ),
         )
 
-        # The DexCube now lives on the VBD (dst) side of the coupled solver, so the inherited
-        # rigid-body reset (reset_root_state_uniform) never touches its state. Re-seed the VBD
-        # body_q via the soft-object reset path, keeping the same sampling range. Unlike the proxy
-        # variant there are no proxy bodies, so no proxy-velocity reset is needed.
-        from isaaclab.managers import EventTermCfg as EventTerm
-        from isaaclab.managers import SceneEntityCfg
-
-        from isaaclab_tasks.core.lift.config.franka_soft import mdp as soft_mdp
-
-        self.events.reset_object_position = EventTerm(
-            func=soft_mdp.reset_rigid_body_uniform,
-            mode="reset",
-            params={
-                "pose_range": self.events.reset_object_position.params["pose_range"],
-                "asset_cfg": SceneEntityCfg("object"),
-            },
-        )
-
-        self.sim.physics = CoupledNewtonCfg(
-            solver_cfg=CoupledAdmmSolverCfg(
-                src_solver_cfg=MJWarpSolverCfg(
-                    cone="elliptic",
-                    ls_iterations=20,
-                    integrator="implicitfast",
-                    use_mujoco_contacts=False,
-                ),
-                dst_solver_cfg=VBDSolverCfg(
-                    iterations=20,
-                    rigid_avbd_beta=0.0,
-                ),
-                src_bodies=["/World/envs/env_.*/Robot"],
-                dst_bodies=["/World/envs/env_.*/Object"],
+        self.sim.physics = NewtonCfg(
+            solver_cfg=CouplerAdmmCfg(
+                scene_cfg=self.scene,
+                entries=[
+                    CouplerEntryCfg(
+                        name="rigid",
+                        solver_cfg=MJWarpSolverCfg(
+                            cone="elliptic",
+                            ls_iterations=20,
+                            integrator="implicitfast",
+                            use_mujoco_contacts=False,
+                        ),
+                        bodies=[SceneEntityCfg("robot")],
+                    ),
+                    CouplerEntryCfg(
+                        name="object",
+                        solver_cfg=VBDSolverCfg(iterations=20),
+                        bodies=[SceneEntityCfg("object")],
+                        include_static_shapes=True,
+                    ),
+                ],
+                contact_pairs=[("rigid", "object")],
                 rigid_contact_matching="sticky",
                 iterations=8,
                 rho=5e2,
                 gamma=0.01,
                 baumgarte=0.0,
             ),
-            model_cfg=NewtonModelCfg(
-                shape_material_ke=8e3,
-            ),
+            default_shape_cfg=NewtonShapeCfg(ke=8e3),
             num_substeps=2,
         )
 

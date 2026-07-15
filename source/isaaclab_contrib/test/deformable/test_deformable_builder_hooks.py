@@ -12,6 +12,7 @@ import warp as wp
 from isaaclab_newton.cloner.replicate import NewtonReplicateContext
 from isaaclab_newton.physics import NewtonManager
 from isaaclab_newton.sim.spawners.materials import NewtonDeformableMaterialCfg
+from newton import ModelBuilder
 
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
 from isaaclab.cloner.replicate_session import REPLICATION_QUEUE
@@ -23,6 +24,7 @@ from isaaclab_contrib.deformable.deformable_object import (
     add_deformable_entry_to_builder,
     setup_registered_deformable_fabric_sync,
 )
+from isaaclab_contrib.deformable.vbd_manager import NewtonVBDManager
 
 
 class _FakeBuilder:
@@ -86,6 +88,23 @@ def test_deformable_package_exports_public_symbols():
     """Test that deformable symbols are exported from the package root."""
     assert DeformableObject.__name__ == "DeformableObject"
     assert VBDSolverCfg.__name__ == "VBDSolverCfg"
+
+
+def test_vbd_solver_rebuild_bvh_supports_rigid_only_model():
+    """Rigid-only VBD models can rebuild their optional particle BVH."""
+    builder = ModelBuilder()
+    body = builder.add_body(
+        mass=1.0,
+        inertia=wp.mat33(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    builder.add_joint_free(body)
+    builder.color()
+    model = builder.finalize(device="cpu")
+
+    solver = NewtonVBDManager._create_solver(model, VBDSolverCfg())
+    solver.rebuild_bvh(model.state())
+
+    assert solver.particle_enable_self_contact is False
 
 
 def test_newton_material_defaults_match_registry_defaults():

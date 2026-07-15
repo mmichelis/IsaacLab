@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import warp as wp
 from isaaclab_newton.physics import (
     FeatherstoneSolverCfg,
     KaminoSolverCfg,
@@ -26,7 +27,7 @@ from isaaclab_newton.physics import (
     MPMSolverCfg,
     XPBDSolverCfg,
 )
-from newton import ShapeFlags
+from newton import ModelBuilder, ShapeFlags
 from newton.solvers.experimental.coupled import SolverCoupledADMM, SolverCoupledProxy
 
 from isaaclab.managers import SceneEntityCfg
@@ -463,6 +464,28 @@ def test_mpm_entry_reuses_builder_lifecycle_hooks(monkeypatch):
     NewtonCouplerManager._prepare_builder_for_finalize(builder)
 
     assert events == [("register", builder), ("finalize", builder)]
+
+
+def test_vbd_entry_colors_rigid_bodies_before_finalize(monkeypatch):
+    """Coupled VBD entries color rigid bodies before model finalization."""
+    builder = ModelBuilder()
+    body = builder.add_body(
+        mass=1.0,
+        inertia=wp.mat33(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    builder.add_joint_free(body)
+    solver_cfg = CouplerProxyCfg(
+        entries=[CouplerEntryCfg(name="object", solver_cfg=VBDSolverCfg())],
+    )
+    monkeypatch.setattr(coupler.PhysicsManager, "_cfg", SimpleNamespace(solver_cfg=solver_cfg))
+
+    assert builder.body_color_groups == []
+
+    NewtonCouplerManager._prepare_builder_for_finalize(builder)
+    model = builder.finalize(device="cpu")
+
+    assert len(model.body_color_groups) == 1
+    assert model.body_color_groups[0].numpy().tolist() == [0]
 
 
 def test_contact_initialization_prepares_coupled_solver_buffers(monkeypatch):

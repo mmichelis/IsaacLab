@@ -237,7 +237,11 @@ class NewtonVBDManager(NewtonManager):
     @classmethod
     def _create_solver(cls, model: Model, solver_cfg: VBDSolverCfg) -> SolverVBD:
         """Construct the configured VBD solver."""
-        return SolverVBD(model, **cls._filter_solver_kwargs(SolverVBD, solver_cfg))
+        solver = SolverVBD(model, **cls._filter_solver_kwargs(SolverVBD, solver_cfg))
+        # Newton leaves this unset for rigid-only models, but ``rebuild_bvh`` reads it.
+        if model.particle_count == 0 and not hasattr(solver, "particle_enable_self_contact"):
+            solver.particle_enable_self_contact = False
+        return solver
 
     @classmethod
     def _build_solver(cls, model: Model, solver_cfg: VBDSolverCfg) -> None:
