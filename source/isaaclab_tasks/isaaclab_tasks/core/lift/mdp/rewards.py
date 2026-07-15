@@ -18,7 +18,7 @@ from isaaclab.utils.math import combine_frame_transforms
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, DeformableObject, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
-    from isaaclab.sensors import FrameTransformer
+    from isaaclab.sensors import ContactSensor, FrameTransformer
 
 
 def object_is_lifted(
@@ -27,6 +27,32 @@ def object_is_lifted(
     """Reward the agent for lifting the object above the minimal height."""
     object: RigidObject = env.scene[object_cfg.name]
     return torch.where(object.data.root_pos_w.torch[:, 2] > minimal_height, 1.0, 0.0)
+
+
+def object_is_grasped(
+    env: ManagerBasedRLEnv,
+    force_threshold: float,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("gripper_contact"),
+) -> torch.Tensor:
+    """Reward bilateral finger contact with the object.
+
+    Args:
+        env: The environment instance.
+        force_threshold: Minimum contact force per finger [N].
+        sensor_cfg: The object-filtered contact sensor entity.
+
+    Returns:
+        Binary reward tensor with shape ``(num_envs,)``.
+
+    Raises:
+        RuntimeError: If the contact sensor does not provide filtered forces.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force_matrix = contact_sensor.data.force_matrix_w
+    if force_matrix is None:
+        raise RuntimeError(f"Contact sensor '{sensor_cfg.name}' does not provide filtered forces.")
+    force_magnitude = torch.linalg.vector_norm(force_matrix.torch, dim=-1)
+    return torch.all(force_magnitude > force_threshold, dim=(1, 2)).float()
 
 
 def object_ee_distance(

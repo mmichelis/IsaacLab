@@ -14,6 +14,7 @@ __all__ = [
     "object_ee_distance",
     "object_goal_distance",
     "object_goal_distance_delta",
+    "object_is_grasped",
     "object_is_lifted",
     "deformable_lifted",
     "deformable_ee_distance",
@@ -47,6 +48,7 @@ from .rewards import (
     object_ee_distance,
     object_goal_distance,
     object_goal_distance_delta,
+    object_is_grasped,
     object_is_lifted,
 )
 from .terminations import (

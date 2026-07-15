@@ -22,6 +22,7 @@ from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
@@ -184,6 +185,25 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
 
 
 @configclass
+class FrankaCubeLiftMjwarpGraspEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
+    """Pure-mjwarp cube lift with a bilateral contact reward for grasping."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.gripper_contact = ContactSensorCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/panda_.*finger",
+            update_period=0.0,
+            history_length=1,
+            filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        )
+        self.rewards.grasping_object = RewTerm(
+            func=mdp.object_is_grasped,
+            weight=5.0,
+            params={"force_threshold": 0.1, "sensor_cfg": SceneEntityCfg("gripper_contact")},
+        )
+
+
+@configclass
 class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
     """Same scene as the mjwarp variant, but the object is coupled to a VBD proxy solver.
 
@@ -290,7 +310,7 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                     ),
                     CouplerEntryCfg(
                         name="soft",
-                        solver_cfg=VBDSolverCfg(iterations=40),
+                        solver_cfg=VBDSolverCfg(iterations=10),
                         all_particles=True,
                         include_static_shapes=True,
                     ),
@@ -308,7 +328,7 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                         ],
                     )
                 ],
-                iterations=32,
+                iterations=8,
                 model_cfg=NewtonModelCfg(
                     soft_contact_ke=1e4,
                     soft_contact_kd=1e-1,
@@ -316,7 +336,7 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                 ),
             ),
             default_shape_cfg=NewtonShapeCfg(ke=1e4, kd=1e-1, mu=5.0),
-            num_substeps=8,
+            num_substeps=2,
         )
 
         # Object observation: mean of the deformable cube's vertices in the robot root frame.
