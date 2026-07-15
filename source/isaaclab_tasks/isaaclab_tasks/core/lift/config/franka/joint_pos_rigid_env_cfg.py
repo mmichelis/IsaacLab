@@ -187,28 +187,14 @@ class FrankaCubeLiftMjwarpEnvCfg(FrankaCubeLiftRigidEnvCfg):
 class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
     """Same scene as the mjwarp variant, but the object is coupled to a VBD proxy solver.
 
-    The robot is simulated with mjwarp (source solver) while the DexCube and the static
-    table are handed to a VBD (destination) solver; a proxy coupler exchanges contacts
-    between the two so a soft/deformable-style object can interact with the rigid mjwarp
-    scene. The table is a body-less static collider owned by VBD as world geometry.
+    The robot and kinematic table are simulated with mjwarp while the DexCube is handed
+    to VBD. The table and gripper are exposed as proxies so both solvers resolve their
+    respective contacts.
 
     """
 
     def __post_init__(self):
         super().__post_init__()
-
-        # Replace the inherited kinematic mjwarp table with a body-less static collider. With no
-        # rigid body its collision shape gets body == -1, so the coupled manager auto-routes it into
-        # the VBD (dst) solver as static world geometry (the cube rests on it there). The robot no
-        # longer collides with the table in mjwarp.
-        self.scene.table = AssetBaseCfg(
-            prim_path="/World/envs/env_.*/Table",
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
-            spawn=sim_utils.CuboidCfg(
-                size=(1.3, 0.9, 1.05),
-                collision_props=CollisionPropertiesCfg(),
-            ),
-        )
 
         self.sim.physics = NewtonCfg(
             solver_cfg=CouplerProxyCfg(
@@ -221,7 +207,7 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
                             ls_iterations=20,
                             integrator="implicitfast",
                         ),
-                        bodies=[SceneEntityCfg("robot")],
+                        bodies=[SceneEntityCfg("robot"), SceneEntityCfg("table")],
                     ),
                     CouplerEntryCfg(
                         name="object",
@@ -238,7 +224,8 @@ class FrankaCubeLiftProxyEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
                             SceneEntityCfg(
                                 "robot",
                                 body_names=["panda_hand", "panda_(left|right)finger"],
-                            )
+                            ),
+                            SceneEntityCfg("table"),
                         ],
                     )
                 ],
@@ -296,7 +283,7 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                             ls_iterations=20,
                             integrator="implicitfast",
                         ),
-                        bodies=[SceneEntityCfg("robot")],
+                        bodies=[SceneEntityCfg("robot"), SceneEntityCfg("table")],
                     ),
                     CouplerEntryCfg(
                         name="soft",
@@ -313,7 +300,8 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                             SceneEntityCfg(
                                 "robot",
                                 body_names=["panda_hand", "panda_(left|right)finger"],
-                            )
+                            ),
+                            SceneEntityCfg("table"),
                         ],
                     )
                 ],
