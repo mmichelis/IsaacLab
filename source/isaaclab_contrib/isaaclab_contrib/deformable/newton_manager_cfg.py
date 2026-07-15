@@ -7,7 +7,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Protocol
 
 from isaaclab_newton.physics import FeatherstoneSolverCfg, MJWarpSolverCfg, NewtonSolverCfg
 
@@ -68,8 +69,25 @@ class VBDSolverCfg(NewtonModelSolverCfg):
     class_type: type[NewtonManager] | str = "{DIR}.vbd_manager:NewtonVBDManager"
     """Manager class for the VBD solver."""
 
+    class ContactCapacityModel(Protocol):
+        """Newton model counts used to resolve contact capacity."""
+
+        shape_count: int
+        """Number of shapes."""
+        particle_count: int
+        """Number of particles."""
+        world_count: int
+        """Number of worlds."""
+
     iterations: int = 10
     """Number of VBD iterations per substep."""
+
+    soft_contact_max: int | Callable[[ContactCapacityModel], int] | None = None
+    """Maximum number of body-particle contacts.
+
+    A callable receives the solver's Newton model view and returns the capacity.
+    If None, Newton uses ``shape_count * particle_count``.
+    """
 
     integrate_with_external_rigid_solver: bool = False
     """Whether rigid bodies are integrated by an external solver (one-way coupling).

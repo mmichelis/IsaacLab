@@ -16,6 +16,7 @@ from isaaclab_newton.sensors.contact_sensor import ContactSensorCfg
 from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
 from isaaclab_newton.sim.spawners.materials import NewtonDeformableBodyMaterialCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
+from newton import CollisionPipeline
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -48,6 +49,11 @@ from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort: skip
+
+
+def _world_local_soft_contact_max(model: VBDSolverCfg.ContactCapacityModel) -> int:
+    """Return the total body-particle pair capacity for independent worlds."""
+    return model.shape_count * model.particle_count // max(model.world_count, 1)
 
 
 @configclass
@@ -310,7 +316,10 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                     ),
                     CouplerEntryCfg(
                         name="soft",
-                        solver_cfg=VBDSolverCfg(iterations=10),
+                        solver_cfg=VBDSolverCfg(
+                            iterations=10,
+                            soft_contact_max=_world_local_soft_contact_max,
+                        ),
                         all_particles=True,
                         include_static_shapes=True,
                     ),
@@ -326,6 +335,11 @@ class FrankaCubeLiftDeformableProxyEnvCfg(FrankaCubeLiftProxyEnvCfg):
                             ),
                             SceneEntityCfg("table"),
                         ],
+                        collision_pipeline=lambda model: CollisionPipeline(
+                            model,
+                            broad_phase="explicit",
+                            soft_contact_max=_world_local_soft_contact_max(model),
+                        ),
                     )
                 ],
                 iterations=8,

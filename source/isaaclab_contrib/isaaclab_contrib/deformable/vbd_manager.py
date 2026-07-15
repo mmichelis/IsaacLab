@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import warp as wp
 from isaaclab_newton.physics.newton_manager import NewtonManager
-from newton import Model
+from newton import CollisionPipeline, Model
 from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from newton.solvers import SolverVBD
 
@@ -27,6 +27,8 @@ from .deformable_object import (
 from .newton_manager_cfg import NewtonModelSolverCfg, VBDSolverCfg
 
 if TYPE_CHECKING:
+    from newton._src.solvers.coupled import ModelView
+
     from isaaclab.sim.simulation_context import SimulationContext
 
 logger = logging.getLogger(__name__)
@@ -48,6 +50,38 @@ def _apply_model_cfg(model: Model) -> None:
     model.soft_contact_ke = float(model_cfg.soft_contact_ke)
     model.soft_contact_kd = float(model_cfg.soft_contact_kd)
     model.soft_contact_mu = float(model_cfg.soft_contact_mu)
+
+
+class _CapacityBoundSolverVBD(SolverVBD):
+    """VBD solver with an explicit body-particle contact capacity."""
+
+    def __init__(self, model: Model | ModelView, soft_contact_max: int, **kwargs):
+        self._soft_contact_max = soft_contact_max
+        self._initializing_contact_state = True
+        super().__init__(model, **kwargs)
+        self._initializing_contact_state = False
+
+    def _init_body_particle_contact_state(self, soft_contact_max: int) -> None:
+        if self._initializing_contact_state:
+            soft_contact_max = self._soft_contact_max
+        elif soft_contact_max > self._soft_contact_max:
+            raise RuntimeError(
+                f"Collision pipeline soft_contact_max ({soft_contact_max}) exceeds the VBD solver capacity "
+                f"({self._soft_contact_max}). Configure both capacities consistently."
+            )
+        super()._init_body_particle_contact_state(soft_contact_max)
+
+
+def _resolve_soft_contact_max(model: Model | ModelView, solver_cfg: VBDSolverCfg) -> int | None:
+    """Resolve the optional VBD body-particle contact capacity."""
+    value = solver_cfg.soft_contact_max
+    if value is None:
+        return None
+    value = value(model) if callable(value) else value
+    value = int(value)
+    if value < 0:
+        raise ValueError(f"VBDSolverCfg.soft_contact_max must be non-negative, got {value}.")
+    return value
 
 
 class NewtonVBDManager(NewtonManager):
@@ -235,9 +269,14 @@ class NewtonVBDManager(NewtonManager):
         cls.set_builder(builder)
 
     @classmethod
-    def _create_solver(cls, model: Model, solver_cfg: VBDSolverCfg) -> SolverVBD:
+    def _create_solver(cls, model: Model | ModelView, solver_cfg: VBDSolverCfg) -> SolverVBD:
         """Construct the configured VBD solver."""
-        solver = SolverVBD(model, **cls._filter_solver_kwargs(SolverVBD, solver_cfg))
+        kwargs = cls._filter_solver_kwargs(SolverVBD, solver_cfg)
+        soft_contact_max = _resolve_soft_contact_max(model, solver_cfg)
+        if soft_contact_max is None:
+            solver = SolverVBD(model, **kwargs)
+        else:
+            solver = _CapacityBoundSolverVBD(model, soft_contact_max=soft_contact_max, **kwargs)
         # Newton leaves this unset for rigid-only models, but ``rebuild_bvh`` reads it.
         if model.particle_count == 0 and not hasattr(solver, "particle_enable_self_contact"):
             solver.particle_enable_self_contact = False
@@ -253,6 +292,23 @@ class NewtonVBDManager(NewtonManager):
         NewtonManager._solver = cls._create_solver(model, solver_cfg)
         NewtonManager._use_single_state = False
         NewtonManager._needs_collision_pipeline = True
+
+    @classmethod
+    def _initialize_contacts(cls) -> None:
+        """Initialize contacts with the configured VBD capacity."""
+        soft_contact_max = getattr(cls._solver, "_soft_contact_max", None)
+        if soft_contact_max is not None and cls._collision_pipeline is None:
+            pipeline_args = cls._collision_cfg.to_pipeline_args() if cls._collision_cfg is not None else {}
+            configured_max = pipeline_args.get("soft_contact_max")
+            if configured_max is not None and configured_max != soft_contact_max:
+                raise ValueError(
+                    "VBDSolverCfg.soft_contact_max and NewtonCfg.collision_cfg.soft_contact_max must match, got "
+                    f"{soft_contact_max} and {configured_max}."
+                )
+            pipeline_args["soft_contact_max"] = soft_contact_max
+            pipeline_args.setdefault("broad_phase", "explicit")
+            NewtonManager._collision_pipeline = CollisionPipeline(cls._model, **pipeline_args)
+        super()._initialize_contacts()
 
     @classmethod
     def _simulate_physics_only(cls) -> None:

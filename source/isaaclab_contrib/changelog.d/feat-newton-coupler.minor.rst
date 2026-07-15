@@ -52,3 +52,7 @@ Added
 
 * Added implicit MPM support for coupled-solver entries, including per-entry
   substeps and in-place stepping.
+
+* Added configurable body-particle contact capacity to
+  :class:`~isaaclab_contrib.deformable.newton_manager_cfg.VBDSolverCfg`.
+  The capacity may be resolved from the finalized Newton model view.

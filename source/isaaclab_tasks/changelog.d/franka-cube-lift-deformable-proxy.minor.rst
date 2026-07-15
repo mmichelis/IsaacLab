@@ -11,3 +11,8 @@ Added
   which reconstructs a rigid orientation quaternion for a deformable object by
   fitting a coordinate frame to a sample of its vertices (Kabsch), so a policy
   trained on a rigid object's orientation observation can be reused.
+
+Fixed
+^^^^^
+
+* Fixed quadratic VBD body-particle contact allocation across replicated worlds.
