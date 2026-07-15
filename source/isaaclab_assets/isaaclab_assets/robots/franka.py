@@ -97,7 +97,7 @@ FRANKA_PANDA_CFG = ArticulationCfg(
             effort_limit_sim=70.0,
             velocity_limit_sim=0.2,
             # velocity_limit_sim=2.0,
-            stiffness=1000.0,
+            stiffness=750.0,
             damping=175.0,
             armature=0.1,
         ),

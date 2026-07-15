@@ -203,10 +203,11 @@ class CurriculumCfg:
     #     func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000}
     # )
 
-    # gravity = CurrTerm(
-    #     func=mdp.modify_gravity_linear,
-    #     params={"start_gravity_z": -0.01, "end_gravity_z": -9.81, "start_step": 0, "end_step": 50000},
-    # )
+    # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
+    gravity = CurrTerm(
+        func=mdp.modify_gravity_linear,
+        params={"start_gravity_z": -0.01, "end_gravity_z": -9.81, "start_step": 0, "end_step": 10000},
+    )
 
 
 ##
@@ -234,7 +235,7 @@ class LiftEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2
-        self.episode_length_s = 5.0
+        self.episode_length_s = 4.0
         # simulation settings
         self.sim.dt = 0.01  # 100Hz
         self.sim.render_interval = self.decimation

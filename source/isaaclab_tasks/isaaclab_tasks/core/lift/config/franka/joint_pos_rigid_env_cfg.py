@@ -127,7 +127,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         )
 
         # Camera pose (lowered eye framing the tabletop workspace).
-        eye, lookat = (3.5, -3.0, 1.5), (0.4, 0.0, -0.25)
+        eye, lookat = (2.75, -2.0, 1.0), (0.5, 0.0, -0.5)
         self.viewer.eye = eye
         self.viewer.lookat = lookat
         self.sim.visualizer_cfgs = [NewtonVisualizerCfg(eye=eye, lookat=lookat, window_width=1920, window_height=1080)]
