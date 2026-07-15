@@ -1,4 +1,4 @@
 Fixed
 ^^^^^
 
-* Fixed the object goal distance delta reward to track the simulated rigid body in proxy lift environments.
+* Fixed rigid-object rewards to track the simulated body in proxy lift environments.

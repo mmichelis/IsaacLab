@@ -26,7 +26,8 @@ def object_is_lifted(
 ) -> torch.Tensor:
     """Reward the agent for lifting the object above the minimal height."""
     object: RigidObject = env.scene[object_cfg.name]
-    return torch.where(object.data.root_pos_w.torch[:, 2] > minimal_height, 1.0, 0.0)
+    object_pos_w = _object_position_w(object, object_cfg)
+    return torch.where(object_pos_w[:, 2] > minimal_height, 1.0, 0.0)
 
 
 def object_is_grasped(
@@ -66,7 +67,7 @@ def object_ee_distance(
     object: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     # Target object position: (num_envs, 3)
-    cube_pos_w = object.data.root_pos_w.torch
+    cube_pos_w = _object_position_w(object, object_cfg)
     # End-effector position: (num_envs, 3)
     ee_w = ee_frame.data.target_pos_w.torch[..., 0, :]
     # Distance of the end-effector to the object: (num_envs,)
@@ -113,7 +114,7 @@ class object_goal_distance(ManagerTermBase):
         des_pos_w, _ = combine_frame_transforms(
             robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
         )
-        object_pos_w = obj.data.root_pos_w.torch
+        object_pos_w = _object_position_w(obj, object_cfg)
         distance = torch.linalg.norm(des_pos_w - object_pos_w, dim=1)
         is_lifted = object_pos_w[:, 2] > minimal_height
         if success_threshold is not None:
@@ -137,18 +138,6 @@ class object_goal_distance_delta(ManagerTermBase):
         self._prev_distance = torch.zeros(env.num_envs, device=env.device)
         # baseline the stored distance on the first call after each reset
         self._needs_baseline = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
-        self._object_body_id: int | None = None
-        object_cfg = cfg.params.get("object_cfg")
-        if object_cfg is not None and object_cfg.body_names is not None:
-            obj: RigidObject = env.scene[object_cfg.name]
-            if object_cfg.body_ids == slice(None):
-                if obj.num_bodies != 1:
-                    raise ValueError("The object goal distance delta reward requires exactly one selected body.")
-                self._object_body_id = 0
-            elif len(object_cfg.body_ids) == 1:
-                self._object_body_id = object_cfg.body_ids[0]
-            else:
-                raise ValueError("The object goal distance delta reward requires exactly one selected body.")
         self._track_success = cfg.params.get("success_threshold") is not None
         if self._track_success:
             self._succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
@@ -162,10 +151,7 @@ class object_goal_distance_delta(ManagerTermBase):
         des_pos_w, _ = combine_frame_transforms(
             robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
         )
-        if self._object_body_id is None:
-            object_pos_w = obj.data.root_pos_w.torch
-        else:
-            object_pos_w = obj.data.body_pos_w.torch[:, self._object_body_id]
+        object_pos_w = _object_position_w(obj, object_cfg)
         distance = torch.linalg.norm(des_pos_w - object_pos_w, dim=1)
         return distance, object_pos_w
 
@@ -284,3 +270,14 @@ def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_act
     """
     gripper_action = env.action_manager.get_term(action_name).raw_actions
     return torch.any(gripper_action < 0.0, dim=1).float()
+
+
+def _object_position_w(object: RigidObject, object_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Return the object's root or single selected body position [m]."""
+    if object_cfg.body_names is None and object_cfg.body_ids == slice(None):
+        return object.data.root_pos_w.torch
+
+    body_pos_w = object.data.body_pos_w.torch[:, object_cfg.body_ids]
+    if body_pos_w.shape[1] != 1:
+        raise ValueError("Rigid-object rewards require exactly one selected body.")
+    return body_pos_w[:, 0]
