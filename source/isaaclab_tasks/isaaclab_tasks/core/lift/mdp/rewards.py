@@ -560,3 +560,14 @@ def cable_segment_goal_reached(
     """Reward a cable segment for reaching the goal."""
     distance = _cable_segment_goal_metrics(env, command_name, segment_index, robot_cfg, asset_cfg)
     return (distance < success_threshold).float()
+
+
+def _object_position_w(object: RigidObject, object_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Return the object's root or single selected body position [m]."""
+    if object_cfg.body_names is None and object_cfg.body_ids == slice(None):
+        return object.data.root_pos_w.torch
+
+    body_pos_w = object.data.body_pos_w.torch[:, object_cfg.body_ids]
+    if body_pos_w.shape[1] != 1:
+        raise ValueError("Rigid-object rewards require exactly one selected body.")
+    return body_pos_w[:, 0]

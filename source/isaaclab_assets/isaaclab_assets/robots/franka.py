@@ -81,7 +81,7 @@ FRANKA_PANDA_CFG = ArticulationCfg(
         "panda_hand": ImplicitActuatorCfg(
             joint_names_expr=["panda_finger_joint.*"],
             effort_limit_sim=70.0,
-            velocity_limit_sim=1.5,
+            velocity_limit_sim=0.2,
             # velocity_limit_sim=2.0,
             stiffness=750.0,
             damping=175.0,
