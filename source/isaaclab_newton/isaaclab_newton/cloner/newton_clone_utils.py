@@ -394,6 +394,20 @@ _BUILTIN_LABEL_TYPES: tuple[str, ...] = (
 )
 
 
+def _rename_deformable_group_labels(builder: ModelBuilder, source_root: str, world_roots: dict[int, str]) -> None:
+    """Rewrite Newton deformable group labels to their destination roots."""
+    source_root = source_root.rstrip("/")
+    for family in ("cloth", "soft"):
+        labels = getattr(builder, f"_{family}_label", ())
+        worlds = getattr(builder, f"_{family}_world", ())
+        for index, (label, world) in enumerate(zip(labels, worlds, strict=True)):
+            if not isinstance(label, str) or world is None:
+                continue
+            world_root = world_roots.get(int(world))
+            if world_root is not None:
+                labels[index] = replace_path_prefix(label, source_root, world_root)
+
+
 def rename_builder_labels(
     builder: ModelBuilder,
     sources: Sequence[str],
@@ -442,6 +456,7 @@ def rename_builder_labels(
             (builder.constraint_mimic_label, builder.constraint_mimic_world, False),
         ):
             _rename_pair(labels, worlds, collect_body_bindings=collect_body_bindings)
+        _rename_deformable_group_labels(builder, source_root, world_roots)
 
         custom_attrs = builder.custom_attributes.values()
         worlds_by_freq = {attr.frequency: attr.values for attr in custom_attrs if attr.references == "world"}

@@ -79,8 +79,8 @@ def design_scene():
         # Newton's VBD path skips the simulation mesh collider, so collision offsets do not apply
         collision_props = None
         physics_material = NewtonDeformableBodyMaterialCfg(
-            k_mu=youngs_modulus / (2.0 * (1.0 + poissons_ratio)),
-            k_lambda=youngs_modulus * poissons_ratio / ((1.0 + poissons_ratio) * (1.0 - 2.0 * poissons_ratio)),
+            youngs_modulus=youngs_modulus,
+            poissons_ratio=poissons_ratio,
             density=density,
         )
     else:

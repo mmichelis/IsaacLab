@@ -242,9 +242,10 @@ Tune the coupled contact behavior before training a policy:
   maximum effort limit the actual squeeze.
 * If the deformable no longer visibly deforms, ``soft_contact_ke`` is likely too
   high.
-* If contacts are unstable or missed, increase the deformable mesh resolution or
-  increase ``particle_radius`` in the deformable material so contact is detected
-  earlier from a larger distance.
+* If contacts are unstable or missed, increase the deformable mesh resolution.
+  For cloth, increasing surface material ``thickness`` also increases the particle
+  contact radius. For volume deformables, tune the scene-wide
+  :attr:`~isaaclab_newton.physics.NewtonCfg.default_particle_radius`.
 * If the rigid shapes still clip through the deformable, increase
   :attr:`~isaaclab_contrib.deformable.VBDSolverCfg.iterations`; more VBD
   iterations can improve contact convergence.

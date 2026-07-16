@@ -51,7 +51,12 @@ def _make_coupled_cfg(coupling_mode: str) -> SimulationCfg:
     )
     return SimulationCfg(
         dt=1.0 / 60.0,
-        physics=NewtonCfg(solver_cfg=solver_cfg, num_substeps=5, use_cuda_graph=True),
+        physics=NewtonCfg(
+            solver_cfg=solver_cfg,
+            default_particle_radius=0.005,
+            num_substeps=5,
+            use_cuda_graph=True,
+        ),
     )
 
 
@@ -92,9 +97,8 @@ def generate_robot_and_two_cubes(
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
                 physics_material=NewtonDeformableBodyMaterialCfg(
                     density=500.0,
-                    k_mu=1e5,
-                    k_lambda=1e5,
-                    particle_radius=0.005,
+                    youngs_modulus=2.5e5,
+                    poissons_ratio=0.25,
                 ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=colliding_cube_pos),
@@ -110,9 +114,8 @@ def generate_robot_and_two_cubes(
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
                 physics_material=NewtonDeformableBodyMaterialCfg(
                     density=500.0,
-                    k_mu=1e4,
-                    k_lambda=1e4,
-                    particle_radius=0.005,
+                    youngs_modulus=2.5e4,
+                    poissons_ratio=0.25,
                 ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=free_cube_pos),
@@ -152,9 +155,8 @@ def generate_lateral_rigid_and_deformable_cubes(
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
                 physics_material=NewtonDeformableBodyMaterialCfg(
                     density=1000.0,
-                    k_mu=1e5,
-                    k_lambda=1e5,
-                    particle_radius=0.005,
+                    youngs_modulus=2.5e5,
+                    poissons_ratio=0.25,
                 ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=deformable_cube_pos),

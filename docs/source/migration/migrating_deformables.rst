@@ -129,9 +129,21 @@ The deformable material hierarchy is now split by backend:
   surface-specific properties: ``surface_thickness``, ``surface_stretch_stiffness``, ``surface_shear_stiffness``,
   ``surface_bend_stiffness``, and ``bend_damping``.
 - :class:`~isaaclab_newton.sim.spawners.materials.NewtonDeformableBodyMaterialCfg` and
-  :class:`~isaaclab_newton.sim.spawners.materials.NewtonSurfaceDeformableBodyMaterialCfg` contain Newton-specific
-  fields such as density, particle radius, direct Lame parameters ``k_mu``/``k_lambda`` for volume deformables,
-  and VBD stiffness parameters for surface deformables.
+  :class:`~isaaclab_newton.sim.spawners.materials.NewtonSurfaceDeformableBodyMaterialCfg` author the canonical
+  UsdPhysics deformable material APIs. Volume materials use ``density``, ``youngs_modulus``, and
+  ``poissons_ratio``. Surface materials use volumetric ``density``, ``thickness``, and stretch, shear, and
+  bend stiffness. Surface density is divided by thickness when converting an old areal-density configuration.
+
+Newton volume particle collision radius is now scene-wide. Move the old material ``particle_radius`` value to
+:attr:`~isaaclab_newton.physics.NewtonCfg.default_particle_radius`. For surfaces, use
+``thickness = 2 * particle_radius``.
+
+To preserve legacy volume stiffness, use
+``poissons_ratio = k_lambda / (2 * (k_lambda + k_mu))`` and
+``youngs_modulus = k_mu * (3 * k_lambda + 2 * k_mu) / (k_lambda + k_mu)``.
+For surfaces, use ``stretch_stiffness = tri_ke / thickness`` and
+``bend_stiffness = edge_ke / thickness**3``. ``tri_ka`` and the legacy damping fields have no canonical
+equivalent; Newton sets its area-preservation term to zero.
 
 The old ``damping_scale`` property has been removed. Use ``elasticity_damping`` directly instead.
 

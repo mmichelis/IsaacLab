@@ -109,25 +109,38 @@ def test_physx_deformable_cfgs_use_core_schema_and_material_functions():
 
 
 def test_newton_deformable_cfgs_use_core_schema_and_material_functions():
-    """Newton deformable cfgs own Newton fields while schema and material functions stay in core."""
+    """Newton deformable cfgs author canonical UsdPhysics fields through core functions."""
     props = NewtonDeformableBodyPropertiesCfg()
     material = NewtonDeformableBodyMaterialCfg()
     surface_material = NewtonSurfaceDeformableBodyMaterialCfg()
 
     assert not hasattr(props, "define_func")
     assert not hasattr(props, "modify_func")
-    assert NewtonDeformableBodyPropertiesCfg._usd_namespace == "newton"
-    assert NewtonDeformableBodyPropertiesCfg._usd_applied_schema is None
+    assert NewtonDeformableBodyPropertiesCfg._usd_namespace == "physics"
+    assert NewtonDeformableBodyPropertiesCfg._usd_applied_schema == "PhysicsDeformableBodyAPI"
     assert str(material.func) == "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
     assert str(surface_material.func) == str(material.func)
     _assert_no_property_prefix_field(type(props))
     _assert_no_property_prefix_field(type(material))
     _assert_no_property_prefix_field(type(surface_material))
-    assert "deformable_body_enabled" not in _field_names(type(props))
-    assert "kinematic_enabled" not in _field_names(type(props))
-    assert "mass" not in _field_names(type(props))
-    assert "youngs_modulus" not in _field_names(type(material))
-    assert "poissons_ratio" not in _field_names(type(material))
-    assert {"density", "particle_radius", "k_mu", "k_lambda", "k_damp"}.issubset(_field_names(type(material)))
-    assert NewtonDeformableMaterialCfg._usd_namespace == "newton"
-    assert NewtonDeformableMaterialCfg._usd_applied_schema is None
+    assert {"body_enabled", "kinematic_enabled", "mass", "density"}.issubset(_field_names(type(props)))
+    assert {"density", "youngs_modulus", "poissons_ratio"}.issubset(_field_names(type(material)))
+    assert {"density", "thickness", "stretch_stiffness", "shear_stiffness", "bend_stiffness"}.issubset(
+        _field_names(type(surface_material))
+    )
+    legacy_fields = {
+        "particle_radius",
+        "k_mu",
+        "k_lambda",
+        "k_damp",
+        "tri_ke",
+        "tri_ka",
+        "tri_kd",
+        "edge_ke",
+        "edge_kd",
+    }
+    assert legacy_fields.isdisjoint(_field_names(type(material)) | _field_names(type(surface_material)))
+    assert NewtonDeformableMaterialCfg._usd_namespace == "physics"
+    assert NewtonDeformableMaterialCfg._usd_applied_schema == "PhysicsMaterialAPI"
+    assert type(material)._usd_applied_schema == "PhysicsVolumeDeformableMaterialAPI"
+    assert type(surface_material)._usd_applied_schema == "PhysicsSurfaceDeformableMaterialAPI"

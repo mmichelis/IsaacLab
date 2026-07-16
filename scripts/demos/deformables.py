@@ -189,19 +189,12 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         obj_cfg = objects_cfg[obj_name]
         # randomize the deformable material stiffness
         if args_cli.physics == "newton_vbd" and obj_name == "cloth":
-            obj_cfg.physics_material.tri_ke = random.uniform(5e3, 5e4)
-            obj_cfg.physics_material.tri_ka = random.uniform(5e3, 5e4)
+            obj_cfg.physics_material.stretch_stiffness = random.uniform(5e3, 5e4) / obj_cfg.physics_material.thickness
         else:
             youngs_modulus = random.uniform(5e5, 1e8)
             poissons_ratio = random.uniform(0.25, 0.45)
-            if args_cli.physics == "newton_vbd":
-                obj_cfg.physics_material.k_mu = youngs_modulus / (2.0 * (1.0 + poissons_ratio))
-                obj_cfg.physics_material.k_lambda = (
-                    youngs_modulus * poissons_ratio / ((1.0 + poissons_ratio) * (1.0 - 2.0 * poissons_ratio))
-                )
-            else:
-                obj_cfg.physics_material.youngs_modulus = youngs_modulus
-                obj_cfg.physics_material.poissons_ratio = poissons_ratio
+            obj_cfg.physics_material.youngs_modulus = youngs_modulus
+            obj_cfg.physics_material.poissons_ratio = poissons_ratio
         # randomize the color
         obj_cfg.visual_material.diffuse_color = (random.random(), random.random(), random.random())
         # spawn the object, separate groups for surface and volume deformables

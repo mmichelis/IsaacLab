@@ -106,6 +106,7 @@ from isaaclab.utils.warp.index_kernel import IndexKernelDispatcher
 
 from isaaclab_newton.cloner.newton_clone_utils import (
     _restore_visible_colliders_without_visual_shapes,
+    _rename_deformable_group_labels,
     replicate_builder_mapping,
 )
 from isaaclab_newton.physics.visualization_builder import build_visualization_builder_from_stage_envs
@@ -221,6 +222,27 @@ class _ParticleVisualPrim:
     count: int
     sync_frequency: int
     frames_since_sync: int
+
+
+@dataclass(frozen=True)
+class _DeformableParticleGroup:
+    """Newton particle range imported from one deformable simulation prim."""
+
+    family: str
+    sim_prim_path: str
+    world: int
+    particle_start: int
+    particle_end: int
+
+
+@dataclass(frozen=True)
+class _DeformableVisualBinding:
+    """Visual mesh paired with one Newton deformable particle range."""
+
+    visual_prim_path: str
+    world: int
+    particle_start: int
+    particle_count: int
 
 
 @wp.kernel(enable_backward=False)
@@ -502,7 +524,6 @@ class NewtonManager(PhysicsManager):
     # path. Single-model consumers (e.g. batched Newton IK) finalize a single-env
     # model from these and resolve it via ``query.path_to_source``.
     _cl_protos: dict[str, ModelBuilder] = {}
-    _deformable_registry: list = []
     _per_world_builder_hooks: list[Callable[[ModelBuilder, int, list[float], list[float]], None]] = []
 
     @classmethod
@@ -768,6 +789,130 @@ class NewtonManager(PhysicsManager):
             NewtonManager._cables_dirty = False
         except Exception:
             logger.exception("[NewtonManager] sync_cables_to_usd FAILED")
+
+    @classmethod
+    def _get_deformable_particle_groups(cls, prim_path_expr: str | None = None) -> list[_DeformableParticleGroup]:
+        """Return Newton-imported deformable particle groups."""
+        if cls._builder is None:
+            return []
+
+        pattern = re.compile(rf"^(?:{prim_path_expr})(?:/.*)?$") if prim_path_expr is not None else None
+        particle_count = int(cls._builder.particle_count)
+        groups: list[_DeformableParticleGroup] = []
+        for family in ("cloth", "soft"):
+            labels = tuple(getattr(cls._builder, f"_{family}_label", ()))
+            worlds = tuple(getattr(cls._builder, f"_{family}_world", ()))
+            starts = tuple(getattr(cls._builder, f"_{family}_particle_start", ()))
+            ends = tuple(getattr(cls._builder, f"_{family}_particle_end", ()))
+            if not (len(labels) == len(worlds) == len(starts) == len(ends)):
+                raise RuntimeError(f"Newton {family} group metadata has inconsistent lengths.")
+
+            for label, world, start, end in zip(labels, worlds, starts, ends, strict=True):
+                if not isinstance(label, str):
+                    raise RuntimeError(f"Newton {family} group metadata is missing a label.")
+                start = int(start)
+                end = int(end)
+                if start < 0 or end <= start or end > particle_count:
+                    raise RuntimeError(f"Newton {family} group '{label}' has invalid particle range ({start}, {end}).")
+                groups.append(
+                    _DeformableParticleGroup(
+                        family=family,
+                        sim_prim_path=label,
+                        world=0 if world is None or int(world) < 0 else int(world),
+                        particle_start=start,
+                        particle_end=end,
+                    )
+                )
+
+        groups.sort(key=lambda group: group.particle_start)
+        for previous, current in zip(groups, groups[1:]):
+            if current.particle_start < previous.particle_end:
+                raise RuntimeError(
+                    f"Newton deformable particle ranges overlap for '{previous.sim_prim_path}' and"
+                    f" '{current.sim_prim_path}'."
+                )
+        return groups if pattern is None else [group for group in groups if pattern.fullmatch(group.sim_prim_path)]
+
+    @classmethod
+    def _get_deformable_visual_bindings(cls) -> list[_DeformableVisualBinding]:
+        """Pair Newton deformable groups with their USD visual meshes."""
+        from pxr import Gf, Usd  # noqa: PLC0415
+
+        stage = get_current_stage()
+        xform_cache = UsdGeom.XformCache()
+
+        def _has_api(prim, api_name: str) -> bool:
+            return any(schema.split(":")[0] == api_name for schema in prim.GetPrimTypeInfo().GetAppliedAPISchemas())
+
+        def _has_sim_api(prim) -> bool:
+            return _has_api(prim, "PhysicsSurfaceDeformableSimAPI") or _has_api(prim, "PhysicsVolumeDeformableSimAPI")
+
+        bindings: list[_DeformableVisualBinding] = []
+        for group in cls._get_deformable_particle_groups():
+            sim_prim = stage.GetPrimAtPath(group.sim_prim_path)
+            if not sim_prim.IsValid():
+                raise RuntimeError(f"Newton deformable simulation prim not found at '{group.sim_prim_path}'.")
+
+            body_prim = sim_prim
+            while body_prim.IsValid() and not _has_api(body_prim, "PhysicsDeformableBodyAPI"):
+                parent = body_prim.GetParent()
+                if not parent.IsValid() or parent == body_prim:
+                    break
+                body_prim = parent
+            if not _has_api(body_prim, "PhysicsDeformableBodyAPI"):
+                body_prim = sim_prim
+
+            visual_prims = [
+                prim for prim in Usd.PrimRange(body_prim) if prim.IsA(UsdGeom.Mesh) and not _has_sim_api(prim)
+            ]
+            if not visual_prims and sim_prim.IsA(UsdGeom.Mesh):
+                visual_prims = [sim_prim]
+            if len(visual_prims) != 1:
+                paths = [prim.GetPath().pathString for prim in visual_prims]
+                logger.warning(
+                    "Skipping visual sync for Newton deformable '%s': expected one visual mesh, found %s.",
+                    group.sim_prim_path,
+                    paths,
+                )
+                continue
+
+            visual_prim = visual_prims[0]
+            points = UsdGeom.PointBased(visual_prim).GetPointsAttr().Get()
+            particle_count = group.particle_end - group.particle_start
+            if points is None or len(points) != particle_count:
+                point_count = 0 if points is None else len(points)
+                logger.warning(
+                    "Skipping visual sync for Newton deformable '%s': visual mesh has %d points, imported %d.",
+                    group.sim_prim_path,
+                    point_count,
+                    particle_count,
+                )
+                continue
+            world_transform = xform_cache.GetLocalToWorldTransform(visual_prim)
+            particle_points = cls._builder.particle_q[group.particle_start : group.particle_end]
+            points_match = all(
+                Gf.IsClose(
+                    world_transform.Transform(Gf.Vec3d(float(point[0]), float(point[1]), float(point[2]))),
+                    Gf.Vec3d(float(particle[0]), float(particle[1]), float(particle[2])),
+                    1.0e-5,
+                )
+                for point, particle in zip(points, particle_points, strict=True)
+            )
+            if not points_match:
+                logger.warning(
+                    "Skipping visual sync for Newton deformable '%s': visual points do not match imported particles.",
+                    group.sim_prim_path,
+                )
+                continue
+            bindings.append(
+                _DeformableVisualBinding(
+                    visual_prim_path=visual_prim.GetPath().pathString,
+                    world=group.world,
+                    particle_start=group.particle_start,
+                    particle_count=particle_count,
+                )
+            )
+        return bindings
 
     @classmethod
     def sync_particles_to_usd(cls) -> None:
@@ -1069,6 +1214,7 @@ class NewtonManager(PhysicsManager):
         # a CUDA graph (see :meth:`_is_all_graphable`).
         NewtonManager._use_newton_actuators_active = False
         NewtonManager._decimation = 1
+        NewtonManager._num_envs = None
         # Per-world reset masks
         NewtonManager._world_reset_mask = None
         NewtonManager._fk_reset_mask = None
@@ -1090,7 +1236,6 @@ class NewtonManager(PhysicsManager):
         NewtonManager._cable_sync_cpu_buffers = None
         NewtonManager._particle_visual_prims = {}
         NewtonManager._mpm_object_registry = []
-        NewtonManager._deformable_registry = []
         NewtonManager._per_world_builder_hooks = []
         NewtonManager._up_axis = "Z"
         NewtonManager._scene_data = None
@@ -1153,6 +1298,10 @@ class NewtonManager(PhysicsManager):
         cls._register_builder_attributes(builder)
         shape_cfg = cfg.default_shape_cfg if isinstance(cfg, NewtonCfg) else NewtonShapeCfg()
         checked_apply(shape_cfg, builder.default_shape_cfg)
+        if isinstance(cfg, NewtonCfg):
+            builder.default_particle_radius = cfg.default_particle_radius
+        else:
+            builder.default_particle_radius = 0.008
         return builder
 
     @classmethod
@@ -1570,13 +1719,24 @@ class NewtonManager(PhysicsManager):
                 cls._usdrt_stage.GetFabricId(), cls._usdrt_stage.GetStageIdAsStageId()
             )
 
+            deformable_bindings = cls._get_deformable_visual_bindings()
+
             NewtonManager._initialize_fabric_body_prims(cls._usdrt_stage, fabric_hierarchy, usdrt, body_bindings)
             NewtonManager._initialize_fabric_cable_prims(cls._usdrt_stage, fabric_hierarchy, usdrt)
+            NewtonManager._initialize_fabric_deformable_prims(
+                cls._usdrt_stage,
+                usdrt,
+                deformable_bindings,
+            )
+            particle_paths = [
+                *NewtonManager._particle_visual_prims,
+                *(binding.visual_prim_path for binding in deformable_bindings),
+            ]
             NewtonManager._initialize_fabric_particle_prims(
                 cls._usdrt_stage,
                 fabric_hierarchy,
                 usdrt,
-                NewtonManager._particle_visual_prims,
+                particle_paths,
             )
 
             cls._mark_state_dirty()
@@ -1670,6 +1830,27 @@ class NewtonManager(PhysicsManager):
             cls._model.shape_scale.to("cpu"),
         )
         fabric_hierarchy.update_world_xforms()
+
+    @staticmethod
+    def _initialize_fabric_deformable_prims(stage, usdrt, bindings: Sequence[_DeformableVisualBinding]) -> None:
+        """Tag deformable visual meshes with their Newton particle ranges."""
+        for binding in bindings:
+            prim = stage.GetPrimAtPath(binding.visual_prim_path)
+            if not prim.IsValid():
+                logger.warning("Fabric deformable prim not found at %s", binding.visual_prim_path)
+                continue
+            offset_attr = prim.CreateAttribute(
+                NewtonManager._newton_particle_offset_attr,
+                usdrt.Sdf.ValueTypeNames.UInt,
+                custom=True,
+            )
+            count_attr = prim.CreateAttribute(
+                NewtonManager._newton_particle_count_attr,
+                usdrt.Sdf.ValueTypeNames.UInt,
+                custom=True,
+            )
+            offset_attr.Set(binding.particle_start)
+            count_attr.Set(binding.particle_count)
 
     @staticmethod
     def _initialize_fabric_particle_prims(stage, fabric_hierarchy, usdrt, prim_paths: Iterable[str]) -> None:
@@ -1792,6 +1973,7 @@ class NewtonManager(PhysicsManager):
             _restore_visible_colliders_without_visual_shapes(builder, stage, import_result["path_shape_map"])
             replace_newton_builder_shape_colors(builder, stage)
             NewtonManager._world_xforms = [wp.transform()]
+            NewtonManager._num_envs = 1
             for hook in cls._per_world_builder_hooks:
                 hook(builder, 0, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0])
         else:
@@ -1838,6 +2020,8 @@ class NewtonManager(PhysicsManager):
                 env_root_sites=env_root_sites,
                 per_world_builder_hooks=cls._per_world_builder_hooks,
             )
+            deformable_world_roots = {col: path for col, (_, path) in enumerate(env_paths)}
+            _rename_deformable_group_labels(builder, proto_path, deformable_world_roots)
 
             NewtonManager._cl_site_index_map = {label: (idx, None) for label, idx in global_site_indices.items()}
             NewtonManager._cl_site_index_map.update(
