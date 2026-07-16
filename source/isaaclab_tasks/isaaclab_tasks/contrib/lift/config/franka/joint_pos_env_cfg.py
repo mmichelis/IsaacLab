@@ -10,6 +10,7 @@ from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
+from isaaclab_newton.sim.schemas import MujocoRigidBodyPropertiesCfg
 
 from isaaclab_tasks.contrib.lift import mdp
 from isaaclab_tasks.contrib.lift.lift_env_cfg import LiftEnvCfg
@@ -29,6 +30,11 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set Franka as robot
         self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot.spawn.rigid_props = preset(
+            default=MujocoRigidBodyPropertiesCfg(disable_gravity=False, gravcomp=1.0),
+            physx=self.scene.robot.spawn.rigid_props.replace(disable_gravity=True),
+            newton_mjwarp=MujocoRigidBodyPropertiesCfg(disable_gravity=False, gravcomp=1.0),
+        )
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
