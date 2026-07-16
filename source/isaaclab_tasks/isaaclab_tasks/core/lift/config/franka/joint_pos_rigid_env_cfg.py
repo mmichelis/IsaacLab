@@ -23,7 +23,6 @@ from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
-from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
@@ -48,7 +47,7 @@ from isaaclab_tasks.core.lift.lift_env_cfg import LiftEnvCfg
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort: skip
+from isaaclab_assets.robots.franka import NEW_FRANKA_PANDA_CFG  # isort: skip
 
 
 def _world_local_soft_contact_max(model: VBDSolverCfg.ContactCapacityModel) -> int:
@@ -65,7 +64,7 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         super().__post_init__()
 
         # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+        self.scene.robot = NEW_FRANKA_PANDA_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
         # Replace the world-welded USD table with a static cuboid collider (same footprint and
         # top height as the mjwarp variant). PhysX positions per-env static geoms via the cloner.
@@ -119,12 +118,15 @@ class FrankaCubeLiftRigidEnvCfg(LiftEnvCfg):
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
         self.scene.ee_frame = FrameTransformerCfg(
-            prim_path="/World/envs/env_.*/Robot/panda_link0",
+            prim_path="/World/envs/env_.*/Robot/Geometry/panda_link0",
             debug_vis=False,
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
-                    prim_path="/World/envs/env_.*/Robot/panda_hand",
+                    prim_path=(
+                        "/World/envs/env_.*/Robot/Geometry/panda_link0/panda_link1/panda_link2/panda_link3/"
+                        "panda_link4/panda_link5/panda_link6/panda_link7/panda_hand"
+                    ),
                     name="end_effector",
                     offset=OffsetCfg(
                         pos=[0.0, 0.0, 0.1034],
@@ -197,16 +199,19 @@ class FrankaCubeLiftMjwarpGraspEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.gripper_contact = ContactSensorCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/panda_.*finger",
+            prim_path=(
+                "{ENV_REGEX_NS}/Robot/Geometry/panda_link0/panda_link1/panda_link2/panda_link3/panda_link4/"
+                "panda_link5/panda_link6/panda_link7/panda_hand/panda_.*finger"
+            ),
             update_period=0.0,
             history_length=1,
             filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
         )
-        self.rewards.grasping_object = RewTerm(
-            func=mdp.object_is_grasped,
-            weight=5.0,
-            params={"force_threshold": 0.1, "sensor_cfg": SceneEntityCfg("gripper_contact")},
-        )
+        # self.rewards.grasping_object = RewTerm(
+        #     func=mdp.object_is_grasped,
+        #     weight=5.0,
+        #     params={"force_threshold": 0.1, "sensor_cfg": SceneEntityCfg("gripper_contact")},
+        # )
 
 
 @configclass
@@ -477,7 +482,10 @@ class FrankaCubeLiftMjwarpIkAbsEnvCfg(FrankaCubeLiftMjwarpEnvCfg):
         # Contact sensor on the gripper fingers, filtered to the cube, to read the
         # gripper-on-cube normal contact forces (per finger).
         self.scene.gripper_contact = ContactSensorCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/panda_.*finger",
+            prim_path=(
+                "{ENV_REGEX_NS}/Robot/Geometry/panda_link0/panda_link1/panda_link2/panda_link3/panda_link4/"
+                "panda_link5/panda_link6/panda_link7/panda_hand/panda_.*finger"
+            ),
             update_period=0.0,
             history_length=1,
             filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],

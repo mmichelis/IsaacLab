@@ -9,6 +9,7 @@ The following configurations are available:
 
 * :obj:`FRANKA_PANDA_CFG`: Franka Emika Panda robot with Panda hand
 * :obj:`FRANKA_PANDA_HIGH_PD_CFG`: Franka Emika Panda robot with Panda hand with stiffer PD control
+* :obj:`NEW_FRANKA_PANDA_CFG`: Franka Emika Panda robot with nested geometry
 * :obj:`FRANKA_ROBOTIQ_GRIPPER_CFG`: Franka robot with Robotiq_2f_85 gripper
 
 Reference: https://github.com/frankaemika/franka_ros
@@ -95,9 +96,9 @@ FRANKA_PANDA_CFG = ArticulationCfg(
         "panda_hand": ImplicitActuatorCfg(
             joint_names_expr=["panda_finger_joint.*"],
             effort_limit_sim=70.0,
-            velocity_limit_sim=0.2,
+            velocity_limit_sim=1.5,
             # velocity_limit_sim=2.0,
-            stiffness=750.0,
+            stiffness=350.0,
             damping=175.0,
             armature=0.1,
         ),
@@ -117,6 +118,13 @@ FRANKA_PANDA_HIGH_PD_CFG.spawn.rigid_props.disable_gravity = True
 
 This configuration is useful for task-space control using differential IK.
 """
+
+
+NEW_FRANKA_PANDA_CFG = FRANKA_PANDA_HIGH_PD_CFG.copy()
+NEW_FRANKA_PANDA_CFG.spawn.usd_path = f"{ISAACLAB_NUCLEUS_DIR}/Robots/FrankaEmika/franka_panda.usda"
+NEW_FRANKA_PANDA_CFG.spawn.activate_contact_sensors = True
+# NEW_FRANKA_PANDA_CFG.init_state.rot = (0.0, 0.0, 1.0, 0.0)
+"""Configuration of Franka Emika Panda robot with nested geometry."""
 
 
 FRANKA_ROBOTIQ_GRIPPER_CFG = FRANKA_PANDA_CFG.copy()
