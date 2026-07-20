@@ -362,27 +362,27 @@ class RewardsCfg:
         weight=5.0,
     )
     lifting_deformable = RewTerm(
-        func=mdp.deformable_lifted,
-        params={"minimal_height": 0.04, "asset_cfg": SceneEntityCfg("deformable")},
+        func=mdp.object_is_lifted,
+        params={"minimal_height": 0.04, "object_cfg": SceneEntityCfg("deformable")},
         weight=5.0,
     )
     deformable_goal_tracking = RewTerm(
-        func=mdp.deformable_com_goal_distance,
+        func=mdp.object_goal_distance,
         params={
             "std": 0.3,
             "minimal_height": 0.075,
             "command_name": "deformable_pose",
-            "asset_cfg": SceneEntityCfg("deformable"),
+            "object_cfg": SceneEntityCfg("deformable"),
         },
         weight=16.0,
     )
     deformable_goal_tracking_fine_grained = RewTerm(
-        func=mdp.deformable_com_goal_distance,
+        func=mdp.object_goal_distance,
         params={
             "std": 0.05,
             "minimal_height": 0.075,
             "command_name": "deformable_pose",
-            "asset_cfg": SceneEntityCfg("deformable"),
+            "object_cfg": SceneEntityCfg("deformable"),
         },
         weight=5.0,
     )
@@ -414,7 +414,7 @@ class TerminationsCfg:
     )
 
     deformable_dropped = DoneTerm(
-        func=mdp.deformable_com_below_minimum,
+        func=mdp.root_height_below_minimum,
         params={"minimum_height": -0.1, "asset_cfg": SceneEntityCfg("deformable")},
     )
 

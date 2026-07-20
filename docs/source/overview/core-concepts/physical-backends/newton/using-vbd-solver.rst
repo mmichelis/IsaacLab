@@ -39,13 +39,13 @@ deformable tasks:
 
 .. code-block:: bash
 
-    ./isaaclab.sh -p scripts/environments/zero_agent.py --task Isaac-Lift-Soft-Franka --num_envs 1 --visualizer kit
+    ./isaaclab.sh -p scripts/environments/state_machine/lift_franka_soft.py --task IsaacContrib-Lift-Soft-Franka-IK-Abs --num_envs 1 --visualizer kit
 
 For the surface-deformable cloth variant, use:
 
 .. code-block:: bash
 
-    ./isaaclab.sh -p scripts/environments/zero_agent.py --task Isaac-Lift-Cloth-Franka --num_envs 1 --visualizer kit
+    ./isaaclab.sh -p scripts/environments/state_machine/lift_franka_soft.py --task IsaacContrib-Lift-Cloth-Franka-IK-Abs --num_envs 1 --visualizer kit
 
 Both tasks configure MJWarp for the rigid Franka and VBD for the deformable
 object through
@@ -65,7 +65,7 @@ config carries :class:`~isaaclab_contrib.deformable.NewtonModelCfg` through its
 The Franka soft-body task defines a ``newton_mjwarp_vbd`` preset that couples
 MJWarp and VBD:
 
-.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka_soft/franka_soft_env_cfg.py
+.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py
     :language: python
     :start-at: class PhysicsCfg
     :end-before: newton_mjwarp_vbd_proxy: NewtonCfg
@@ -88,17 +88,17 @@ You can select the deformable Newton preset globally:
 
 .. code-block:: bash
 
-    ./isaaclab.sh train --rl_library rsl_rl --task=Isaac-Lift-Soft-Franka physics=newton_mjwarp_vbd
+    ./isaaclab.sh -p scripts/environments/random_agent.py --task IsaacContrib-Lift-Soft-Franka-IK-Abs --num_envs 1 physics=newton_mjwarp_vbd
 
 or select the physics field directly:
 
 .. code-block:: bash
 
-    ./isaaclab.sh train --rl_library rsl_rl --task=Isaac-Lift-Soft-Franka env.sim.physics=newton_mjwarp_vbd
+    ./isaaclab.sh -p scripts/environments/random_agent.py --task IsaacContrib-Lift-Soft-Franka-IK-Abs --num_envs 1 env.sim.physics=newton_mjwarp_vbd
 
 Use the direct path override when only one task field should use the VBD preset.
 Use ``physics=newton_mjwarp_vbd`` when you want every matching preset field in
-the task config to resolve to that preset. Isaac Lab training commands accept
+the task config to resolve to that preset. The environment script accepts
 these Hydra overrides after the regular command line flags; no separator is
 needed for the examples above.
 
@@ -258,11 +258,11 @@ model needs to interact with the deformable:
       - Contact is localized to a known body subset and the reduced interface is
         worth the proxy approximation and topology restrictions.
 
-The Franka soft-body task ships a ``newton_mjwarp_vbd_proxy`` preset (the new
-default for ``Isaac-Lift-Soft-Franka``) that demonstrates the typical
+The Franka soft-body task ships a ``newton_mjwarp_vbd_proxy`` preset (the
+default for ``IsaacContrib-Lift-Soft-Franka-IK-Abs``) that demonstrates the typical
 configuration:
 
-.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka_soft/franka_soft_env_cfg.py
+.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py
     :language: python
     :start-at: newton_mjwarp_vbd_proxy: NewtonCfg
     :end-before: physx: PhysxCfg = PhysxCfg()
@@ -338,14 +338,14 @@ Try the demo:
 
 .. code-block:: bash
 
-    # zero-agent visual smoke test (default preset is now the proxy-coupled one)
-    ./isaaclab.sh -p scripts/environments/zero_agent.py --task Isaac-Lift-Soft-Franka --num_envs 1 --visualizer kit
+    # random-agent visual smoke test (default preset is now the proxy-coupled one)
+    ./isaaclab.sh -p scripts/environments/random_agent.py --task IsaacContrib-Lift-Soft-Franka-IK-Abs --num_envs 1 --visualizer kit
 
     # scripted pick-and-lift via state machine
     ./isaaclab.sh -p scripts/environments/state_machine/lift_franka_soft.py --num_envs 1
 
     # explicitly select the alternating-substep preset instead
-    ./isaaclab.sh -p scripts/environments/zero_agent.py --task Isaac-Lift-Soft-Franka --num_envs 1 presets=newton_mjwarp_vbd
+    ./isaaclab.sh -p scripts/environments/random_agent.py --task IsaacContrib-Lift-Soft-Franka-IK-Abs --num_envs 1 presets=newton_mjwarp_vbd
 
 
 Contact and Material Parameters

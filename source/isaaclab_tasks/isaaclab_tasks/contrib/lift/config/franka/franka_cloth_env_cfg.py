@@ -27,6 +27,7 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
 from isaaclab_tasks.core.lift import mdp
 from isaaclab_tasks.utils import PresetCfg
 
+from .franka_soft_env_cfg import ActionsCfg as FrankaSoftActionsCfg
 from .franka_soft_env_cfg import EventCfg as FrankaSoftEventCfg
 from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
 
@@ -123,21 +124,6 @@ class FrankaClothSceneCfg(_FrankaSoftSceneCfg):
 
 
 @configclass
-class ActionsCfg:
-    """7-dim arm joint position + 1-dim binary gripper."""
-
-    arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
-    )
-    gripper_action = mdp.BinaryJointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.0},
-    )
-
-
-@configclass
 class EventCfg(FrankaSoftEventCfg):
     """Reset and startup events for the Franka cloth environment."""
 
@@ -165,8 +151,6 @@ class FrankaClothEnvCfg(FrankaSoftEnvCfg):
 
     # Scene settings
     scene: FrankaClothSceneCfg = FrankaClothSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
-    # Basic settings
-    actions: ActionsCfg = ActionsCfg()
     # MDP settings
     events: EventCfg = EventCfg()
 
@@ -185,3 +169,19 @@ class FrankaClothEnvCfg(FrankaSoftEnvCfg):
         self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
         self.scene.robot.actuators["panda_hand"].stiffness = 2000.0
         self.scene.robot.actuators["panda_hand"].damping = 100.0
+
+
+@configclass
+class _LegacyActionsCfg(FrankaSoftActionsCfg):
+    """Joint actions for the deprecated cloth task ID."""
+
+    arm_action = mdp.JointPositionActionCfg(
+        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
+    )
+
+
+@configclass
+class _LegacyFrankaClothEnvCfg(FrankaClothEnvCfg):
+    """Compatibility config for the deprecated cloth task ID."""
+
+    actions: _LegacyActionsCfg = _LegacyActionsCfg()

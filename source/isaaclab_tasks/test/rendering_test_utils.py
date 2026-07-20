@@ -1484,7 +1484,7 @@ def _make_franka_cloth_camera_env_cfg(data_type: str):
     from isaaclab.sensors import CameraCfg
     from isaaclab.utils.configclass import configclass
 
-    from isaaclab_tasks.core.lift.config.franka_soft.franka_cloth_env_cfg import FrankaClothEnvCfg, FrankaClothSceneCfg
+    from isaaclab_tasks.contrib.lift.config.franka.franka_cloth_env_cfg import FrankaClothEnvCfg, FrankaClothSceneCfg
     from isaaclab_tasks.utils.presets import MultiBackendRendererCfg
 
     @configclass
@@ -1524,7 +1524,7 @@ def _make_franka_cloth_camera_env_cfg(data_type: str):
 
     @configclass
     class TestFrankaClothCameraEnvCfg(FrankaClothEnvCfg):
-        """Test-only camera variant of ``Isaac-Lift-Cloth-Franka``."""
+        """Test-only camera variant of ``IsaacContrib-Lift-Cloth-Franka-IK-Abs``."""
 
         scene: TestFrankaClothCameraSceneCfg = TestFrankaClothCameraSceneCfg(
             num_envs=4, env_spacing=3.0, replicate_physics=True
@@ -1576,11 +1576,15 @@ def rendering_test_franka_cloth(
 
         maybe_save_stage(test_name, physics_backend, renderer, data_type)
 
-        # We step only once to let the cloth fall uniformly on the gravity but not collide with the cube on the table.
-        # This is to limit the inconsistent nodal poses and pixels from run to run due to solver scheduling and
-        # numerical precision.
-        zero_actions = torch.zeros(env.num_envs, env.action_manager.total_action_dim, device=env.device)
-        env.step(zero_actions)
+        # Step once so the cloth falls uniformly without reaching the cube.
+        arm_action = env.action_manager.get_term("arm_action")
+        ee_pos_curr, ee_quat_curr = arm_action._compute_frame_pose()
+
+        actions = torch.zeros(env.num_envs, env.action_manager.total_action_dim, device=env.device)
+        actions[:, 0:3] = ee_pos_curr
+        actions[:, 3:7] = ee_quat_curr
+
+        env.step(actions)
 
         validate_camera_outputs(
             test_name,
@@ -1609,7 +1613,7 @@ def _make_franka_soft_camera_env_cfg(data_type: str):
     from isaaclab.sensors import CameraCfg
     from isaaclab.utils.configclass import configclass
 
-    from isaaclab_tasks.core.lift.config.franka_soft.franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
+    from isaaclab_tasks.contrib.lift.config.franka.franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
     from isaaclab_tasks.utils.presets import MultiBackendRendererCfg
 
     @configclass
@@ -1649,7 +1653,7 @@ def _make_franka_soft_camera_env_cfg(data_type: str):
 
     @configclass
     class TestFrankaSoftCameraEnvCfg(FrankaSoftEnvCfg):
-        """Test-only camera variant of ``Isaac-Lift-Soft-Franka``."""
+        """Test-only camera variant of ``IsaacContrib-Lift-Soft-Franka-IK-Abs``."""
 
         scene: TestFrankaSoftCameraSceneCfg = TestFrankaSoftCameraSceneCfg(
             num_envs=4, env_spacing=3.0, replicate_physics=True
