@@ -38,7 +38,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
-            asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
+            asset_name="robot", joint_names=["panda_joint.*"], scale=0.04
         )
         self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
             asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
