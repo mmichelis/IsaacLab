@@ -8,6 +8,7 @@ from isaaclab_newton.sim.schemas import MujocoRigidBodyPropertiesCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim import CollisionPropertiesCfg
@@ -96,6 +97,9 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
                 articulation_root_prim_path="",
             ),
         )
+        self.rewards.reaching_object.params["object_cfg"] = SceneEntityCfg("object", body_names="Object")
+        self.rewards.object_goal_tracking_delta.params["object_cfg"] = SceneEntityCfg("object", body_names="Object")
+        self.rewards.object_goal_tracking.params["object_cfg"] = SceneEntityCfg("object", body_names="Object")
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
