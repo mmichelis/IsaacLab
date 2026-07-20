@@ -3,14 +3,21 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab.assets import RigidObjectCfg
+from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from isaaclab_newton.sim.schemas import MujocoRigidBodyPropertiesCfg
+
+import isaaclab.sim as sim_utils
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
+from isaaclab.sim import CollisionPropertiesCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
-from isaaclab_newton.sim.schemas import MujocoRigidBodyPropertiesCfg
+
+from isaaclab_contrib.coupling import CouplerEntryCfg, CouplerProxyCfg, CouplerProxyMappingCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import VBDSolverCfg
 
 from isaaclab_tasks.contrib.lift import mdp
 from isaaclab_tasks.contrib.lift.lift_env_cfg import LiftEnvCfg
@@ -23,10 +30,47 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
 
 
 @configclass
+class FrankaCubeLiftPhysicsCfg(LiftPhysicsCfg):
+    """Physics presets for Franka cube lifting."""
+
+    newton_mjwarp_vbd_proxy: NewtonCfg = NewtonCfg(
+        solver_cfg=CouplerProxyCfg(
+            entries=[
+                CouplerEntryCfg(
+                    name="rigid",
+                    solver_cfg=MJWarpSolverCfg(cone="elliptic", ls_iterations=20, integrator="implicitfast"),
+                    bodies=[r"/World/envs/env_.*/Robot", r"/World/envs/env_.*/Table"],
+                ),
+                CouplerEntryCfg(
+                    name="object",
+                    solver_cfg=VBDSolverCfg(iterations=10),
+                    bodies=[r"/World/envs/env_.*/Object"],
+                    include_static_shapes=True,
+                ),
+            ],
+            proxies=[
+                CouplerProxyMappingCfg(
+                    source="rigid",
+                    destination="object",
+                    bodies=[
+                        r"/World/envs/env_.*/Robot/panda_hand",
+                        r"/World/envs/env_.*/Robot/panda_(left|right)finger",
+                        r"/World/envs/env_.*/Table",
+                    ],
+                )
+            ],
+            iterations=1,
+        ),
+        num_substeps=2,
+    )
+
+
+@configclass
 class FrankaCubeLiftEnvCfg(LiftEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
+        self.sim.physics = FrankaCubeLiftPhysicsCfg()
 
         # Set Franka as robot
         self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
@@ -34,6 +78,23 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
             default=MujocoRigidBodyPropertiesCfg(disable_gravity=False, gravcomp=1.0),
             physx=self.scene.robot.spawn.rigid_props.replace(disable_gravity=True),
             newton_mjwarp=MujocoRigidBodyPropertiesCfg(disable_gravity=False, gravcomp=1.0),
+        )
+
+        self.scene.table = preset(
+            default=self.scene.table,
+            newton_mjwarp_vbd_proxy=ArticulationCfg(
+                prim_path="{ENV_REGEX_NS}/Table",
+                init_state=ArticulationCfg.InitialStateCfg(
+                    pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
+                ),
+                spawn=sim_utils.CuboidCfg(
+                    size=(1.3, 0.9, 1.05),
+                    collision_props=CollisionPropertiesCfg(),
+                    rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
+                ),
+                actuators={},
+                articulation_root_prim_path="",
+            ),
         )
 
         # Set actions for the specific robot type (franka)
