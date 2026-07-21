@@ -353,8 +353,8 @@ for the lift-cube environment:
 .. |lift-cube-ik-rel-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cube-Franka-IK-Rel <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/ik_rel_env_cfg.py>`
 .. |lift-soft-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Soft-Franka <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py>`
 .. |lift-cloth-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cloth-Franka <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_cloth_env_cfg.py>`
-.. |lift-soft-franka-cam-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Soft-Franka-Camera <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_camera_env_cfg.py>`
-.. |lift-cloth-franka-cam-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cloth-Franka-Camera <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_camera_env_cfg.py>`
+.. |lift-soft-franka-cam-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Soft-Franka-Camera <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py>`
+.. |lift-cloth-franka-cam-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cloth-Franka-Camera <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_cloth_env_cfg.py>`
 .. |cabi-franka-link| replace:: :isaaclab-source:`Isaac-Open-Drawer-Franka <source/isaaclab_tasks/isaaclab_tasks/core/cabinet/config/franka/joint_pos_env_cfg.py>`
 .. |franka-direct-link| replace:: :isaaclab-source:`Isaac-Open-Drawer-Franka-Direct <source/isaaclab_tasks/isaaclab_tasks/core/cabinet/cabinet_direct_env.py>`
 .. |cube-allegro-link| replace:: :isaaclab-source:`Isaac-Reorient-Cube-Allegro <source/isaaclab_tasks/isaaclab_tasks/core/reorient/config/allegro_hand/allegro_hand_manager_env_cfg.py>`
