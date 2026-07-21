@@ -193,10 +193,10 @@ The Franka soft-body lifting task defaults to proxy coupling. Select its
 
 .. code-block:: bash
 
-   ./isaaclab.sh -p scripts/environments/random_agent.py --task IsaacContrib-Lift-Soft-Franka-IK-Abs --num_envs 1 --visualizer kit physics=newton_mjwarp_vbd
+   ./isaaclab.sh -p scripts/environments/random_agent.py --task IsaacContrib-Lift-Soft-Franka --num_envs 1 --visualizer kit physics=newton_mjwarp_vbd
 
 For the surface-deformable cloth variant, run the state-machine demo with
-``--task IsaacContrib-Lift-Cloth-Franka-IK-Abs``.
+``--task IsaacContrib-Lift-Cloth-Franka``.
 
 
 This environment configures

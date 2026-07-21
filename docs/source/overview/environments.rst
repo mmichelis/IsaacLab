@@ -336,8 +336,8 @@ for the lift-cube environment:
 .. |lift-cube-link| replace:: :isaaclab-source:`Isaac-Lift-Cube-Franka <source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka/joint_pos_env_cfg.py>`
 .. |lift-cube-ik-abs-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cube-Franka-IK-Abs <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/ik_abs_env_cfg.py>`
 .. |lift-cube-ik-rel-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cube-Franka-IK-Rel <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/ik_rel_env_cfg.py>`
-.. |lift-soft-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Soft-Franka-IK-Abs <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py>`
-.. |lift-cloth-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cloth-Franka-IK-Abs <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_cloth_env_cfg.py>`
+.. |lift-soft-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Soft-Franka <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py>`
+.. |lift-cloth-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cloth-Franka <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_cloth_env_cfg.py>`
 .. |cabi-franka-link| replace:: :isaaclab-source:`Isaac-Open-Drawer-Franka <source/isaaclab_tasks/isaaclab_tasks/core/cabinet/config/franka/joint_pos_env_cfg.py>`
 .. |franka-direct-link| replace:: :isaaclab-source:`Isaac-Open-Drawer-Franka-Direct <source/isaaclab_tasks/isaaclab_tasks/core/cabinet/cabinet_direct_env.py>`
 .. |cube-allegro-link| replace:: :isaaclab-source:`Isaac-Reorient-Cube-Allegro <source/isaaclab_tasks/isaaclab_tasks/core/reorient/config/allegro_hand/allegro_hand_manager_env_cfg.py>`
@@ -1348,7 +1348,7 @@ inferencing, including reading from an already trained checkpoint and disabling 
       - Direct
       - **skrl** (AMP)
       -
-    * - IsaacContrib-Lift-Cloth-Franka-IK-Abs
+    * - IsaacContrib-Lift-Cloth-Franka
       -
       - Manager Based
       -
@@ -1368,7 +1368,7 @@ inferencing, including reading from an already trained checkpoint and disabling 
       - Manager Based
       - **rl_games** (PPO), **rsl_rl** (PPO)
       -
-    * - IsaacContrib-Lift-Soft-Franka-IK-Abs
+    * - IsaacContrib-Lift-Soft-Franka
       -
       - Manager Based
       -

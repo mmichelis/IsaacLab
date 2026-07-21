@@ -42,7 +42,7 @@ gym.register(
 ##
 
 gym.register(
-    id="IsaacContrib-Lift-Soft-Franka-IK-Abs",
+    id="IsaacContrib-Lift-Soft-Franka",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_soft_env_cfg:FrankaSoftEnvCfg",
@@ -51,7 +51,7 @@ gym.register(
 )
 
 gym.register(
-    id="IsaacContrib-Lift-Cloth-Franka-IK-Abs",
+    id="IsaacContrib-Lift-Cloth-Franka",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_cloth_env_cfg:FrankaClothEnvCfg",

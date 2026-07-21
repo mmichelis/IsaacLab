@@ -1524,7 +1524,7 @@ def _make_franka_cloth_camera_env_cfg(data_type: str):
 
     @configclass
     class TestFrankaClothCameraEnvCfg(FrankaClothEnvCfg):
-        """Test-only camera variant of ``IsaacContrib-Lift-Cloth-Franka-IK-Abs``."""
+        """Test-only camera variant of ``IsaacContrib-Lift-Cloth-Franka``."""
 
         scene: TestFrankaClothCameraSceneCfg = TestFrankaClothCameraSceneCfg(
             num_envs=4, env_spacing=3.0, replicate_physics=True
@@ -1653,7 +1653,7 @@ def _make_franka_soft_camera_env_cfg(data_type: str):
 
     @configclass
     class TestFrankaSoftCameraEnvCfg(FrankaSoftEnvCfg):
-        """Test-only camera variant of ``IsaacContrib-Lift-Soft-Franka-IK-Abs``."""
+        """Test-only camera variant of ``IsaacContrib-Lift-Soft-Franka``."""
 
         scene: TestFrankaSoftCameraSceneCfg = TestFrankaSoftCameraSceneCfg(
             num_envs=4, env_spacing=3.0, replicate_physics=True
