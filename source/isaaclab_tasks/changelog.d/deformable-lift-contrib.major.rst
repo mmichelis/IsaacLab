@@ -1,3 +1,9 @@
+Added
+^^^^^
+
+* Added ``IsaacContrib-Lift-Soft-Franka-Camera`` and
+  ``IsaacContrib-Lift-Cloth-Franka-Camera`` with 128 x 128 RGB observations.
+
 Changed
 ^^^^^^^
 

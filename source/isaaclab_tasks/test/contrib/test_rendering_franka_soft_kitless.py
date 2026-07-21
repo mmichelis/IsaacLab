@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Kit-less rendering correctness tests for test-local Franka soft camera setup."""
+"""Kit-less rendering correctness tests for the Franka soft camera environment."""
 
 from pathlib import Path
 
