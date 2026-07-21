@@ -16,8 +16,6 @@ if TYPE_CHECKING:
     from isaaclab.renderers.base_renderer import BaseRenderer
     from isaaclab.terrains.terrain_importer import TerrainImporter
 
-    from isaaclab_contrib.cable import CableObject
-
 import torch
 import warp as wp
 
@@ -27,7 +25,6 @@ from isaaclab.assets import (
     Articulation,
     ArticulationCfg,
     AssetBaseCfg,
-    CableObjectCfg,
     DeformableObject,
     DeformableObjectCfg,
     RigidObject,
@@ -145,7 +142,6 @@ class InteractiveScene:
         # initialize scene elements
         self._terrain = None
         self._articulations = dict()
-        self._cables = dict()
         self._deformable_objects = dict()
         self._rigid_objects = dict()
         self._rigid_object_collections = dict()
@@ -432,11 +428,6 @@ class InteractiveScene:
         return self._deformable_objects
 
     @property
-    def cables(self) -> dict[str, CableObject]:
-        """A dictionary of cables in the scene."""
-        return self._cables
-
-    @property
     def rigid_objects(self) -> dict[str, RigidObject]:
         """A dictionary of rigid objects in the scene."""
         return self._rigid_objects
@@ -506,8 +497,6 @@ class InteractiveScene:
         # -- assets
         for articulation in self._articulations.values():
             articulation.reset(env_ids)
-        for cable in self._cables.values():
-            cable.reset(env_ids)
         for deformable_object in self._deformable_objects.values():
             deformable_object.reset(env_ids)
         for rigid_object in self._rigid_objects.values():
@@ -525,8 +514,6 @@ class InteractiveScene:
         # -- assets
         for articulation in self._articulations.values():
             articulation.write_data_to_sim()
-        for cable in self._cables.values():
-            cable.write_data_to_sim()
         for deformable_object in self._deformable_objects.values():
             deformable_object.write_data_to_sim()
         for rigid_object in self._rigid_objects.values():
@@ -550,8 +537,6 @@ class InteractiveScene:
         # -- assets
         for articulation in self._articulations.values():
             articulation.update(dt)
-        for cable in self._cables.values():
-            cable.update(dt)
         for deformable_object in self._deformable_objects.values():
             deformable_object.update(dt)
         for rigid_object in self._rigid_objects.values():
@@ -627,7 +612,6 @@ class InteractiveScene:
         for asset_name, surface_gripper in self._surface_grippers.items():
             asset_state = state["gripper"][asset_name]
             surface_gripper.set_grippers_command(asset_state)
-        # cables carry read-only state only; cable serialization is intentionally deferred
 
         # write data to simulation to make sure initial state is set
         # this propagates the joint targets to the simulation
@@ -718,7 +702,6 @@ class InteractiveScene:
         state["gripper"] = dict()
         for asset_name, gripper in self._surface_grippers.items():
             state["gripper"][asset_name] = wp.to_torch(gripper.state).clone()
-        # cables carry read-only state only; cable serialization is intentionally deferred
         return state
 
     """
@@ -734,7 +717,6 @@ class InteractiveScene:
         all_keys = ["terrain"]
         for asset_family in [
             self._articulations,
-            self._cables,
             self._deformable_objects,
             self._rigid_objects,
             self._rigid_object_collections,
@@ -762,7 +744,6 @@ class InteractiveScene:
         # check if it is in other dictionaries
         for asset_family in [
             self._articulations,
-            self._cables,
             self._deformable_objects,
             self._rigid_objects,
             self._rigid_object_collections,
@@ -835,8 +816,6 @@ class InteractiveScene:
                 self._terrain = asset_cfg.class_type(asset_cfg)
             elif isinstance(asset_cfg, ArticulationCfg):
                 self._articulations[asset_name] = asset_cfg.class_type(asset_cfg)
-            elif isinstance(asset_cfg, CableObjectCfg):
-                self._cables[asset_name] = asset_cfg.class_type(asset_cfg)
             elif isinstance(asset_cfg, DeformableObjectCfg):
                 self._deformable_objects[asset_name] = asset_cfg.class_type(asset_cfg)
             elif isinstance(asset_cfg, RigidObjectCfg):
