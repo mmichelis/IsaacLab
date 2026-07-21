@@ -7,5 +7,5 @@ Changed
   ``NewtonCfg.default_shape_cfg``.
 
 * Made the proxy-coupled MJWarp + VBD solver the default for the
-  ``IsaacContrib-Lift-Soft-Franka-IK-Abs`` volume task, configured through named solver
+  ``Isaac-Lift-Soft-Franka`` volume task, configured through named solver
   entries and an explicit rigid-to-soft proxy mapping.

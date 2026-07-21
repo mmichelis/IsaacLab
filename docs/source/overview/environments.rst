@@ -197,7 +197,8 @@ for the lift-cube environment:
     | |lift-cube|             | |lift-cube-link|             | Pick a cube and bring it to a sampled target position with the Franka robot |                              |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |lift-soft-franka|      | |lift-soft-franka-link|      | Pick a deformable soft body and bring it to a sampled target position with  | **physics=** ``physx``,      |
-    |                         |                              | the Franka robot                                                            | ``newton_mjwarp_vbd``        |
+    |                         |                              | the Franka robot                                                            | ``newton_mjwarp_vbd``,       |
+    |                         |                              |                                                                             | ``newton_mjwarp_vbd_proxy``  |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |lift-cloth-franka|     | |lift-cloth-franka-link|     | Lift a deformable cloth from a table with the Franka robot                  | **physics=**                 |
     |                         |                              |                                                                             | ``newton_mjwarp_vbd``        |

@@ -47,9 +47,10 @@ For the surface-deformable cloth variant, use:
 
     ./isaaclab.sh -p scripts/environments/state_machine/lift_franka_soft.py --task IsaacContrib-Lift-Cloth-Franka-IK-Abs --num_envs 1 --visualizer kit
 
-Both tasks configure MJWarp for the rigid Franka and VBD for the deformable
-object through
-:class:`~isaaclab_contrib.deformable.CoupledMJWarpVBDSolverCfg`.
+Both tasks provide a ``newton_mjwarp_vbd`` preset that configures MJWarp for
+the rigid Franka and VBD for the deformable object through
+:class:`~isaaclab_contrib.deformable.CoupledMJWarpVBDSolverCfg`. The soft-body
+task defaults to its ``newton_mjwarp_vbd_proxy`` preset.
 Use these tasks as starting points for asset setup, solver coupling, and contact
 tuning.
 
@@ -65,7 +66,7 @@ config carries :class:`~isaaclab_contrib.deformable.NewtonModelCfg` through its
 The Franka soft-body task defines a ``newton_mjwarp_vbd`` preset that couples
 MJWarp and VBD:
 
-.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py
+.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka_soft/franka_soft_env_cfg.py
     :language: python
     :start-at: class PhysicsCfg
     :end-before: newton_mjwarp_vbd_proxy: NewtonCfg
@@ -262,7 +263,7 @@ The Franka soft-body task ships a ``newton_mjwarp_vbd_proxy`` preset (the
 default for ``IsaacContrib-Lift-Soft-Franka-IK-Abs``) that demonstrates the typical
 configuration:
 
-.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py
+.. literalinclude:: ../../../../../../source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka_soft/franka_soft_env_cfg.py
     :language: python
     :start-at: newton_mjwarp_vbd_proxy: NewtonCfg
     :end-before: physx: PhysxCfg = PhysxCfg()
