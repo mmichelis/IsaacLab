@@ -3,22 +3,17 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Rendering correctness tests for test-local Franka soft camera setup."""
+"""Kit-less rendering correctness tests for the Franka soft camera environment."""
 
-# Launch Isaac Sim Simulator first for kit-based combinations.
-from isaaclab.app import AppLauncher
+from pathlib import Path
 
-app_launcher = AppLauncher(headless=True, enable_cameras=True)
-simulation_app = app_launcher.app
-
-from pathlib import Path  # noqa: E402
-
-import pytest  # noqa: E402
-from rendering_test_utils import (  # noqa: E402
-    PHYSICS_RENDERER_AOV_COMBINATIONS,
+import pytest
+from rendering_test_utils import (
+    KITLESS_PHYSICS_RENDERER_AOV_COMBINATIONS,
     make_attach_comparison_properties_fixture,
     make_determinism_fixture,
     make_generate_html_report_fixture,
+    make_require_ovlibs_install_fixture,
     rendering_test_franka_soft,
 )
 
@@ -29,9 +24,10 @@ _COMPARISON_SCORES: list[dict] = []
 _determinism_fixture = make_determinism_fixture()
 _generate_html_report_fixture = make_generate_html_report_fixture(_COMPARISON_SCORES, Path(__file__).stem + ".html")
 _attach_comparison_properties_fixture = make_attach_comparison_properties_fixture(_COMPARISON_SCORES)
+_require_ovlibs_install_fixture = make_require_ovlibs_install_fixture()
 
 
-@pytest.mark.parametrize("physics_backend,renderer,data_type", PHYSICS_RENDERER_AOV_COMBINATIONS)
-def test_rendering_franka_soft(physics_backend, renderer, data_type):
-    """Test Franka soft rendering correctness."""
+@pytest.mark.parametrize("physics_backend,renderer,data_type", KITLESS_PHYSICS_RENDERER_AOV_COMBINATIONS)
+def test_rendering_franka_soft_kitless(physics_backend, renderer, data_type):
+    """Camera output must match golden images for the Franka soft test setup."""
     rendering_test_franka_soft(physics_backend, renderer, data_type, _COMPARISON_SCORES)

@@ -197,10 +197,26 @@ for the lift-cube environment:
     | |lift-cube|             | |lift-cube-link|             | Pick a cube and bring it to a sampled target position with the Franka robot |                              |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |lift-soft-franka|      | |lift-soft-franka-link|      | Pick a deformable soft body and bring it to a sampled target position with  | **physics=** ``physx``,      |
-    |                         |                              | the Franka robot                                                            | ``newton_mjwarp_vbd``        |
+    |                         |                              | the Franka robot                                                            | ``newton_mjwarp_vbd``,       |
+    |                         |                              |                                                                             | ``newton_mjwarp_vbd_proxy``  |
+    +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
+    | |lift-soft-franka|      | |lift-soft-franka-cam-link|  | Camera variant of the soft-body lift task with RGB observations             | **physics=** ``physx``,      |
+    |                         |                              |                                                                             | ``newton_mjwarp_vbd``,       |
+    |                         |                              |                                                                             | ``newton_mjwarp_vbd_proxy``  |
+    |                         |                              |                                                                             | **renderer=**                |
+    |                         |                              |                                                                             | ``isaacsim_rtx``,            |
+    |                         |                              |                                                                             | ``newton_renderer``,         |
+    |                         |                              |                                                                             | ``ovrtx``, ``rtx``           |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |lift-cloth-franka|     | |lift-cloth-franka-link|     | Lift a deformable cloth from a table with the Franka robot                  | **physics=**                 |
     |                         |                              |                                                                             | ``newton_mjwarp_vbd``        |
+    +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
+    | |lift-cloth-franka|     | |lift-cloth-franka-cam-link| | Camera variant of the cloth lift task with RGB observations                 | **physics=**                 |
+    |                         |                              |                                                                             | ``newton_mjwarp_vbd``        |
+    |                         |                              |                                                                             | **renderer=**                |
+    |                         |                              |                                                                             | ``isaacsim_rtx``,            |
+    |                         |                              |                                                                             | ``newton_renderer``,         |
+    |                         |                              |                                                                             | ``ovrtx``, ``rtx``           |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+------------------------------+
     | |stack-cube|            | |stack-cube-link|            | Stack three cubes (bottom to top: blue, red, green) with the Franka robot.  |                              |
     |                         |                              | Blueprint env used for the NVIDIA Isaac GR00T blueprint for synthetic       |                              |
@@ -335,8 +351,10 @@ for the lift-cube environment:
 .. |lift-cube-link| replace:: :isaaclab-source:`Isaac-Lift-Cube-Franka <source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka/joint_pos_env_cfg.py>`
 .. |lift-cube-ik-abs-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cube-Franka-IK-Abs <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/ik_abs_env_cfg.py>`
 .. |lift-cube-ik-rel-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cube-Franka-IK-Rel <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/ik_rel_env_cfg.py>`
-.. |lift-soft-franka-link| replace:: :isaaclab-source:`Isaac-Lift-Soft-Franka <source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka_soft/franka_soft_env_cfg.py>`
-.. |lift-cloth-franka-link| replace:: :isaaclab-source:`Isaac-Lift-Cloth-Franka <source/isaaclab_tasks/isaaclab_tasks/core/lift/config/franka_soft/franka_cloth_env_cfg.py>`
+.. |lift-soft-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Soft-Franka <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py>`
+.. |lift-cloth-franka-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cloth-Franka <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_cloth_env_cfg.py>`
+.. |lift-soft-franka-cam-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Soft-Franka-Camera <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_soft_env_cfg.py>`
+.. |lift-cloth-franka-cam-link| replace:: :isaaclab-source:`IsaacContrib-Lift-Cloth-Franka-Camera <source/isaaclab_tasks/isaaclab_tasks/contrib/lift/config/franka/franka_cloth_env_cfg.py>`
 .. |cabi-franka-link| replace:: :isaaclab-source:`Isaac-Open-Drawer-Franka <source/isaaclab_tasks/isaaclab_tasks/core/cabinet/config/franka/joint_pos_env_cfg.py>`
 .. |franka-direct-link| replace:: :isaaclab-source:`Isaac-Open-Drawer-Franka-Direct <source/isaaclab_tasks/isaaclab_tasks/core/cabinet/cabinet_direct_env.py>`
 .. |cube-allegro-link| replace:: :isaaclab-source:`Isaac-Reorient-Cube-Allegro <source/isaaclab_tasks/isaaclab_tasks/core/reorient/config/allegro_hand/allegro_hand_manager_env_cfg.py>`
@@ -976,11 +994,6 @@ inferencing, including reading from an already trained checkpoint and disabling 
       - Manager Based
       - **rl_games** (PPO), **rsl_rl** (PPO), **skrl** (PPO), **sb3** (PPO)
       -
-    * - Isaac-Lift-Cloth-Franka
-      -
-      - Manager Based
-      - **rsl_rl** (PPO)
-      - **physics=** ``newton_mjwarp_vbd``
     * - Isaac-Lift-Cube-Franka
       - Isaac-Lift-Cube-Franka-Play
       - Manager Based
@@ -1005,11 +1018,6 @@ inferencing, including reading from an already trained checkpoint and disabling 
       - | **physics=** ``newton_mjwarp``, ``physx``
           | **renderer=** ``isaacsim_rtx``, ``newton_renderer``, ``ovrtx``, ``rtx``
           | **presets=** ``albedo128``, ``albedo256``, ``albedo64``, ``cube``, ``depth128``, ``depth256``, ``depth64``, ``duo_camera``, ``raycaster_depth128``, ``raycaster_depth256``, ``raycaster_depth64``, ``rgb128``, ``rgb256``, ``rgb64``, ``semantic_segmentation128``, ``semantic_segmentation256``, ``semantic_segmentation64``, ``shapes``, ``simple_shading_constant_diffuse128``, ``simple_shading_constant_diffuse256``, ``simple_shading_constant_diffuse64``, ``simple_shading_diffuse_mdl128``, ``simple_shading_diffuse_mdl256``, ``simple_shading_diffuse_mdl64``, ``simple_shading_full_mdl128``, ``simple_shading_full_mdl256``, ``simple_shading_full_mdl64``, ``single_camera``
-    * - Isaac-Lift-Soft-Franka
-      -
-      - Manager Based
-      - **rsl_rl** (PPO)
-      - **physics=** ``newton_mjwarp_vbd``, ``newton_mjwarp_vbd_proxy``, ``physx``
     * - Isaac-Open-Drawer-Franka
       - Isaac-Open-Drawer-Franka-Play
       - Manager Based
@@ -1357,6 +1365,17 @@ inferencing, including reading from an already trained checkpoint and disabling 
       - Direct
       - **skrl** (AMP)
       -
+    * - IsaacContrib-Lift-Cloth-Franka
+      -
+      - Manager Based
+      -
+      - **physics=** ``newton_mjwarp_vbd``
+    * - IsaacContrib-Lift-Cloth-Franka-Camera
+      -
+      - Manager Based
+      -
+      - | **physics=** ``newton_mjwarp_vbd``
+          | **renderer=** ``isaacsim_rtx``, ``newton_renderer``, ``ovrtx``, ``rtx``
     * - IsaacContrib-Lift-Cube-Franka-IK-Abs
       -
       - Manager Based
@@ -1372,6 +1391,17 @@ inferencing, including reading from an already trained checkpoint and disabling 
       - Manager Based
       - **rl_games** (PPO), **rsl_rl** (PPO)
       -
+    * - IsaacContrib-Lift-Soft-Franka
+      -
+      - Manager Based
+      -
+      - **physics=** ``newton_mjwarp_vbd``, ``newton_mjwarp_vbd_proxy``, ``physx``
+    * - IsaacContrib-Lift-Soft-Franka-Camera
+      -
+      - Manager Based
+      -
+      - | **physics=** ``newton_mjwarp_vbd``, ``newton_mjwarp_vbd_proxy``, ``physx``
+          | **renderer=** ``isaacsim_rtx``, ``newton_renderer``, ``ovrtx``, ``rtx``
     * - IsaacContrib-Navigation-3DObstacles-ARL-Robot-1
       - IsaacContrib-Navigation-3DObstacles-ARL-Robot-1-Play
       - Manager Based

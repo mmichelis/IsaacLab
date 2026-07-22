@@ -188,13 +188,15 @@ simulation loop.
    Franka manipulation using MJWarp for rigid bodies and VBD for the deformable
    object.
 
-You can exercise this coupling path with the Franka soft-body lifting task:
+The Franka soft-body lifting task defaults to proxy coupling. Select its
+``newton_mjwarp_vbd`` preset to exercise this coupling path:
 
 .. code-block:: bash
 
-   ./isaaclab.sh -p scripts/environments/zero_agent.py --task Isaac-Lift-Soft-Franka --num_envs 1 --visualizer kit
+   ./isaaclab.sh -p scripts/environments/random_agent.py --task IsaacContrib-Lift-Soft-Franka --num_envs 1 --visualizer kit physics=newton_mjwarp_vbd
 
-For the surface-deformable cloth variant, use ``--task Isaac-Lift-Cloth-Franka``.
+For the surface-deformable cloth variant, run the state-machine demo with
+``--task IsaacContrib-Lift-Cloth-Franka``.
 
 
 This environment configures

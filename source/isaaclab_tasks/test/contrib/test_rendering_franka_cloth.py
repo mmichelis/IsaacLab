@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Rendering correctness tests for test-local Franka cloth camera setup."""
+"""Rendering correctness tests for the Franka cloth camera environment."""
 
 # Launch Isaac Sim Simulator first for kit-based combinations.
 from isaaclab.app import AppLauncher
