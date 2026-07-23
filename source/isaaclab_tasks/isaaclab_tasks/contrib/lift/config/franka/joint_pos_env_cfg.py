@@ -8,6 +8,7 @@ from isaaclab_newton.sim.schemas import MujocoRigidBodyPropertiesCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
@@ -74,11 +75,6 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set Franka as robot
         self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.robot.spawn.rigid_props = preset(
-            default=MujocoRigidBodyPropertiesCfg(disable_gravity=False, gravcomp=1.0),
-            physx=self.scene.robot.spawn.rigid_props.replace(disable_gravity=True),
-            newton_mjwarp=MujocoRigidBodyPropertiesCfg(disable_gravity=False, gravcomp=1.0),
-        )
 
         self.scene.table = preset(
             default=self.scene.table,
@@ -96,19 +92,33 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
                 articulation_root_prim_path="",
             ),
         )
-        self.rewards.reaching_object.params["object_cfg"] = SceneEntityCfg("object", body_names="Object")
-        self.rewards.object_goal_tracking_delta.params["object_cfg"] = SceneEntityCfg("object", body_names="Object")
-        self.rewards.object_goal_tracking.params["object_cfg"] = SceneEntityCfg("object", body_names="Object")
 
         # Set actions for the specific robot type (franka)
-        self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
-            asset_name="robot", joint_names=["panda_joint.*"], scale=0.02
+        # self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
+        #     asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
+        # )
+        # self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
+        #     asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
+        # )
+        self.actions.action = mdp.RelativeJointPositionActionCfg(
+            asset_name="robot", joint_names=[".*"], scale=0.1
         )
-        self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
-            asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
-        )
-        # Set the body name for the end effector
-        self.commands.object_pose.body_name = "panda_hand"
+
+        # Randomize the driven finger's damping to vary gripper closing speed. Driven finger
+        # only: damping on the passive mimic joint drags the coupled pair asymmetrically.
+        # self.events.gripper_closing_speed = EventTerm(
+        #     func=mdp.randomize_actuator_gains,
+        #     mode="startup",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint1"),
+        #         "damping_distribution_params": (
+        #             0.0,
+        #             FRANKA_PANDA_MENAGERIE_CFG.actuators["panda_hand"].stiffness * 0.1 / 0.01
+        #             - FRANKA_PANDA_MENAGERIE_CFG.actuators["panda_hand"].damping,
+        #         ),
+        #         "operation": "add",
+        #     },
+        # )
 
         # Set Cube as object
         self.scene.object = RigidObjectCfg(
