@@ -27,7 +27,7 @@ from isaaclab_tasks.contrib.lift.lift_env_cfg import LiftEnvCfg
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_MENAGERIE_CFG  # isort: skip
 
 
 @configclass
@@ -74,7 +74,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         self.sim.physics = FrankaCubeLiftPhysicsCfg()
 
         # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.rigid_props = preset(
             default=MujocoRigidBodyPropertiesCfg(disable_gravity=False, gravcomp=1.0),
             physx=self.scene.robot.spawn.rigid_props.replace(disable_gravity=True),
