@@ -4,12 +4,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
-from isaaclab_newton.sim.schemas import MujocoRigidBodyPropertiesCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
-from isaaclab.managers import EventTermCfg as EventTerm
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim import CollisionPropertiesCfg
@@ -28,7 +25,7 @@ from isaaclab_tasks.contrib.lift.lift_env_cfg import LiftEnvCfg
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from isaaclab_assets.robots.franka import FRANKA_PANDA_MENAGERIE_CFG  # isort: skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
 
 
 @configclass
@@ -55,7 +52,8 @@ class FrankaCubeLiftPhysicsCfg(LiftPhysicsCfg):
                     source="rigid",
                     destination="object",
                     bodies=[
-                        r"/World/envs/env_.*/Robot/Geometry/.*/panda_hand",
+                        r"/World/envs/env_.*/Robot/panda_hand",
+                        r"/World/envs/env_.*/Robot/panda_(left|right)finger",
                         r"/World/envs/env_.*/Table",
                     ],
                 )
@@ -73,8 +71,8 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         super().__post_init__()
         self.sim.physics = FrankaCubeLiftPhysicsCfg()
 
-        # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        # Set Franka as robot (legacy asset: both fingers driven independently, no mimic)
+        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
         self.scene.table = preset(
             default=self.scene.table,
@@ -94,31 +92,14 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         )
 
         # Set actions for the specific robot type (franka)
-        # self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
-        #     asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
-        # )
-        # self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
-        #     asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
-        # )
-        self.actions.action = mdp.RelativeJointPositionActionCfg(
-            asset_name="robot", joint_names=[".*"], scale=0.1
+        self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
+            asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
         )
-
-        # Randomize the driven finger's damping to vary gripper closing speed. Driven finger
-        # only: damping on the passive mimic joint drags the coupled pair asymmetrically.
-        # self.events.gripper_closing_speed = EventTerm(
-        #     func=mdp.randomize_actuator_gains,
-        #     mode="startup",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint1"),
-        #         "damping_distribution_params": (
-        #             0.0,
-        #             FRANKA_PANDA_MENAGERIE_CFG.actuators["panda_hand"].stiffness * 0.1 / 0.01
-        #             - FRANKA_PANDA_MENAGERIE_CFG.actuators["panda_hand"].damping,
-        #         ),
-        #         "operation": "add",
-        #     },
-        # )
+        self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
+            asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
+        )
+        # Set the body name for the end effector
+        self.commands.object_pose.body_name = "panda_hand"
 
         # Set Cube as object
         self.scene.object = RigidObjectCfg(
@@ -143,15 +124,12 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
         self.scene.ee_frame = FrameTransformerCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/Geometry/panda_link0",
+            prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
             debug_vis=False,
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
-                    prim_path=(
-                        "{ENV_REGEX_NS}/Robot/Geometry/panda_link0/panda_link1/panda_link2/panda_link3/"
-                        "panda_link4/panda_link5/panda_link6/panda_link7/panda_hand"
-                    ),
+                    prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
                     name="end_effector",
                     offset=OffsetCfg(
                         pos=[0.0, 0.0, 0.1034],

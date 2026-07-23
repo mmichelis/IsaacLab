@@ -10,7 +10,6 @@ The following configurations are available:
 * :obj:`FRANKA_PANDA_CFG`: Franka Emika Panda robot with Panda hand
 * :obj:`FRANKA_PANDA_MENAGERIE_CFG`: Franka Emika Panda robot converted from MuJoCo Menagerie
 * :obj:`FRANKA_PANDA_HIGH_PD_CFG`: Franka Emika Panda robot with Panda hand with stiffer PD control
-* :obj:`FRANKA_PANDA_MENAGERIE_CFG`: Franka Emika Panda on the menagerie-converted asset with impedance actuators
 * :obj:`FRANKA_ROBOTIQ_GRIPPER_CFG`: Franka robot with Robotiq_2f_85 gripper
 
 Reference: https://github.com/frankaemika/franka_ros
@@ -126,60 +125,6 @@ FRANKA_PANDA_HIGH_PD_CFG.actuators["panda_forearm"].damping = 80.0
 """Configuration of Franka Emika Panda robot with stiffer PD control.
 
 This configuration is useful for task-space control using differential IK.
-"""
-
-
-FRANKA_PANDA_MENAGERIE_CFG = FRANKA_PANDA_CFG.copy()
-FRANKA_PANDA_MENAGERIE_CFG.spawn.usd_path = f"{ISAACLAB_NUCLEUS_DIR}/Robots/FrankaEmika/franka_panda.usda"
-FRANKA_PANDA_MENAGERIE_CFG.actuators = {
-    # inspired by libfranka's joint_impedance_control.cpp
-    "panda_arm": ImplicitActuatorCfg(
-        joint_names_expr=["panda_joint[1-7]"],
-        effort_limit_sim={"panda_joint[1-4]": 87.0, "panda_joint[5-7]": 12.0},
-        velocity_limit={"panda_joint[1-4]": 2.175, "panda_joint[5-7]": 2.61},
-        velocity_limit_sim={"panda_joint[1-4]": 20.0, "panda_joint[5-7]": 25.0},
-        stiffness={
-            "panda_joint[1-4]": 600.0,
-            "panda_joint5": 250.0,
-            "panda_joint6": 150.0,
-            "panda_joint7": 50.0,
-        },
-        damping={
-            "panda_joint[1-4]": 50.0,
-            "panda_joint5": 30.0,
-            "panda_joint6": 25.0,
-            "panda_joint7": 15.0,
-        },
-        armature={
-            "panda_joint[1-2]": 0.6057,
-            "panda_joint[3-4]": 0.4625,
-            "panda_joint[5-7]": 0.2055,
-        },
-    ),
-    "panda_hand": ImplicitActuatorCfg(
-        joint_names_expr=["panda_finger_joint1"],
-        effort_limit_sim=70.0,
-        velocity_limit=0.2,
-        velocity_limit_sim=2.0,
-        stiffness=350.0,
-        damping=175.0,
-        armature=0.1,
-    ),
-    "panda_finger2_passive": ImplicitActuatorCfg(
-        joint_names_expr=["panda_finger_joint2"],
-        effort_limit_sim=1.0,
-        velocity_limit=0.2,
-        velocity_limit_sim=2.0,
-        stiffness=0.0,
-        damping=0.0,
-        armature=0.1,
-    ),
-}
-"""Configuration of Franka Emika Panda robot on the menagerie-converted asset.
-
-Uses the ``franka_panda.usda`` asset (identified inertials, authored finger coupling) with
-actuators calibrated for it (libfranka-inspired arm impedance, a driven finger joint, and a
-passive mimic finger joint). Suited to contact-rich manipulation and sim-to-sim transfer.
 """
 
 
