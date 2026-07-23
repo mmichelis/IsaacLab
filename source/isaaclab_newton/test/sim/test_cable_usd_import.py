@@ -37,6 +37,9 @@ def test_newton_imports_cable_without_registry():
     assert builder.body_count == 2
     assert builder.joint_count == 1
     assert builder.shape_count == 2
+    assert builder._cable_label == [cable_path]
+    assert builder._cable_body_start == [0]
+    assert builder._cable_body_end == [2]
     assert import_result["path_cable_map"][cable_path] == ([0, 1], [0])
     assert cable_attrs["closed"] is False
     assert cable_attrs["material"]["thickness"] == pytest.approx(material.thickness)

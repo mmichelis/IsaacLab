@@ -241,6 +241,7 @@ def rename_builder_labels(
             (builder.shape_label, builder.shape_world, False),
             (builder.articulation_label, builder.articulation_world, False),
             (builder.constraint_mimic_label, builder.constraint_mimic_world, False),
+            (builder._cable_label, builder._cable_world, False),
         ):
             _rename_pair(labels, worlds, collect_body_bindings=collect_body_bindings)
 

@@ -46,6 +46,8 @@ class _FakeVisualizationModelBuilder:
         for attr in _VIS_BUILTIN_LABEL_ATTRS:
             setattr(self, attr, [])
             setattr(self, attr.replace("_label", "_world"), [])
+        self._cable_label = []
+        self._cable_world = []
         self.custom_attributes = {
             "mujoco:equality_constraint_label": newton.ModelBuilder.CustomAttribute(
                 name="equality_constraint_label", frequency=_VIS_EQ_FREQ, dtype=str, default="", namespace="mujoco"
@@ -204,6 +206,18 @@ class TestRenameBuilderLabels(unittest.TestCase):
         self.assertEqual(
             builder.custom_attributes["mujoco:tendon_label"].values,
             [f"{_DST.format(int(w))}/Tendon_{int(w)}" for w in tendon_worlds],
+        )
+
+    def test_cable_labels_rewritten_per_world(self):
+        builder = _make_builder(self.worlds)
+        builder._cable_label = [f"{_SRC}/Cable_{world}" for world in self.worlds]
+        builder._cable_world = list(self.worlds)
+
+        self._rename(builder)
+
+        self.assertEqual(
+            builder._cable_label,
+            [f"{_DST.format(world)}/Cable_{world}" for world in self.worlds],
         )
 
     def test_source_root_boundary_cases(self):
