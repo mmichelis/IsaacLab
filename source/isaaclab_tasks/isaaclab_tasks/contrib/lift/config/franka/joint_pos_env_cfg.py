@@ -75,15 +75,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
         self.scene.table = preset(
-            default=RigidObjectCfg(
-                prim_path="{ENV_REGEX_NS}/Table",
-                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
-                spawn=sim_utils.CuboidCfg(
-                    size=(1.3, 0.9, 1.05),
-                    collision_props=CollisionPropertiesCfg(),
-                    rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
-                ),
-            ),
+            default=self.scene.table,
             newton_mjwarp_vbd_proxy=ArticulationCfg(
                 prim_path="{ENV_REGEX_NS}/Table",
                 init_state=ArticulationCfg.InitialStateCfg(
