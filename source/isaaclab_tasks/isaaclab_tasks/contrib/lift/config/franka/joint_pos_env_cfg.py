@@ -75,7 +75,15 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
         self.scene.table = preset(
-            default=self.scene.table,
+            default=RigidObjectCfg(
+                prim_path="{ENV_REGEX_NS}/Table",
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0)),
+                spawn=sim_utils.CuboidCfg(
+                    size=(1.3, 0.9, 1.05),
+                    collision_props=CollisionPropertiesCfg(),
+                    rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
+                ),
+            ),
             newton_mjwarp_vbd_proxy=ArticulationCfg(
                 prim_path="{ENV_REGEX_NS}/Table",
                 init_state=ArticulationCfg.InitialStateCfg(
@@ -93,7 +101,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
-            asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
+            asset_name="robot", joint_names=["panda_joint.*"], scale=0.075
         )
         self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
             asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
@@ -101,21 +109,28 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
         # Set the body name for the end effector
         self.commands.object_pose.body_name = "panda_hand"
 
-        # Set Cube as object
+        # Set Cube as object. Multi-asset spawner distributes differently-sized DexCubes
+        # across envs (per-env size randomization).
+        cube_rigid_props = RigidBodyPropertiesCfg(
+            solver_position_iteration_count=16,
+            solver_velocity_iteration_count=1,
+            max_angular_velocity=1000.0,
+            max_linear_velocity=1000.0,
+            max_depenetration_velocity=5.0,
+            disable_gravity=False,
+        )
         self.scene.object = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Object",
             init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0, 0.055], rot=[0, 0, 0, 1]),
-            spawn=UsdFileCfg(
-                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
-                scale=(0.8, 0.8, 0.8),
-                rigid_props=RigidBodyPropertiesCfg(
-                    solver_position_iteration_count=16,
-                    solver_velocity_iteration_count=1,
-                    max_angular_velocity=1000.0,
-                    max_linear_velocity=1000.0,
-                    max_depenetration_velocity=5.0,
-                    disable_gravity=False,
-                ),
+            spawn=sim_utils.MultiAssetSpawnerCfg(
+                assets_cfg=[
+                    UsdFileCfg(
+                        usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
+                        scale=(s, s, s),
+                    )
+                    for s in (0.64, 0.72, 0.80, 0.88, 0.96)
+                ],
+                rigid_props=cube_rigid_props,
             ),
         )
 
