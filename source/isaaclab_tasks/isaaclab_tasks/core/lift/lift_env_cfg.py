@@ -229,7 +229,7 @@ class ObservationsCfg:
     @configclass
     class ProprioObsCfg(ObsGroup):
         """Observations for proprioception group."""
-    
+
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
 

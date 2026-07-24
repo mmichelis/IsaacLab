@@ -7,6 +7,8 @@ from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
+from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim import CollisionPropertiesCfg
@@ -93,7 +95,7 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
-            asset_name="robot", joint_names=["panda_joint.*"], scale=0.05
+            asset_name="robot", joint_names=["panda_joint.*"], scale=0.075
         )
         self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
             asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
@@ -143,4 +145,16 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
                     ),
                 ),
             ],
+        )
+
+        # Grasp shaping: draw both fingertips onto the cube to reward the finger-closing
+        # stage the hand-midpoint reach reward ignores (Franka-specific finger bodies).
+        self.rewards.grasping_object = RewTerm(
+            func=mdp.object_fingertip_distance,
+            params={
+                "std": 0.05,
+                "object_cfg": SceneEntityCfg("object", body_names="Object"),
+                "robot_cfg": SceneEntityCfg("robot", body_names=["panda_leftfinger", "panda_rightfinger"]),
+            },
+            weight=2.0,
         )
