@@ -226,6 +226,32 @@ class ObservationsCfg:
             self.flatten_history_dim = True
             self.history_length = 5
 
+    @configclass
+    class ProprioObsCfg(ObsGroup):
+        """Observations for proprioception group."""
+    
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    @configclass
+    class PerceptionObsCfg(ObsGroup):
+        """Observations for perception group."""
+
+        object_point_cloud = ObsTerm(
+            func=object_point_cloud_b,
+            # clip=(-2.0, 2.0),  # clamp between -2 m to 2 m
+            params={"num_points": 32, "flatten": True},
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_dim = 0
+            self.concatenate_terms = True
+
     # observation groups
     policy: PolicyCfg = PolicyCfg()
     proprio: ProprioObsCfg = ProprioObsCfg()
