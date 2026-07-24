@@ -246,8 +246,6 @@ class ObservationsCfg:
             # clip=(-2.0, 2.0),  # clamp between -2 m to 2 m
             params={"num_points": 32, "flatten": True},
         )
-        # object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
-        # object_orientation = ObsTerm(func=mdp.object_orientation_in_robot_root_frame)
 
         def __post_init__(self):
             self.enable_corruption = True
