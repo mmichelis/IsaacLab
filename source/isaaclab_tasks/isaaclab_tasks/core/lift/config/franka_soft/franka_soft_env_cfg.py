@@ -7,7 +7,13 @@
 
 from __future__ import annotations
 
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg, NewtonShapeCfg
+from isaaclab_newton.physics import (
+    MJWarpSolverCfg,
+    NewtonCfg,
+    NewtonCollisionPipelineCfg,
+    NewtonShapeCfg,
+    NewtonShapeSDFCfg,
+)
 from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
 from isaaclab_newton.sim.spawners.materials import NewtonDeformableBodyMaterialCfg
 from isaaclab_physx.physics import PhysxCfg
@@ -174,6 +180,13 @@ class PhysicsCfg(PresetCfg):
                     ],
                     # detect finger/beam contact every substep so the gripper stops at the surface
                     collide_interval=1,
+                    # Watertight rigid-soft contact: generate soft contacts over the full beam
+                    # surface (edges + triangle interiors) against the gripper SDFs, not just at
+                    # beam vertices. Requires the gripper SDFs provisioned via sdf_shape_cfgs below.
+                    # NOTE: functional harvesting of these full-surface contacts through the proxy
+                    # coupler depends on the parallel Newton-core proxy-harvest generalization draft;
+                    # not runtime-verified here.
+                    collision_pipeline=NewtonCollisionPipelineCfg(enable_rigid_soft_full_surface_contact=True),
                 )
             ],
             iterations=1,
@@ -184,6 +197,19 @@ class PhysicsCfg(PresetCfg):
             # ),
         ),
         # default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=1e-5, mu=5.0),
+        # Provision volume SDFs on the gripper collider shapes so full-surface rigid-soft contact
+        # (enabled on the proxy above) has an SDF on every participating rigid shape.
+        # Patterns are re.fullmatch-ed against Newton shape labels of the form
+        # "/World/envs/env_<N>/Robot/<body>/collisions/collisions", so they target the collider
+        # shapes only (not the "/visuals/.../subset" render meshes or "/ft_*" sensor sites).
+        sdf_shape_cfgs=[
+            NewtonShapeSDFCfg(
+                shape_label_patterns=[
+                    r"/World/envs/env_.*/Robot/panda_hand/collisions/collisions",
+                    r"/World/envs/env_.*/Robot/panda_(left|right)finger/collisions/collisions",
+                ],
+            )
+        ],
         num_substeps=2,
     )
 
