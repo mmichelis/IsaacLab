@@ -11,7 +11,6 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import torch
-import warp as wp
 
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.utils.math import subtract_frame_transforms
@@ -37,8 +36,8 @@ def deformable_com_in_robot_root_frame(
     """
     asset: DeformableObject = env.scene[asset_cfg.name]
     robot: Articulation = env.scene[robot_cfg.name]
-    com_w = wp.to_torch(asset.data.root_pos_w)
-    com_b, _ = subtract_frame_transforms(wp.to_torch(robot.data.root_pos_w), wp.to_torch(robot.data.root_quat_w), com_w)
+    com_w = asset.data.root_pos_w.torch
+    com_b, _ = subtract_frame_transforms(robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, com_w)
     return com_b
 
 

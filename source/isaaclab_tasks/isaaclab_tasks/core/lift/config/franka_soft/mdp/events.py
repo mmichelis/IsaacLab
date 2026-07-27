@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import torch
 import warp as wp
 from isaaclab_newton.physics import NewtonManager
+from newton import ModelFlags
 
 from isaaclab.managers import SceneEntityCfg
 
@@ -123,3 +124,6 @@ def randomize_deformable_material(
 
     # Refresh the asset's cached inverse-mass snapshot used by the kinematic-target restore.
     asset._default_particle_inv_mass = wp.clone(model.particle_inv_mass)
+
+    # notify the solver that model properties changed, else the randomization is ignored
+    NewtonManager.add_model_change(ModelFlags.MODEL_PROPERTIES)

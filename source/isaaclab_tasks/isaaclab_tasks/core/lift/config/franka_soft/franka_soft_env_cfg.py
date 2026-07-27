@@ -180,7 +180,7 @@ class PhysicsCfg(PresetCfg):
             # hardened gripper-vs-soft contact: the beam's larger contact patch lets the fast
             # fingers tunnel through under a soft normal stiffness, so stiffen and damp it.
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1.0e6,
+                soft_contact_ke=5.0e6,
                 soft_contact_kd=1.0e-3,
                 soft_contact_mu=5.0,
             ),
@@ -252,13 +252,13 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         # required by the joint_vel_out_of_sim_limit termination. Scoped here rather than in
         # FRANKA_PANDA_CFG so the other Franka tasks keep the stock asset.
         shoulder = self.robot.actuators["panda_shoulder"]
-        shoulder.velocity_limit_sim = 2.175
+        shoulder.velocity_limit_sim = 1.175
         shoulder.stiffness = 600.0
         shoulder.damping = 50.0
         shoulder.armature = {"panda_joint[1-2]": 0.6057, "panda_joint[3-4]": 0.4625}
 
         forearm = self.robot.actuators["panda_forearm"]
-        forearm.velocity_limit_sim = 2.61
+        forearm.velocity_limit_sim = 1.61
         forearm.stiffness = {"panda_joint5": 250.0, "panda_joint6": 150.0, "panda_joint7": 50.0}
         forearm.damping = {"panda_joint5": 30.0, "panda_joint6": 25.0, "panda_joint7": 15.0}
         forearm.armature = 0.2055
@@ -331,7 +331,7 @@ class ActionsCfg:
     #     open_command_expr={"panda_finger_.*": 0.05},
     #     close_command_expr={"panda_finger_.*": 0.0},
     # )
-    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.075)
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.05)
 
     gripper_action = mdp.JointPositionToLimitsActionCfg(
         asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True

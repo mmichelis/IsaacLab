@@ -14,7 +14,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
-import warp as wp
 
 from isaaclab.managers import SceneEntityCfg
 
@@ -30,7 +29,7 @@ def deformable_com_below_minimum(
 ) -> torch.Tensor:
     """Termination signal when the deformable's COM falls below ``minimum_height`` [m]."""
     asset: DeformableObject = env.scene[asset_cfg.name]
-    com_z = wp.to_torch(asset.data.root_pos_w)[:, 2]
+    com_z = asset.data.root_pos_w.torch[:, 2]
     return com_z < minimum_height
 
 
@@ -52,7 +51,7 @@ def deformable_outside_table_bounds(
         Boolean tensor with shape ``(num_envs,)``.
     """
     asset: DeformableObject = env.scene[asset_cfg.name]
-    nodal_pos = wp.to_torch(asset.data.nodal_pos_w) - env.scene.env_origins.unsqueeze(1)
+    nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
     outside_x = (nodal_pos[..., 0] < x_bounds[0]) | (nodal_pos[..., 0] > x_bounds[1])
     outside_y = (nodal_pos[..., 1] < y_bounds[0]) | (nodal_pos[..., 1] > y_bounds[1])
     return torch.any(outside_x | outside_y, dim=1)
