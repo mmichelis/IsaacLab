@@ -61,8 +61,8 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
 
 
 # Shared volume material parameters. The Newton config below uses the equivalent Lame parameters.
-YOUNGS_MODULUS = 1e5
-POISSONS_RATIO = 0.25
+YOUNGS_MODULUS = 1e6
+POISSONS_RATIO = 0.45
 
 # Table collider whose top surface sits at z = 0. Spawned invisible: the command term's success
 # visualizer draws it instead, tinted by whether the goal is reached.
@@ -88,7 +88,7 @@ class DeformableCfg(PresetCfg):
                 density=1000.0,
                 k_mu=YOUNGS_MODULUS / (2.0 * (1.0 + POISSONS_RATIO)),
                 k_lambda=(YOUNGS_MODULUS * POISSONS_RATIO / ((1.0 + POISSONS_RATIO) * (1.0 - 2.0 * POISSONS_RATIO))),
-                particle_radius=0.005,
+                particle_radius=0.01,
             ),
         ),
     )
@@ -177,13 +177,11 @@ class PhysicsCfg(PresetCfg):
                 )
             ],
             iterations=1,
-            # hardened gripper-vs-soft contact: the beam's larger contact patch lets the fast
-            # fingers tunnel through under a soft normal stiffness, so stiffen and damp it.
-            model_cfg=NewtonModelCfg(
-                soft_contact_ke=5.0e6,
-                soft_contact_kd=1.0e-3,
-                soft_contact_mu=5.0,
-            ),
+            # model_cfg=NewtonModelCfg(
+            #     soft_contact_ke=5.0e6,
+            #     soft_contact_kd=1.0e-3,
+            #     soft_contact_mu=5.0,
+            # ),
         ),
         # default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=1e-5, mu=5.0),
         num_substeps=2,
@@ -252,13 +250,13 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         # required by the joint_vel_out_of_sim_limit termination. Scoped here rather than in
         # FRANKA_PANDA_CFG so the other Franka tasks keep the stock asset.
         shoulder = self.robot.actuators["panda_shoulder"]
-        shoulder.velocity_limit_sim = 1.175
+        shoulder.velocity_limit_sim = 2.175
         shoulder.stiffness = 600.0
         shoulder.damping = 50.0
         shoulder.armature = {"panda_joint[1-2]": 0.6057, "panda_joint[3-4]": 0.4625}
 
         forearm = self.robot.actuators["panda_forearm"]
-        forearm.velocity_limit_sim = 1.61
+        forearm.velocity_limit_sim = 2.61
         forearm.stiffness = {"panda_joint5": 250.0, "panda_joint6": 150.0, "panda_joint7": 50.0}
         forearm.damping = {"panda_joint5": 30.0, "panda_joint6": 25.0, "panda_joint7": 15.0}
         forearm.armature = 0.2055
@@ -374,7 +372,7 @@ class EventCfg:
         func=mdp.reset_nodal_state_uniform,
         mode="reset",
         params={
-            "position_range": {"x": (-0.1, 0.1), "y": (-0.15, 0.15), "z": (0.0, 0.0)},
+            "position_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("deformable"),
         },
@@ -475,9 +473,9 @@ class SoftEventCfg(EventCfg):
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("deformable"),
-            "youngs_modulus_range": (7e4, 5e5),
-            "density_range": (100.0, 1000.0),
-            "poissons_ratio": 0.25,
+            "youngs_modulus_range": (7e5, 5e6),
+            "density_range": (900.0, 1000.0),
+            "poissons_ratio": 0.45,
         },
     )
 
