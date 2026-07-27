@@ -147,8 +147,8 @@ class FrankaCubeLiftEnvCfg(LiftEnvCfg):
             ],
         )
 
-        # Grasp shaping: draw both fingertips onto the cube to reward the finger-closing
-        # stage the hand-midpoint reach reward ignores (Franka-specific finger bodies).
+        # Grasp shaping: draw both fingers onto the nearest point of the cube surface to reward
+        # the finger-closing stage the hand-midpoint reach reward ignores (Franka-specific bodies).
         self.rewards.grasping_object = RewTerm(
             func=mdp.object_fingertip_distance,
             params={
