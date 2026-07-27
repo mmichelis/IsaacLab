@@ -22,6 +22,7 @@ __all__ = [
     "joint_vel_out_of_sim_limit",
     # events
     "randomize_deformable_material",
+    "reset_deformable_over_support",
     # commands
     "DeformableUniformPoseCommand",
     "DeformableUniformPoseCommandCfg",
@@ -30,7 +31,7 @@ __all__ = [
 ]
 
 from .curriculums import modify_gravity_linear
-from .events import randomize_deformable_material
+from .events import randomize_deformable_material, reset_deformable_over_support
 from .observations import (
     DeformableSampledPointsInRobotRootFrame,
     deformable_com_in_robot_root_frame,

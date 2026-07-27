@@ -12,7 +12,7 @@ from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
 from isaaclab_newton.sim.spawners.materials import NewtonSurfaceDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg
+from isaaclab.assets import RigidObjectCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -89,7 +89,7 @@ class PhysicsCfg(PresetCfg):
                         ls_iterations=20,
                         integrator="implicitfast",
                     ),
-                    bodies=[r"/World/envs/env_.*/Robot"],
+                    bodies=[r"/World/envs/env_.*/Robot", r"/World/envs/env_.*/Cube"],
                 ),
                 CouplerEntryCfg(
                     name="soft",
@@ -105,6 +105,7 @@ class PhysicsCfg(PresetCfg):
                     bodies=[
                         r"/World/envs/env_.*/Robot/panda_hand",
                         r"/World/envs/env_.*/Robot/panda_(left|right)finger",
+                        r"/World/envs/env_.*/Cube",
                     ],
                     # detect finger/beam contact every substep so the gripper stops at the surface
                     collide_interval=1,
@@ -159,12 +160,15 @@ class FrankaClothSceneCfg(_FrankaSoftSceneCfg):
 
     deformable: DeformableCfg = DeformableCfg()
 
-    # Static collidable cube the cloth drops onto (sits on the table top at z = 0).
-    cube: AssetBaseCfg = AssetBaseCfg(
+    # Collidable cube the cloth drapes onto (sits on the table top at z = 0). Kinematic so the
+    # reset event can move it under the randomized cloth without it being simulated.
+    cube: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Cube",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.45, 0.0, 0.04)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.45, 0.0, 0.04)),
         spawn=sim_utils.CuboidCfg(
             size=(0.03, 0.01, 0.08),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.25)),
         ),
@@ -229,6 +233,18 @@ class CurriculumCfg:
 class FrankaClothEventCfg(FrankaSoftEventCfg):
     """Reset and startup events for the Franka cloth environment."""
 
+    # Replaces the base term so the cube follows the randomized cloth position.
+    reset_deformable = EventTerm(
+        func=mdp.reset_deformable_over_support,
+        mode="reset",
+        params={
+            "position_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+            "support_offset_range": {"x": (-0.02, 0.02), "y": (-0.02, 0.02)},
+            "asset_cfg": SceneEntityCfg("deformable"),
+            "support_cfg": SceneEntityCfg("cube"),
+        },
+    )
+
     robot_physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="startup",
@@ -257,7 +273,6 @@ class FrankaClothEnvCfg(FrankaSoftEnvCfg):
     # rewards: RewardsCfg = RewardsCfg()
     events: FrankaClothEventCfg = FrankaClothEventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
-
 
     def __post_init__(self) -> None:
         super().__post_init__()
