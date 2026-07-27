@@ -14,11 +14,17 @@ from isaaclab_newton.sim.spawners.materials import NewtonSurfaceDeformableBodyMa
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 
+from isaaclab_contrib.coupling import (
+    CouplerEntryCfg,
+    CouplerProxyCfg,
+    CouplerProxyMappingCfg,
+)
 from isaaclab_contrib.deformable.newton_manager_cfg import (
     CoupledMJWarpVBDSolverCfg,
     NewtonModelCfg,
@@ -44,8 +50,6 @@ ROBOT_SHAPE_MATERIAL_BODY_NAMES = ".*"
 
 @configclass
 class PhysicsCfg(PresetCfg):
-    # Newton physics: MJWarp rigid + VBD soft, two-way coupled
-    # (matches newton/examples/softbody/example_softbody_franka.py)
     newton_mjwarp_vbd: NewtonCfg = NewtonCfg(
         solver_cfg=CoupledMJWarpVBDSolverCfg(
             rigid_solver_cfg=MJWarpSolverCfg(
@@ -75,7 +79,49 @@ class PhysicsCfg(PresetCfg):
         use_cuda_graph=True,
     )
 
-    default = newton_mjwarp_vbd
+    newton_mjwarp_vbd_proxy: NewtonCfg = NewtonCfg(
+        solver_cfg=CouplerProxyCfg(
+            entries=[
+                CouplerEntryCfg(
+                    name="rigid",
+                    solver_cfg=MJWarpSolverCfg(
+                        cone="elliptic",
+                        ls_iterations=20,
+                        integrator="implicitfast",
+                    ),
+                    bodies=[r"/World/envs/env_.*/Robot"],
+                ),
+                CouplerEntryCfg(
+                    name="soft",
+                    solver_cfg=VBDSolverCfg(iterations=10, rigid_body_particle_contact_buffer_size=1024),
+                    all_particles=True,
+                    include_static_shapes=True,
+                ),
+            ],
+            proxies=[
+                CouplerProxyMappingCfg(
+                    source="rigid",
+                    destination="soft",
+                    bodies=[
+                        r"/World/envs/env_.*/Robot/panda_hand",
+                        r"/World/envs/env_.*/Robot/panda_(left|right)finger",
+                    ],
+                    # detect finger/beam contact every substep so the gripper stops at the surface
+                    collide_interval=1,
+                )
+            ],
+            iterations=1,
+            # model_cfg=NewtonModelCfg(
+            #     soft_contact_ke=5.0e6,
+            #     soft_contact_kd=1.0e-3,
+            #     soft_contact_mu=5.0,
+            # ),
+        ),
+        # default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=1e-5, mu=5.0),
+        num_substeps=2,
+    )
+
+    default = newton_mjwarp_vbd_proxy
 
 
 @configclass
@@ -102,7 +148,9 @@ class DeformableCfg(PresetCfg):
         ),
     )
 
-    default = newton_mjwarp_vbd
+    newton_mjwarp_vbd_proxy = newton_mjwarp_vbd
+
+    default = newton_mjwarp_vbd_proxy
 
 
 @configclass
@@ -120,26 +168,6 @@ class FrankaClothSceneCfg(_FrankaSoftSceneCfg):
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.25)),
         ),
-    )
-
-
-@configclass
-class ActionsCfg:
-    """7-dim arm joint position + 1-dim binary gripper."""
-
-    # arm_action = mdp.JointPositionActionCfg(
-    #     asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
-    # )
-    # gripper_action = mdp.BinaryJointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["panda_finger.*"],
-    #     open_command_expr={"panda_finger_.*": 0.05},
-    #     close_command_expr={"panda_finger_.*": 0.0},
-    # )
-    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.04)
-
-    gripper_action = mdp.JointPositionToLimitsActionCfg(
-        asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
     )
 
 
@@ -183,7 +211,22 @@ class RewardsCfg:
 
 
 @configclass
-class EventCfg(FrankaSoftEventCfg):
+class CurriculumCfg:
+    """Ramp the action-rate penalty once the policy has learned to lift (matches rigid recipe)."""
+
+    action_rate = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 50000}
+    )
+
+    # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
+    gravity = CurrTerm(
+        func=mdp.modify_gravity_linear,
+        params={"start_gravity_z": -1.0, "end_gravity_z": -9.81, "start_step": 0, "end_step": 20000},
+    )
+
+
+@configclass
+class FrankaClothEventCfg(FrankaSoftEventCfg):
     """Reset and startup events for the Franka cloth environment."""
 
     robot_physics_material = EventTerm(
@@ -210,26 +253,18 @@ class FrankaClothEnvCfg(FrankaSoftEnvCfg):
 
     # Scene settings
     scene: FrankaClothSceneCfg = FrankaClothSceneCfg(num_envs=128, env_spacing=2.5, replicate_physics=True)
-    # Basic settings
-    actions: ActionsCfg = ActionsCfg()
     # MDP settings
-    rewards: RewardsCfg = RewardsCfg()
-    events: EventCfg = EventCfg()
-    # Cloth keeps the original (uncurriculumed) recipe; the soft-beam curriculum does not apply.
-    curriculum: object | None = None
+    # rewards: RewardsCfg = RewardsCfg()
+    events: FrankaClothEventCfg = FrankaClothEventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
+
 
     def __post_init__(self) -> None:
-        # general settings
-        self.decimation = 2
-        self.episode_length_s = 5.0
-
-        # simulation settings
-        self.sim.dt = 0.01
-        self.sim.render_interval = self.decimation
-
+        super().__post_init__()
+        # override the base soft-beam physics with the cloth presets
         self.sim.physics = PhysicsCfg()
 
         # increase franka gripper stiffness
-        self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
-        self.scene.robot.actuators["panda_hand"].stiffness = 2000.0
-        self.scene.robot.actuators["panda_hand"].damping = 100.0
+        # self.scene.robot.actuators["panda_hand"].effort_limit_sim = 500.0
+        # self.scene.robot.actuators["panda_hand"].stiffness = 2000.0
+        # self.scene.robot.actuators["panda_hand"].damping = 100.0
