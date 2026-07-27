@@ -15,6 +15,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 
@@ -24,9 +25,9 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
     VBDSolverCfg,
 )
 
-from isaaclab_tasks.core.lift import mdp
 from isaaclab_tasks.utils import PresetCfg
 
+from . import mdp
 from .franka_soft_env_cfg import EventCfg as FrankaSoftEventCfg
 from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
 
@@ -126,15 +127,59 @@ class FrankaClothSceneCfg(_FrankaSoftSceneCfg):
 class ActionsCfg:
     """7-dim arm joint position + 1-dim binary gripper."""
 
-    arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
+    # arm_action = mdp.JointPositionActionCfg(
+    #     asset_name="robot", joint_names=["panda_joint.*"], scale=0.1, use_default_offset=True
+    # )
+    # gripper_action = mdp.BinaryJointPositionActionCfg(
+    #     asset_name="robot",
+    #     joint_names=["panda_finger.*"],
+    #     open_command_expr={"panda_finger_.*": 0.05},
+    #     close_command_expr={"panda_finger_.*": 0.0},
+    # )
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.04)
+
+    gripper_action = mdp.JointPositionToLimitsActionCfg(
+        asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
     )
-    gripper_action = mdp.BinaryJointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["panda_finger.*"],
-        open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.0},
+
+
+@configclass
+class RewardsCfg:
+    """Lift-to-target reward for the surface deformable (the cloth's original recipe).
+
+    Kept local to the cloth task so it is unaffected by the soft-beam env's reward changes.
+    """
+
+    reaching_deformable = RewTerm(
+        func=mdp.deformable_ee_distance,
+        params={"std": 0.3, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=5.0,
     )
+    lifting_deformable = RewTerm(
+        func=mdp.deformable_lifted,
+        params={"minimal_height": 0.06, "asset_cfg": SceneEntityCfg("deformable")},
+        weight=5.0,
+    )
+    deformable_goal_tracking_delta = RewTerm(
+        func=mdp.deformable_com_goal_distance_delta,
+        params={
+            "minimal_height": 0.075,
+            "command_name": "deformable_pose",
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=500.0,
+    )
+    deformable_goal_tracking = RewTerm(
+        func=mdp.deformable_com_goal_distance,
+        params={
+            "std": 0.3,
+            "minimal_height": 0.075,
+            "command_name": "deformable_pose",
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=16.0,
+    )
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
 
 
 @configclass
@@ -168,15 +213,18 @@ class FrankaClothEnvCfg(FrankaSoftEnvCfg):
     # Basic settings
     actions: ActionsCfg = ActionsCfg()
     # MDP settings
+    rewards: RewardsCfg = RewardsCfg()
     events: EventCfg = EventCfg()
+    # Cloth keeps the original (uncurriculumed) recipe; the soft-beam curriculum does not apply.
+    curriculum: object | None = None
 
     def __post_init__(self) -> None:
         # general settings
-        self.decimation = 1
+        self.decimation = 2
         self.episode_length_s = 5.0
 
         # simulation settings
-        self.sim.dt = 1 / 60.0
+        self.sim.dt = 0.01
         self.sim.render_interval = self.decimation
 
         self.sim.physics = PhysicsCfg()
