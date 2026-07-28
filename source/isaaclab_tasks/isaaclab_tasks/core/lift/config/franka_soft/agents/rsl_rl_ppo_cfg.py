@@ -16,7 +16,7 @@ from isaaclab_rl.rsl_rl import (
 class FrankaSoftLiftPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 2000
-    save_interval = 100
+    save_interval = 50
     experiment_name = "franka_soft"
     obs_groups = {
         "actor": ["policy"],

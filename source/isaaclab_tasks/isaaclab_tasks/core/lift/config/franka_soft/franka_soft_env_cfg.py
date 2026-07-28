@@ -23,6 +23,7 @@ from isaaclab_physx.sim.spawners.materials import PhysxDeformableBodyMaterialCfg
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.assets.deformable_object import DeformableObjectCfg
+from isaaclab.controllers import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -190,11 +191,11 @@ class PhysicsCfg(PresetCfg):
                 )
             ],
             iterations=1,
-            model_cfg=NewtonModelCfg(
-                soft_contact_ke=1.0e6,
-                soft_contact_kd=1.0e-1,
-                soft_contact_mu=1.0,
-            ),
+            # model_cfg=NewtonModelCfg(
+            #     soft_contact_ke=1.0e6,
+            #     soft_contact_kd=1.0e-1,
+            #     soft_contact_mu=1.0,
+            # ),
         ),
         # default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=1e-5, mu=5.0),
         # Provision volume SDFs on the gripper collider shapes so full-surface rigid-soft contact
@@ -209,7 +210,7 @@ class PhysicsCfg(PresetCfg):
                     r"/World/envs/env_.*/Robot/panda_(left|right)finger/collisions/collisions",
                 ],
                 # ~2.3 mm voxels on the fingers; finer isn't needed for contact resolution.
-                max_resolution=32,
+                max_resolution=8,
             )
         ],
         num_substeps=2,
@@ -278,13 +279,13 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         # required by the joint_vel_out_of_sim_limit termination. Scoped here rather than in
         # FRANKA_PANDA_CFG so the other Franka tasks keep the stock asset.
         shoulder = self.robot.actuators["panda_shoulder"]
-        shoulder.velocity_limit_sim = 1.175
+        shoulder.velocity_limit_sim = 0.875
         shoulder.stiffness = 600.0
         shoulder.damping = 50.0
         shoulder.armature = {"panda_joint[1-2]": 0.6057, "panda_joint[3-4]": 0.4625}
 
         forearm = self.robot.actuators["panda_forearm"]
-        forearm.velocity_limit_sim = 1.61
+        forearm.velocity_limit_sim = 1.11
         forearm.stiffness = {"panda_joint5": 250.0, "panda_joint6": 150.0, "panda_joint7": 50.0}
         forearm.damping = {"panda_joint5": 30.0, "panda_joint6": 25.0, "panda_joint7": 15.0}
         forearm.armature = 0.2055
@@ -336,32 +337,50 @@ class CommandsCfg:
 
 
 @configclass
-class ActionsCfg:
-    """7-dim absolute end-effector pose (xyz + quaternion) via differential IK + 1-dim binary gripper."""
+class _JointActionsCfg:
+    """7-dim relative joint-position arm targets + 1-dim limit-rescaled gripper."""
 
-    # arm_action = DifferentialInverseKinematicsActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["panda_joint.*"],
-    #     body_name="panda_hand",
-    #     controller=DifferentialIKControllerCfg(
-    #         command_type="pose",
-    #         use_relative_mode=False,
-    #         ik_method="dls",
-    #         ik_params={"lambda_val": 0.6},
-    #     ),
-    #     body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
-    # )
-    # gripper_action = mdp.BinaryJointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["panda_finger.*"],
-    #     open_command_expr={"panda_finger_.*": 0.05},
-    #     close_command_expr={"panda_finger_.*": 0.0},
-    # )
     arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.02)
 
     gripper_action = mdp.JointPositionToLimitsActionCfg(
         asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
     )
+
+
+@configclass
+class _IkActionsCfg:
+    """7-dim absolute end-effector pose (xyz + quaternion) via differential IK + 1-dim binary gripper."""
+
+    arm_action = mdp.DifferentialInverseKinematicsActionCfg(
+        asset_name="robot",
+        joint_names=["panda_joint.*"],
+        body_name="panda_hand",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.6},
+        ),
+        body_offset=mdp.DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+    )
+
+    gripper_action = mdp.BinaryJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["panda_finger.*"],
+        open_command_expr={"panda_finger_.*": 0.05},
+        close_command_expr={"panda_finger_.*": 0.02},
+    )
+
+
+@configclass
+class ActionsCfg(PresetCfg):
+    """Action-space presets: joint-space for RL, task-space IK for scripted end-effector control."""
+
+    joint: _JointActionsCfg = _JointActionsCfg()
+
+    ik: _IkActionsCfg = _IkActionsCfg()
+
+    default = joint
 
 
 @configclass
@@ -400,7 +419,7 @@ class EventCfg:
         func=mdp.reset_nodal_state_uniform,
         mode="reset",
         params={
-            "position_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+            "position_range": {"x": (-0.15, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("deformable"),
         },
@@ -540,7 +559,7 @@ class TerminationsCfg:
 
     deformable_vel_out_of_limit = DoneTerm(
         func=mdp.deformable_nodal_vel_above_maximum,
-        params={"maximum_velocity": 0.5, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"maximum_velocity": 1.0, "asset_cfg": SceneEntityCfg("deformable")},
     )
 
 
@@ -589,3 +608,9 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.sim.gravity = (0.0, 0.0, -9.81)
         self.sim.physics = PhysicsCfg()
+
+        # Camera for --video / viewer: lower and closer, framed on the table/lift zone.
+        # The ViewerCfg default (7.5, 7.5, 7.5) -> (0, 0, 0) sits far too high above the action;
+        # the video recorder copies these into cfg.video_recorder (manager_based_rl_env).
+        self.viewer.eye = (1.8, -1.4, 1.0)
+        self.viewer.lookat = (0.5, 0.0, 0.2)
