@@ -208,6 +208,8 @@ class PhysicsCfg(PresetCfg):
                     r"/World/envs/env_.*/Robot/panda_hand/collisions/collisions",
                     r"/World/envs/env_.*/Robot/panda_(left|right)finger/collisions/collisions",
                 ],
+                # ~2.3 mm voxels on the fingers; finer isn't needed for contact resolution.
+                max_resolution=32,
             )
         ],
         num_substeps=2,
