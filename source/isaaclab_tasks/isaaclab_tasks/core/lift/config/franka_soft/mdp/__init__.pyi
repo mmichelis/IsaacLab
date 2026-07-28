@@ -18,6 +18,7 @@ __all__ = [
     "deformable_com_goal_reached",
     # terminations
     "deformable_com_below_minimum",
+    "deformable_nodal_vel_above_maximum",
     "deformable_outside_table_bounds",
     "joint_vel_out_of_sim_limit",
     # events
@@ -52,6 +53,7 @@ from .rewards import (
 )
 from .terminations import (
     deformable_com_below_minimum,
+    deformable_nodal_vel_above_maximum,
     deformable_outside_table_bounds,
     joint_vel_out_of_sim_limit,
 )
