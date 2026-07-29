@@ -20,6 +20,7 @@ __all__ = [
     "deformable_com_below_minimum",
     "deformable_nodal_vel_above_maximum",
     "deformable_outside_table_bounds",
+    "deformable_state_invalid",
     "joint_vel_out_of_sim_limit",
     # events
     "randomize_deformable_material",
@@ -55,6 +56,7 @@ from .terminations import (
     deformable_com_below_minimum,
     deformable_nodal_vel_above_maximum,
     deformable_outside_table_bounds,
+    deformable_state_invalid,
     joint_vel_out_of_sim_limit,
 )
 from isaaclab_tasks.core.lift.mdp import *

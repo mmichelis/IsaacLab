@@ -15,6 +15,8 @@ import torch
 from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
 from isaaclab.utils.math import combine_frame_transforms
 
+from .utils import _com_w, _nodal_pos_w
+
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, DeformableObject
     from isaaclab.envs import ManagerBasedRLEnv
@@ -37,7 +39,7 @@ def deformable_lifted(
         Reward tensor with shape ``(num_envs,)``.
     """
     asset: DeformableObject = env.scene[asset_cfg.name]
-    com_z = asset.data.root_pos_w.torch[:, 2]
+    com_z = _com_w(asset)[:, 2]
     return torch.where(com_z > minimal_height, 1.0, 0.0)
 
 
@@ -63,7 +65,7 @@ def deformable_lifting(
         Reward tensor with shape ``(num_envs,)``.
     """
     asset: DeformableObject = env.scene[asset_cfg.name]
-    com_z = asset.data.root_pos_w.torch[:, 2]
+    com_z = _com_w(asset)[:, 2]
     height = (com_z - minimal_height).clamp(min=0.0)
     return torch.tanh(height / std)
 
@@ -87,7 +89,7 @@ def deformable_ee_distance(
     """
     asset: DeformableObject = env.scene[asset_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    nodal_pos_w = asset.data.nodal_pos_w.torch
+    nodal_pos_w = _nodal_pos_w(asset)
     ee_w = ee_frame.data.target_pos_w.torch[..., 0, :]
     distance = torch.linalg.norm(nodal_pos_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
     return 1.0 - torch.tanh(distance / std)
@@ -116,7 +118,7 @@ def deformable_com_ee_distance(
     """
     asset: DeformableObject = env.scene[asset_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    com_w = asset.data.root_pos_w.torch
+    com_w = _com_w(asset)
     ee_w = ee_frame.data.target_pos_w.torch[..., 0, :]
     distance = torch.linalg.norm(com_w - ee_w, dim=1)
     return 1.0 - torch.tanh(distance / std)
@@ -151,9 +153,9 @@ def deformable_fingertip_distance(
     robot: Articulation = env.scene[robot_cfg.name]
     # target points in world frame: COM (num_envs, 1, 3) or all nodes (num_envs, num_nodes, 3)
     if target_com:
-        target_w = asset.data.root_pos_w.torch.unsqueeze(1)
+        target_w = _com_w(asset).unsqueeze(1)
     else:
-        target_w = asset.data.nodal_pos_w.torch
+        target_w = _nodal_pos_w(asset)
     # selected finger bodies in world frame: (num_envs, num_fingers, 3)
     finger_pos_w = robot.data.body_pos_w.torch[:, robot_cfg.body_ids]
     # nearest target to each finger: (num_envs, num_fingers)
@@ -205,7 +207,7 @@ class deformable_com_goal_distance(ManagerTermBase):
         des_pos_w, _ = combine_frame_transforms(
             robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
         )
-        com_w = asset.data.root_pos_w.torch
+        com_w = _com_w(asset)
         distance = torch.linalg.norm(des_pos_w - com_w, dim=1)
         is_lifted = com_w[:, 2] > minimal_height
         if success_threshold is not None:
@@ -255,7 +257,7 @@ class deformable_com_goal_distance_delta(ManagerTermBase):
         des_pos_w, _ = combine_frame_transforms(
             robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
         )
-        com_w = asset.data.root_pos_w.torch
+        com_w = _com_w(asset)
         distance = torch.linalg.norm(des_pos_w - com_w, dim=1)
         self._prev_distance = torch.where(self._needs_baseline, distance, self._prev_distance)
         self._needs_baseline[:] = False
@@ -296,7 +298,7 @@ def deformable_com_goal_reached(
     asset: DeformableObject = env.scene[asset_cfg.name]
     command = env.command_manager.get_command(command_name)
     des_pos_w, _ = combine_frame_transforms(robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3])
-    com_w = asset.data.root_pos_w.torch
+    com_w = _com_w(asset)
     distance = torch.linalg.norm(des_pos_w - com_w, dim=1)
     is_lifted = com_w[:, 2] > minimal_height
     return (is_lifted & (distance < success_threshold)).float()
