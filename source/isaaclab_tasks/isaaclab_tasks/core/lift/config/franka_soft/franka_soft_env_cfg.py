@@ -69,7 +69,7 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
 
 
 # Shared volume material parameters. The Newton config below uses the equivalent Lame parameters.
-YOUNGS_MODULUS = 1e6
+YOUNGS_MODULUS = 2e5
 POISSONS_RATIO = 0.3
 
 # Table collider whose top surface sits at z = 0. Spawned invisible: the command term's success
@@ -193,7 +193,7 @@ class PhysicsCfg(PresetCfg):
             ],
             iterations=1,
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1.0e5,
+                soft_contact_ke=1.0e4,
                 soft_contact_kd=1.0e-2,
                 soft_contact_mu=5.0,
             ),
@@ -506,7 +506,7 @@ class CurriculumCfg:
     """Ramp the action-rate penalty once the policy has learned to lift (matches rigid recipe)."""
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 50000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 40000}
     )
 
     # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
@@ -581,10 +581,10 @@ class TerminationsCfg:
 
 @configclass
 class FrankaSoftSceneCfg(PresetCfg):
-    newton_mjwarp_vbd: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=True)
+    newton_mjwarp_vbd: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=True)
 
     # PhysX does not support replicating physics for deformable objects
-    physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=False)
+    physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=False)
 
     newton_mjwarp_vbd_proxy = newton_mjwarp_vbd
 
@@ -623,6 +623,6 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         # Camera for --video / viewer: lower and closer, framed on the table/lift zone.
         # The ViewerCfg default (7.5, 7.5, 7.5) -> (0, 0, 0) sits far too high above the action;
         # the video recorder copies these into cfg.video_recorder (manager_based_rl_env).
-        self.viewer.eye = (0.25, -1.0, 0.75)
-        self.viewer.lookat = (0.0, 0.0, 0.2)
+        self.viewer.eye = (0.5, 0.5, 0.6)
+        self.viewer.lookat = (0.0, 1.0, 0.35)
         self.sim.default_visualizer_cfg = VisualizerCfg(eye=self.viewer.eye, lookat=self.viewer.lookat)
