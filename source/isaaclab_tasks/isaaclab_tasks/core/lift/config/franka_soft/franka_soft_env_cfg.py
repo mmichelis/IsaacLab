@@ -89,14 +89,14 @@ class DeformableCfg(PresetCfg):
         prim_path="{ENV_REGEX_NS}/Deformable",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
-            size=(0.3, 0.05, 0.05),
+            size=(0.3, 0.04, 0.04),
             deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=NewtonDeformableBodyMaterialCfg(
                 density=1000.0,
                 k_mu=YOUNGS_MODULUS / (2.0 * (1.0 + POISSONS_RATIO)),
                 k_lambda=(YOUNGS_MODULUS * POISSONS_RATIO / ((1.0 + POISSONS_RATIO) * (1.0 - 2.0 * POISSONS_RATIO))),
-                particle_radius=0.005,
+                particle_radius=0.0025,
             ),
         ),
     )
@@ -193,9 +193,9 @@ class PhysicsCfg(PresetCfg):
             ],
             iterations=1,
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=5.0e5,
+                soft_contact_ke=2.0e5,
                 soft_contact_kd=1.0e-2,
-                soft_contact_mu=1.0,
+                soft_contact_mu=5.0,
             ),
         ),
         # default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=1e-5, mu=5.0),
@@ -280,13 +280,13 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         # required by the joint_vel_out_of_sim_limit termination. Scoped here rather than in
         # FRANKA_PANDA_CFG so the other Franka tasks keep the stock asset.
         shoulder = self.robot.actuators["panda_shoulder"]
-        shoulder.velocity_limit_sim = 1.175
+        shoulder.velocity_limit_sim = 1.575
         shoulder.stiffness = 100.0
         shoulder.damping = 20.0
         shoulder.armature = {"panda_joint[1-2]": 0.6057, "panda_joint[3-4]": 0.4625}
 
         forearm = self.robot.actuators["panda_forearm"]
-        forearm.velocity_limit_sim = 1.61
+        forearm.velocity_limit_sim = 1.91
         forearm.stiffness = {"panda_joint5": 150.0, "panda_joint6": 50.0, "panda_joint7": 50.0}
         forearm.damping = {"panda_joint5": 20.0, "panda_joint6": 15.0, "panda_joint7": 15.0}
         forearm.armature = 0.2055
@@ -341,7 +341,7 @@ class CommandsCfg:
 class _JointActionsCfg:
     """7-dim relative joint-position arm targets + 1-dim limit-rescaled gripper."""
 
-    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.025)
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.04)
 
     gripper_action = mdp.JointPositionToLimitsActionCfg(
         asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
@@ -438,22 +438,26 @@ class RewardsCfg:
     terms engage only after a genuine lift. Success = COM within 5 cm of the goal position.
     """
 
+    # The hand targets the COM so the grasp lands mid-beam (targeting the nearest node lets the
+    # gripper grab an end, which turns the beam into an unstable pole). The fingers target the
+    # nearest surface node instead: targeting the COM with both fingers is maximized only when
+    # both fingertips reach the object's center, i.e. by closing and indenting the beam.
     reaching_deformable = RewTerm(
-        func=mdp.deformable_ee_distance,
+        func=mdp.deformable_com_ee_distance,
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
         weight=2.0,
     )
 
-    grasping_deformable = RewTerm(
-        func=mdp.deformable_fingertip_distance,
-        params={
-            "std": 0.1,
-            "asset_cfg": SceneEntityCfg("deformable"),
-            "robot_cfg": SceneEntityCfg("robot", body_names=["panda_leftfinger", "panda_rightfinger"]),
-            "target_com": True,
-        },
-        weight=2.0,
-    )
+    # grasping_deformable = RewTerm(
+    #     func=mdp.deformable_fingertip_distance,
+    #     params={
+    #         "std": 0.1,
+    #         "asset_cfg": SceneEntityCfg("deformable"),
+    #         "robot_cfg": SceneEntityCfg("robot", body_names=["panda_leftfinger", "panda_rightfinger"]),
+    #         "target_com": False,
+    #     },
+    #     weight=2.0,
+    # )
 
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifting,
@@ -508,7 +512,7 @@ class CurriculumCfg:
     # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
     gravity = CurrTerm(
         func=mdp.modify_gravity_linear,
-        params={"start_gravity_z": -1.0001, "end_gravity_z": -9.81, "start_step": 0, "end_step": 20000},
+        params={"start_gravity_z": -0.0001, "end_gravity_z": -9.81, "start_step": 0, "end_step": 20000},
     )
 
 
@@ -560,7 +564,7 @@ class TerminationsCfg:
 
     deformable_vel_out_of_limit = DoneTerm(
         func=mdp.deformable_nodal_vel_above_maximum,
-        params={"maximum_velocity": 1.0, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"maximum_velocity": 5.0, "asset_cfg": SceneEntityCfg("deformable")},
     )
 
     # real failure, not a time out: a diverged solve must bootstrap as a termination
