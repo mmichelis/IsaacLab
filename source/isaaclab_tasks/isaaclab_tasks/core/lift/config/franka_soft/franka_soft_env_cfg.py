@@ -96,7 +96,7 @@ class DeformableCfg(PresetCfg):
                 density=1000.0,
                 k_mu=YOUNGS_MODULUS / (2.0 * (1.0 + POISSONS_RATIO)),
                 k_lambda=(YOUNGS_MODULUS * POISSONS_RATIO / ((1.0 + POISSONS_RATIO) * (1.0 - 2.0 * POISSONS_RATIO))),
-                particle_radius=0.0025,
+                particle_radius=0.005,
             ),
         ),
     )
@@ -193,7 +193,7 @@ class PhysicsCfg(PresetCfg):
             ],
             iterations=1,
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=2.0e5,
+                soft_contact_ke=1.0e5,
                 soft_contact_kd=1.0e-2,
                 soft_contact_mu=5.0,
             ),
@@ -280,13 +280,13 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         # required by the joint_vel_out_of_sim_limit termination. Scoped here rather than in
         # FRANKA_PANDA_CFG so the other Franka tasks keep the stock asset.
         shoulder = self.robot.actuators["panda_shoulder"]
-        shoulder.velocity_limit_sim = 1.575
+        shoulder.velocity_limit_sim = 1.175
         shoulder.stiffness = 100.0
         shoulder.damping = 20.0
         shoulder.armature = {"panda_joint[1-2]": 0.6057, "panda_joint[3-4]": 0.4625}
 
         forearm = self.robot.actuators["panda_forearm"]
-        forearm.velocity_limit_sim = 1.91
+        forearm.velocity_limit_sim = 1.61
         forearm.stiffness = {"panda_joint5": 150.0, "panda_joint6": 50.0, "panda_joint7": 50.0}
         forearm.damping = {"panda_joint5": 20.0, "panda_joint6": 15.0, "panda_joint7": 15.0}
         forearm.armature = 0.2055
@@ -341,7 +341,7 @@ class CommandsCfg:
 class _JointActionsCfg:
     """7-dim relative joint-position arm targets + 1-dim limit-rescaled gripper."""
 
-    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.04)
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.025)
 
     gripper_action = mdp.JointPositionToLimitsActionCfg(
         asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
@@ -445,7 +445,7 @@ class RewardsCfg:
     reaching_deformable = RewTerm(
         func=mdp.deformable_com_ee_distance,
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
-        weight=2.0,
+        weight=5.0,
     )
 
     # grasping_deformable = RewTerm(
@@ -461,7 +461,7 @@ class RewardsCfg:
 
     lifting_deformable = RewTerm(
         func=mdp.deformable_lifting,
-        params={"std": 0.1, "minimal_height": 0.05, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"std": 0.1, "minimal_height": 0.02, "asset_cfg": SceneEntityCfg("deformable")},
         weight=5.0,
     )
 
@@ -564,7 +564,7 @@ class TerminationsCfg:
 
     deformable_vel_out_of_limit = DoneTerm(
         func=mdp.deformable_nodal_vel_above_maximum,
-        params={"maximum_velocity": 5.0, "asset_cfg": SceneEntityCfg("deformable")},
+        params={"maximum_velocity": 1.0, "asset_cfg": SceneEntityCfg("deformable")},
     )
 
     # real failure, not a time out: a diverged solve must bootstrap as a termination
@@ -623,6 +623,6 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         # Camera for --video / viewer: lower and closer, framed on the table/lift zone.
         # The ViewerCfg default (7.5, 7.5, 7.5) -> (0, 0, 0) sits far too high above the action;
         # the video recorder copies these into cfg.video_recorder (manager_based_rl_env).
-        self.viewer.eye = (1.8, -1.4, 1.0)
-        self.viewer.lookat = (0.5, 0.0, 0.2)
+        self.viewer.eye = (0.25, -1.0, 0.75)
+        self.viewer.lookat = (0.0, 0.0, 0.2)
         self.sim.default_visualizer_cfg = VisualizerCfg(eye=self.viewer.eye, lookat=self.viewer.lookat)
