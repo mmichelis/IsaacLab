@@ -22,6 +22,7 @@ __all__ = [
     "deformable_outside_table_bounds",
     "deformable_state_invalid",
     "joint_vel_out_of_sim_limit",
+    "robot_state_invalid",
     # events
     "randomize_deformable_material",
     "reset_deformable_over_support",
@@ -58,5 +59,6 @@ from .terminations import (
     deformable_outside_table_bounds,
     deformable_state_invalid,
     joint_vel_out_of_sim_limit,
+    robot_state_invalid,
 )
 from isaaclab_tasks.core.lift.mdp import *

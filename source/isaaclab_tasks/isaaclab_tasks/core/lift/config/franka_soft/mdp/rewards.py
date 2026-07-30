@@ -15,7 +15,7 @@ import torch
 from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
 from isaaclab.utils.math import combine_frame_transforms
 
-from .utils import _com_w, _nodal_pos_w
+from .utils import _body_pos_w, _com_w, _ee_pos_w, _nodal_pos_w
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, DeformableObject
@@ -90,7 +90,7 @@ def deformable_ee_distance(
     asset: DeformableObject = env.scene[asset_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     nodal_pos_w = _nodal_pos_w(asset)
-    ee_w = ee_frame.data.target_pos_w.torch[..., 0, :]
+    ee_w = _ee_pos_w(ee_frame)
     distance = torch.linalg.norm(nodal_pos_w - ee_w.unsqueeze(1), dim=2).min(dim=1).values
     return 1.0 - torch.tanh(distance / std)
 
@@ -119,7 +119,7 @@ def deformable_com_ee_distance(
     asset: DeformableObject = env.scene[asset_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     com_w = _com_w(asset)
-    ee_w = ee_frame.data.target_pos_w.torch[..., 0, :]
+    ee_w = _ee_pos_w(ee_frame)
     distance = torch.linalg.norm(com_w - ee_w, dim=1)
     return 1.0 - torch.tanh(distance / std)
 
@@ -157,7 +157,7 @@ def deformable_fingertip_distance(
     else:
         target_w = _nodal_pos_w(asset)
     # selected finger bodies in world frame: (num_envs, num_fingers, 3)
-    finger_pos_w = robot.data.body_pos_w.torch[:, robot_cfg.body_ids]
+    finger_pos_w = _body_pos_w(robot, robot_cfg.body_ids)
     # nearest target to each finger: (num_envs, num_fingers)
     distance = torch.linalg.norm(finger_pos_w.unsqueeze(2) - target_w.unsqueeze(1), dim=3)
     nearest = distance.min(dim=2).values
