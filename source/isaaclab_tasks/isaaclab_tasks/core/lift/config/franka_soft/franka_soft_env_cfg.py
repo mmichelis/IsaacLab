@@ -101,7 +101,7 @@ class DeformableCfg(PresetCfg):
         ),
     )
 
-    physx: DeformableObjectCfg = DeformableObjectCfg(
+    isaacsim_physx: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="{ENV_REGEX_NS}/Deformable",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
@@ -208,16 +208,6 @@ class PhysicsCfg(PresetCfg):
                 soft_contact_mu=5.0,
             ),
         ),
-        # Full-surface contact applies the full ke*depth penalty once per vertex/edge/face record with
-        # no area weighting, so effective stiffness is ke_eff * n_records (~135 per finger). ke_eff is
-        # 0.5*(soft_ke + shape_ke), so shape ke must come down too: at Newton's 2.5e3 default the
-        # reachable floor is 1250, above the useful regime. 0.5*(1e3 + 3e2) = 650.
-        # default_shape_cfg=NewtonShapeCfg(ke=3e2, kd=1e-5, mu=5.0),
-        # Provision volume SDFs on the gripper collider shapes so full-surface rigid-soft contact
-        # (enabled on the proxy above) has an SDF on every participating rigid shape.
-        # Patterns are re.fullmatch-ed against Newton shape labels of the form
-        # "/World/envs/env_<N>/Robot/<body>/collisions/collisions", so they target the collider
-        # shapes only (not the "/visuals/.../subset" render meshes or "/ft_*" sensor sites).
         sdf_shape_cfgs=[
             NewtonShapeSDFCfg(
                 shape_label_patterns=[
@@ -231,7 +221,7 @@ class PhysicsCfg(PresetCfg):
         num_substeps=2,
     )
 
-    physx: PhysxCfg = PhysxCfg()
+    isaacsim_physx: PhysxCfg = PhysxCfg()
 
     default = newton_mjwarp_vbd_proxy
 
@@ -606,7 +596,7 @@ class FrankaSoftSceneCfg(PresetCfg):
     newton_mjwarp_vbd: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=True)
 
     # PhysX does not support replicating physics for deformable objects
-    physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=False)
+    isaacsim_physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=False)
 
     newton_mjwarp_vbd_proxy = newton_mjwarp_vbd
 
