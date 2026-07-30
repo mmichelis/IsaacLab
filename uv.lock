@@ -98,7 +98,7 @@ prerelease-mode = "allow"
 overrides = [
     { name = "mujoco", specifier = "~=3.10.0" },
     { name = "mujoco-warp", specifier = "~=3.10.0,>=3.10.0.2" },
-    { name = "newton", extras = ["sim", "importers"], git = "https://github.com/mmichelis/newton?branch=mym%2Fvbd-proxy-full-surface-contact" },
+    { name = "newton", extras = ["sim", "importers"], git = "https://github.com/mmichelis/newton?rev=f9eeeef945a46a705a28acaa515434bc178bc97d" },
     { name = "newton-usd-schemas", specifier = ">=0.4.0" },
     { name = "numpy", specifier = ">=2" },
     { name = "torch", marker = "(platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32')", specifier = "==2.11.0" },
@@ -3258,7 +3258,7 @@ requires-dist = [
     { name = "lazy-loader", specifier = ">=0.4" },
     { name = "matplotlib", specifier = ">=3.10.3" },
     { name = "moviepy", specifier = ">=1.0.3,<2.0.0.dev0" },
-    { name = "newton", extras = ["sim", "importers"], git = "https://github.com/mmichelis/newton?branch=mym%2Fvbd-proxy-full-surface-contact" },
+    { name = "newton", extras = ["sim", "importers"], git = "https://github.com/mmichelis/newton?rev=f9eeeef945a46a705a28acaa515434bc178bc97d" },
     { name = "newton-usd-schemas", specifier = ">=0.2.0" },
     { name = "numba", specifier = ">=0.63.1" },
     { name = "numpy", specifier = ">=2" },
@@ -4942,7 +4942,7 @@ wheels = [
 [[package]]
 name = "newton"
 version = "1.5.0.dev0"
-source = { git = "https://github.com/mmichelis/newton?branch=mym%2Fvbd-proxy-full-surface-contact#e7165f79fbbb988066f76aa965f5b99ce2206b40" }
+source = { git = "https://github.com/mmichelis/newton?rev=f9eeeef945a46a705a28acaa515434bc178bc97d#f9eeeef945a46a705a28acaa515434bc178bc97d" }
 dependencies = [
     { name = "warp-lang" },
 ]

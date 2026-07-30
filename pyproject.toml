@@ -377,7 +377,7 @@ python-preference = "only-managed"
 package = false
 
 [tool.uv.sources]
-newton = { git = "https://github.com/mmichelis/newton", branch = "mym/vbd-proxy-full-surface-contact" }
+newton = { git = "https://github.com/mmichelis/newton", rev = "f9eeeef945a46a705a28acaa515434bc178bc97d" }
 isaaclab = { path = "source/isaaclab", editable = true }
 "isaaclab-assets" = { path = "source/isaaclab_assets", editable = true }
 "isaaclab-contrib" = { path = "source/isaaclab_contrib", editable = true }
