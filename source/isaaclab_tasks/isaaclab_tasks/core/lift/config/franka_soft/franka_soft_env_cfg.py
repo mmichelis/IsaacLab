@@ -105,11 +105,11 @@ class DeformableCfg(PresetCfg):
         prim_path="{ENV_REGEX_NS}/Deformable",
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
-            size=(0.3, 0.05, 0.05),
+            size=(0.3, 0.04, 0.04),
             deformable_props=PhysxDeformableBodyPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=PhysxDeformableBodyMaterialCfg(
-                density=300.0,
+                density=1000.0,
                 youngs_modulus=YOUNGS_MODULUS,
                 poissons_ratio=POISSONS_RATIO,
                 static_friction=10.0,
@@ -593,10 +593,10 @@ class TerminationsCfg:
 
 @configclass
 class FrankaSoftSceneCfg(PresetCfg):
-    newton_mjwarp_vbd: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=True)
+    newton_mjwarp_vbd: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=2048, env_spacing=2.0, replicate_physics=True)
 
     # PhysX does not support replicating physics for deformable objects
-    isaacsim_physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=4096, env_spacing=2.0, replicate_physics=False)
+    isaacsim_physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=2048, env_spacing=2.0, replicate_physics=False)
 
     newton_mjwarp_vbd_proxy = newton_mjwarp_vbd
 
