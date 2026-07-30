@@ -297,7 +297,7 @@ def reset_proxy_body_prev(
 
     # Refresh body_q from the just-reset joint_q (eval_fk skips VBD-owned cable).
     NewtonVBDManager.forward()
-    proxy_ids = torch.cat([wp.to_torch(m.src_body_ids) for m in mappings]).to(env.device).long()
+    proxy_ids = torch.cat([wp.to_torch(m.src_ids) for m in mappings]).to(env.device).long()
     # Scope to the reset envs (one world per env).
     body_world = NewtonVBDManager._model.body_world
     if body_world is not None:
