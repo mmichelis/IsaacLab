@@ -167,7 +167,7 @@ class PhysicsCfg(PresetCfg):
                 ),
                 CouplerEntryCfg(
                     name="soft",
-                    solver_cfg=VBDSolverCfg(iterations=10),
+                    solver_cfg=VBDSolverCfg(iterations=10, rigid_body_particle_contact_buffer_size=64),
                     all_particles=True,
                     include_static_shapes=True,
                 ),
@@ -188,17 +188,31 @@ class PhysicsCfg(PresetCfg):
                     # NOTE: functional harvesting of these full-surface contacts through the proxy
                     # coupler depends on the parallel Newton-core proxy-harvest generalization draft;
                     # not runtime-verified here.
-                    collision_pipeline=NewtonCollisionPipelineCfg(enable_rigid_soft_full_surface_contact=True),
+                    # The auto-estimate is shape_count * particle_count, which on the refined mesh asks
+                    # for ~294M contacts (3.5 GB for a single array). Measured peak is ~1.3k records
+                    # per env, so 6k per env leaves ample headroom. Newton warns on overflow.
+                    collision_pipeline=NewtonCollisionPipelineCfg(
+                        enable_rigid_soft_full_surface_contact=True,
+                        # Sized for the 2048-env runs: measured peak is ~1.3k records per env, so 6k
+                        # leaves ample headroom and Newton warns on overflow. The auto-estimate
+                        # (shape_count * particle_count) asks for ~294M on the refined mesh, which
+                        # is 3.5 GB for a single array. Raise this proportionally for more envs.
+                        soft_contact_max=6_000 * 2048,
+                    ),
                 )
             ],
             iterations=1,
             model_cfg=NewtonModelCfg(
-                soft_contact_ke=1.0e4,
+                soft_contact_ke=1.0e3,
                 soft_contact_kd=1.0e-2,
                 soft_contact_mu=5.0,
             ),
         ),
-        # default_shape_cfg=NewtonShapeCfg(ke=4e4, kd=1e-5, mu=5.0),
+        # Full-surface contact applies the full ke*depth penalty once per vertex/edge/face record with
+        # no area weighting, so effective stiffness is ke_eff * n_records (~135 per finger). ke_eff is
+        # 0.5*(soft_ke + shape_ke), so shape ke must come down too: at Newton's 2.5e3 default the
+        # reachable floor is 1250, above the useful regime. 0.5*(1e3 + 3e2) = 650.
+        default_shape_cfg=NewtonShapeCfg(ke=3e2, kd=1e-5, mu=5.0),
         # Provision volume SDFs on the gripper collider shapes so full-surface rigid-soft contact
         # (enabled on the proxy above) has an SDF on every participating rigid shape.
         # Patterns are re.fullmatch-ed against Newton shape labels of the form
@@ -341,7 +355,7 @@ class CommandsCfg:
 class _JointActionsCfg:
     """7-dim relative joint-position arm targets + 1-dim limit-rescaled gripper."""
 
-    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.025)
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.03)
 
     gripper_action = mdp.JointPositionToLimitsActionCfg(
         asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
@@ -369,7 +383,7 @@ class _IkActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         open_command_expr={"panda_finger_.*": 0.05},
-        close_command_expr={"panda_finger_.*": 0.02},
+        close_command_expr={"panda_finger_.*": 0.015},
     )
 
 
@@ -420,7 +434,7 @@ class EventCfg:
         func=mdp.reset_nodal_state_uniform,
         mode="reset",
         params={
-            "position_range": {"x": (-0.15, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+            "position_range": {"x": (-0.15, 0.1), "y": (-0.2, 0.2), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("deformable"),
         },
@@ -571,6 +585,14 @@ class TerminationsCfg:
     deformable_invalid = DoneTerm(
         func=mdp.deformable_state_invalid,
         params={"asset_cfg": SceneEntityCfg("deformable")},
+    )
+
+    # The measured divergence poisons the beam too, so deformable_invalid resets that case. This
+    # covers a robot-only divergence: every reward term is deformable-driven and sanitized, and the
+    # other robot terminations fail open on NaN, so nothing else would ever reset the environment.
+    robot_invalid = DoneTerm(
+        func=mdp.robot_state_invalid,
+        params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
 
