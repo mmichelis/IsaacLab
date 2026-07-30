@@ -47,7 +47,7 @@ from isaaclab_contrib.deformable.newton_manager_cfg import (
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
 from . import mdp
-from .franka_soft_env_cfg import FrankaSoftEnvCfg, _FrankaSoftSceneCfg
+from .franka_soft_env_cfg import DeformableCfg, FrankaSoftEnvCfg, _FrankaSoftSceneCfg
 
 ##
 # Cable / attachment geometry constants
@@ -126,6 +126,9 @@ class _FrankaCablePlugSceneCfg(_FrankaSoftSceneCfg):
     """Franka, anchor, plug, socket walls, and the cable joining anchor to plug."""
 
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+
+    # No deformable in this task; drop the one inherited from the parent scene.
+    deformable: DeformableCfg | None = None
 
     anchor: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Anchor",
