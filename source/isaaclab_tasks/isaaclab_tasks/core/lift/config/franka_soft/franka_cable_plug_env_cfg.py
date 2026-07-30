@@ -64,14 +64,14 @@ _ANCHOR_POS = (0.15, 0.3, 0.2)
 # Light plug so the grasp holds and cable tension stays low [m, m, kg].
 _PLUG_RADIUS = 0.01
 _PLUG_HEIGHT = 0.04
-_PLUG_MASS = 0.03
+_PLUG_MASS = 0.08
 
 # Taut plug reach from the anchor [m]; the plug spawns here and hangs taut under gravity.
 _CABLE_REACH = (_NUM_POINTS - 2) * _SEGMENT_LENGTH
 _PLUG_INIT_POS = (_ANCHOR_POS[0] + _CABLE_REACH, _ANCHOR_POS[1], _ANCHOR_POS[2])
 
 # Goal well inside the cable reach, so insertion slackens (not stretches) the cable [m].
-_GOAL_POS = (_ANCHOR_POS[0] + 0.20, _ANCHOR_POS[1] - 0.05, _ANCHOR_POS[2])
+_GOAL_POS = (_ANCHOR_POS[0] + 0.25, _ANCHOR_POS[1] - 0.25, _ANCHOR_POS[2])
 
 # Socket, offset +x from the goal; opening faces -x so the plug inserts by pushing +x [m].
 _TARGET_HOLE_POS = (_GOAL_POS[0] + 0.1, _GOAL_POS[1], _GOAL_POS[2])

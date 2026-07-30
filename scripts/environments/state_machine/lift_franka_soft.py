@@ -248,7 +248,7 @@ class PickAndLiftSm:
         self.offset_insert = torch.zeros((self.num_envs, 7), device=self.device)
         self.offset_insert[:, -1] = 1.0  # identity quaternion (x, y, z, w)
         if task == "Isaac-Lift-CablePlug-Franka-v0":
-            self.offset_insert[:, 0] = 0.1
+            self.offset_insert[:, 0] = 0.08
 
         # convert to warp
         self.sm_dt_wp = wp.from_torch(self.sm_dt, wp.float32)
@@ -307,7 +307,8 @@ def main():
         device=args_cli.device,
         num_envs=args_cli.num_envs,
     )
-    env_cfg.viewer.eye = (1.5, 0.8, 1.3)
+    env_cfg.viewer.eye = (1.0, 0.8, 0.5)
+    env_cfg.viewer.lookat = (0.2, -0.4, 0.1)
     # Capture the rgb_array stream at 1600x1600 for --video runs.
     if args_cli.video:
         env_cfg.video_recorder.window_width = 1600
@@ -343,7 +344,7 @@ def main():
     object_grasp_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
     object_grasp_orientation[:, 0] = 1.0
     # Grasp at the deformable's centre of mass.
-    object_local_grasp_position = torch.tensor([-0.01, 0.0, -0.002], device=env.unwrapped.device)
+    object_local_grasp_position = torch.tensor([-0.012, 0.0, -0.003], device=env.unwrapped.device)
 
     # create state machine
     pick_sm = PickAndLiftSm(
