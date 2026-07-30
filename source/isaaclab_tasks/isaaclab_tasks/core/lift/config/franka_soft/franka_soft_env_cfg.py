@@ -96,7 +96,7 @@ class DeformableCfg(PresetCfg):
                 density=1000.0,
                 k_mu=YOUNGS_MODULUS / (2.0 * (1.0 + POISSONS_RATIO)),
                 k_lambda=(YOUNGS_MODULUS * POISSONS_RATIO / ((1.0 + POISSONS_RATIO) * (1.0 - 2.0 * POISSONS_RATIO))),
-                particle_radius=0.005,
+                particle_radius=0.0025,
             ),
         ),
     )
@@ -167,7 +167,7 @@ class PhysicsCfg(PresetCfg):
                 ),
                 CouplerEntryCfg(
                     name="soft",
-                    solver_cfg=VBDSolverCfg(iterations=10, rigid_body_particle_contact_buffer_size=64),
+                    solver_cfg=VBDSolverCfg(iterations=10, rigid_body_particle_contact_buffer_size=256),
                     all_particles=True,
                     include_static_shapes=True,
                 ),
@@ -212,7 +212,7 @@ class PhysicsCfg(PresetCfg):
         # no area weighting, so effective stiffness is ke_eff * n_records (~135 per finger). ke_eff is
         # 0.5*(soft_ke + shape_ke), so shape ke must come down too: at Newton's 2.5e3 default the
         # reachable floor is 1250, above the useful regime. 0.5*(1e3 + 3e2) = 650.
-        default_shape_cfg=NewtonShapeCfg(ke=3e2, kd=1e-5, mu=5.0),
+        # default_shape_cfg=NewtonShapeCfg(ke=3e2, kd=1e-5, mu=5.0),
         # Provision volume SDFs on the gripper collider shapes so full-surface rigid-soft contact
         # (enabled on the proxy above) has an SDF on every participating rigid shape.
         # Patterns are re.fullmatch-ed against Newton shape labels of the form
@@ -294,15 +294,15 @@ class _FrankaSoftSceneCfg(InteractiveSceneCfg):
         # required by the joint_vel_out_of_sim_limit termination. Scoped here rather than in
         # FRANKA_PANDA_CFG so the other Franka tasks keep the stock asset.
         shoulder = self.robot.actuators["panda_shoulder"]
-        shoulder.velocity_limit_sim = 1.175
-        shoulder.stiffness = 100.0
-        shoulder.damping = 20.0
+        shoulder.velocity_limit_sim = 2.175
+        shoulder.stiffness = 600.0
+        shoulder.damping = 50.0
         shoulder.armature = {"panda_joint[1-2]": 0.6057, "panda_joint[3-4]": 0.4625}
 
         forearm = self.robot.actuators["panda_forearm"]
-        forearm.velocity_limit_sim = 1.61
-        forearm.stiffness = {"panda_joint5": 150.0, "panda_joint6": 50.0, "panda_joint7": 50.0}
-        forearm.damping = {"panda_joint5": 20.0, "panda_joint6": 15.0, "panda_joint7": 15.0}
+        forearm.velocity_limit_sim = 2.61
+        forearm.stiffness = {"panda_joint5": 250.0, "panda_joint6": 150.0, "panda_joint7": 50.0}
+        forearm.damping = {"panda_joint5": 30.0, "panda_joint6": 25.0, "panda_joint7": 15.0}
         forearm.armature = 0.2055
 
         hand = self.robot.actuators["panda_hand"]
@@ -526,7 +526,7 @@ class CurriculumCfg:
     # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
     gravity = CurrTerm(
         func=mdp.modify_gravity_linear,
-        params={"start_gravity_z": -0.0001, "end_gravity_z": -9.81, "start_step": 0, "end_step": 20000},
+        params={"start_gravity_z": -0.0001, "end_gravity_z": -9.81, "start_step": 0, "end_step": 10000},
     )
 
 
