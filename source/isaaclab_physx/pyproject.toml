@@ -24,7 +24,7 @@ Repository = "https://github.com/isaac-sim/IsaacLab"
 
 [project.optional-dependencies]
 newton = [
-    "newton[sim] @ git+https://github.com/newton-physics/newton.git@79e95bf5571d70a0a46c8eaedc80644531d27368",
+    "newton[sim] @ git+https://github.com/newton-physics/newton.git@2c68da7e19a2ac1e0d39211d564ab6cc73b1839a",
 ]
 
 [tool.setuptools]
