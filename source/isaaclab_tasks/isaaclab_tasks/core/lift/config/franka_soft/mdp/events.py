@@ -11,14 +11,12 @@ from typing import TYPE_CHECKING
 
 import torch
 import warp as wp
-from isaaclab_newton.physics import NewtonManager
-from newton import ModelFlags
 
-from isaaclab.assets import DeformableObject, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import math as math_utils
 
 if TYPE_CHECKING:
+    from isaaclab.assets import DeformableObject, RigidObject
     from isaaclab.envs import ManagerBasedEnv
 
 
@@ -80,6 +78,11 @@ def randomize_deformable_material(
         density_range: Sampling bounds for the mass density [kg/m^3].
         poissons_ratio: Poisson's ratio [dimensionless] used to convert to Lame parameters.
     """
+    # Imported here, not at module scope: pulling ``newton`` imports ``pxr`` and a second USD
+    # runtime, which must not happen before the Kit app has started.
+    from isaaclab_newton.physics import NewtonManager
+    from newton import ModelFlags
+
     asset = env.scene[asset_cfg.name]
     device = env.device
     num_instances = asset.num_instances
