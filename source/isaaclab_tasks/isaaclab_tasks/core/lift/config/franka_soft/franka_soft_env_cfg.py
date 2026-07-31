@@ -107,7 +107,6 @@ class DeformableCfg(PresetCfg):
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.04, 0.04),
             deformable_props=PhysxDeformableBodyPropertiesCfg(),
-            # PhysX defaults to a 0.02 m rest offset, parking the beam 20 mm above the table.
             collision_props=[PhysxCollisionCfg(rest_offset=0.0005, contact_offset=0.005)],
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=PhysxDeformableBodyMaterialCfg(
