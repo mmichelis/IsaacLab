@@ -202,7 +202,7 @@ class PhysicsCfg(PresetCfg):
                 )
             ],
             iterations=1,
-            model_cfg=NewtonModelCfg(soft_contact_ke=1.0e3),
+            model_cfg=NewtonModelCfg(soft_contact_ke=5.0e3),
         ),
         sdf_shape_cfgs=[
             NewtonShapeSDFCfg(
