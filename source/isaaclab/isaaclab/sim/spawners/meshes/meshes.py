@@ -416,7 +416,7 @@ def _spawn_mesh_geom_from_mesh(
         if not is_rigid_material:
             raise ValueError("Rigid properties require a rigid physics material.")
 
-    # refine the surface for primitives
+    # refine the surface for deformable primitives
     if cfg.deformable_props is not None:
         max_edge = 0.3 * float(np.linalg.norm(mesh.bounding_box.extents))
         vertices, faces = trimesh.remesh.subdivide_to_size(mesh.vertices, mesh.faces, max_edge=max_edge)
