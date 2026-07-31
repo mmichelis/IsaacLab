@@ -106,9 +106,7 @@ class DeformableCfg(PresetCfg):
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.04, 0.04),
-            deformable_props=PhysxDeformableBodyPropertiesCfg(
-                rest_offset=0.0005, contact_offset=0.005
-            ),
+            deformable_props=PhysxDeformableBodyPropertiesCfg(rest_offset=0.0005, contact_offset=0.005),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=PhysxDeformableBodyMaterialCfg(
                 density=1000.0,
@@ -640,3 +638,6 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = (0.75, 0.25, 0.65)
         self.viewer.lookat = (0.0, 0.75, 0.4)
         self.sim.default_visualizer_cfg = VisualizerCfg(eye=self.viewer.eye, lookat=self.viewer.lookat)
+
+        self.video_recorder.window_width = 1920
+        self.video_recorder.window_height = 1080
