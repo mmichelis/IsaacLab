@@ -24,6 +24,7 @@ It uses the `warp` library to run the state machine in parallel on the GPU.
 
 import argparse
 import os
+import sys
 from collections.abc import Sequence
 
 import gymnasium as gym
@@ -36,7 +37,7 @@ from isaaclab.visualizers import VisualizerCfg
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.core.lift.config.franka_soft.franka_soft_env_cfg import ActionsCfg
-from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
+from isaaclab_tasks.utils import resolve_task_config, setup_preset_cli
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Pick and lift a deformable with a robotic arm.")
@@ -54,7 +55,8 @@ parser.add_argument(
 add_launcher_args(parser)
 # the task runs on Newton, so default to the kitless viewer
 parser.set_defaults(visualizer=["newton"])
-args_cli = parser.parse_args()
+args_cli, hydra_args = setup_preset_cli(parser)
+sys.argv = [sys.argv[0]] + hydra_args
 
 # RecordVideo needs an rgb_array render mode, which is the Kit RTX viewport: enable cameras and
 # request the Kit visualizer so launch_simulation starts Isaac Sim.
@@ -279,12 +281,10 @@ class PickAndLiftSm:
 def main():
     # create environment
     render_mode = "rgb_array" if args_cli.video else None
-    # parse configuration
-    env_cfg = parse_env_cfg(
-        args_cli.task,
-        device=args_cli.device,
-        num_envs=args_cli.num_envs,
-    )
+    # parse configuration via Hydra, so presets can be selected on the CLI (e.g. presets=isaacsim_physx)
+    env_cfg, _ = resolve_task_config(args_cli.task, "")
+    env_cfg.sim.device = args_cli.device
+    env_cfg.scene.num_envs = args_cli.num_envs
     # the state machine emits absolute end-effector poses, so pick the IK action preset; the env
     # defaults to relative joint targets, which RL trains on.
     env_cfg.actions = ActionsCfg().ik
