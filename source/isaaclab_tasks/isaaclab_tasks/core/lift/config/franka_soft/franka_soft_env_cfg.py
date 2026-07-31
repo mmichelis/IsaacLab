@@ -17,7 +17,7 @@ from isaaclab_newton.physics import (
 from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
 from isaaclab_newton.sim.spawners.materials import NewtonDeformableBodyMaterialCfg
 from isaaclab_physx.physics import PhysxCfg
-from isaaclab_physx.sim.schemas import PhysxDeformableBodyPropertiesCfg
+from isaaclab_physx.sim.schemas import PhysxCollisionCfg, PhysxDeformableBodyPropertiesCfg
 from isaaclab_physx.sim.spawners.materials import PhysxDeformableBodyMaterialCfg
 
 import isaaclab.sim as sim_utils
@@ -106,7 +106,9 @@ class DeformableCfg(PresetCfg):
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.04, 0.04),
-            deformable_props=PhysxDeformableBodyPropertiesCfg(rest_offset=0.0005, contact_offset=0.005),
+            deformable_props=PhysxDeformableBodyPropertiesCfg(),
+            # PhysX defaults to a 0.02 m rest offset, parking the beam 20 mm above the table.
+            collision_props=[PhysxCollisionCfg(rest_offset=0.0005, contact_offset=0.005)],
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=PhysxDeformableBodyMaterialCfg(
                 density=1000.0,
@@ -180,24 +182,9 @@ class PhysicsCfg(PresetCfg):
                         r"/World/envs/env_.*/Robot/panda_hand",
                         r"/World/envs/env_.*/Robot/panda_(left|right)finger",
                     ],
-                    # detect finger/beam contact every substep so the gripper stops at the surface
                     collide_interval=1,
-                    # Watertight rigid-soft contact: generate soft contacts over the full beam
-                    # surface (edges + triangle interiors) against the gripper SDFs, not just at
-                    # beam vertices. Requires the gripper SDFs provisioned via sdf_shape_cfgs below.
-                    # NOTE: functional harvesting of these full-surface contacts through the proxy
-                    # coupler depends on the parallel Newton-core proxy-harvest generalization draft;
-                    # not runtime-verified here.
-                    # The auto-estimate is shape_count * particle_count, which on the refined mesh asks
-                    # for ~294M contacts (3.5 GB for a single array). Measured peak is ~1.3k records
-                    # per env, so 6k per env leaves ample headroom. Newton warns on overflow.
                     collision_pipeline=NewtonCollisionPipelineCfg(
                         enable_rigid_soft_full_surface_contact=True,
-                        # Sized for the 2048-env runs: measured peak is ~1.3k records per env, so 6k
-                        # leaves ample headroom and Newton warns on overflow. The auto-estimate
-                        # (shape_count * particle_count) asks for ~294M on the refined mesh, which
-                        # is 3.5 GB for a single array. Raise this proportionally for more envs.
-                        soft_contact_max=6_000 * 2048,
                     ),
                 )
             ],
