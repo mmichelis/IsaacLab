@@ -1179,6 +1179,35 @@ class NewtonManager(PhysicsManager):
         """
 
     @classmethod
+    def _provision_shape_sdfs(cls, builder: ModelBuilder) -> None:
+        """Request volume SDFs on collider shapes selected by :attr:`NewtonCfg.sdf_shape_cfgs`.
+
+        Newton retains per-shape SDF requests on the builder (``shape_force_sdf`` and
+        ``shape_sdf_max_resolution``) until :meth:`ModelBuilder.finalize` generates the SDF data.
+        Rather than intercepting shape creation, this matches the already-populated shape labels
+        by regex and flips the retained flags, equivalent to calling
+        ``ShapeConfig.configure_sdf(force_sdf=True, max_resolution=...)`` at add time. Required by
+        :attr:`NewtonCollisionPipelineCfg.enable_rigid_soft_full_surface_contact`.
+        """
+        cfg = PhysicsManager._cfg
+        if not isinstance(cfg, NewtonCfg) or not cfg.sdf_shape_cfgs:
+            return
+
+        labels = list(getattr(builder, "shape_label", ()) or ())
+        if not labels:
+            return
+
+        for sdf_cfg in cfg.sdf_shape_cfgs:
+            if not sdf_cfg.shape_label_patterns:
+                continue
+            matched, _ = resolve_matching_names(sdf_cfg.shape_label_patterns, labels, raise_when_no_match=False)
+            for index in matched:
+                builder.shape_force_sdf[index] = True
+                if sdf_cfg.max_resolution is not None:
+                    builder.shape_sdf_max_resolution[index] = sdf_cfg.max_resolution
+                    builder.shape_sdf_target_voxel_size[index] = None
+
+    @classmethod
     def cl_register_site(cls, body_pattern: str | None, xform: wp.transform, *, per_world: bool = False) -> str:
         """Register a site request for injection into prototypes before replication.
 
@@ -1524,6 +1553,11 @@ class NewtonManager(PhysicsManager):
             cls._builder.request_state_attributes(*cls._pending_extended_state_attributes)
             NewtonManager._pending_extended_state_attributes = set()
         cls._prepare_builder_for_finalize(cls._builder)
+        # Provision volume SDFs on selected collider shapes (e.g. gripper) before finalize so
+        # full-surface rigid-soft contact has the SDFs it requires. Runs after the subclass hook
+        # so replicated shape labels are present, and unconditionally so subclasses that override
+        # _prepare_builder_for_finalize without calling super() still get it.
+        cls._provision_shape_sdfs(cls._builder)
         with Timer(name="newton_finalize_builder", msg="Finalize builder took:"):
             NewtonManager._model = cls._builder.finalize(device=device)
             cls._model.set_gravity(cls._gravity_vector)
