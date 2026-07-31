@@ -416,6 +416,12 @@ def _spawn_mesh_geom_from_mesh(
         if not is_rigid_material:
             raise ValueError("Rigid properties require a rigid physics material.")
 
+    # refine the surface for primitives
+    if cfg.deformable_props is not None:
+        max_edge = 0.3 * float(np.linalg.norm(mesh.bounding_box.extents))
+        vertices, faces = trimesh.remesh.subdivide_to_size(mesh.vertices, mesh.faces, max_edge=max_edge)
+        mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+
     # create all the paths we need for clarity
     geom_prim_path = prim_path + "/geometry"
     mesh_prim_path = geom_prim_path + "/mesh"
