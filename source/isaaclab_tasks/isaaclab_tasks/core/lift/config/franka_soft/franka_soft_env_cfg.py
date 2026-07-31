@@ -69,8 +69,8 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
 
 
 # Shared volume material parameters. The Newton config below uses the equivalent Lame parameters.
-YOUNGS_MODULUS = 2e5
-POISSONS_RATIO = 0.3
+YOUNGS_MODULUS = 5e5
+POISSONS_RATIO = 0.4
 
 # Table collider whose top surface sits at z = 0. Spawned invisible: the command term's success
 # visualizer draws it instead, tinted by whether the goal is reached.
@@ -106,14 +106,16 @@ class DeformableCfg(PresetCfg):
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05)),
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.04, 0.04),
-            deformable_props=PhysxDeformableBodyPropertiesCfg(),
+            deformable_props=PhysxDeformableBodyPropertiesCfg(
+                rest_offset=0.0005, contact_offset=0.005, solver_position_iteration_count=32
+            ),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=PhysxDeformableBodyMaterialCfg(
                 density=1000.0,
                 youngs_modulus=YOUNGS_MODULUS,
                 poissons_ratio=POISSONS_RATIO,
-                static_friction=10.0,
-                dynamic_friction=5.0,
+                static_friction=1.0,
+                dynamic_friction=1.0,
             ),
         ),
     )
@@ -205,7 +207,7 @@ class PhysicsCfg(PresetCfg):
             model_cfg=NewtonModelCfg(
                 soft_contact_ke=1.0e3,
                 soft_contact_kd=1.0e-2,
-                soft_contact_mu=5.0,
+                soft_contact_mu=1.0,
             ),
         ),
         sdf_shape_cfgs=[
@@ -566,10 +568,10 @@ class TerminationsCfg:
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
-    deformable_vel_out_of_limit = DoneTerm(
-        func=mdp.deformable_nodal_vel_above_maximum,
-        params={"maximum_velocity": 1.0, "asset_cfg": SceneEntityCfg("deformable")},
-    )
+    # deformable_vel_out_of_limit = DoneTerm(
+    #     func=mdp.deformable_nodal_vel_above_maximum,
+    #     params={"maximum_velocity": 1.0, "asset_cfg": SceneEntityCfg("deformable")},
+    # )
 
     # real failure, not a time out: a diverged solve must bootstrap as a termination
     deformable_invalid = DoneTerm(
