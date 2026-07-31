@@ -69,8 +69,8 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort:skip
 
 
 # Shared volume material parameters. The Newton config below uses the equivalent Lame parameters.
-YOUNGS_MODULUS = 5e5
-POISSONS_RATIO = 0.4
+YOUNGS_MODULUS = 2e5
+POISSONS_RATIO = 0.3
 
 # Table collider whose top surface sits at z = 0. Spawned invisible: the command term's success
 # visualizer draws it instead, tinted by whether the goal is reached.
@@ -107,7 +107,7 @@ class DeformableCfg(PresetCfg):
         spawn=sim_utils.MeshCuboidCfg(
             size=(0.3, 0.04, 0.04),
             deformable_props=PhysxDeformableBodyPropertiesCfg(
-                rest_offset=0.0005, contact_offset=0.005, solver_position_iteration_count=32
+                rest_offset=0.0005, contact_offset=0.005
             ),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=PhysxDeformableBodyMaterialCfg(
@@ -223,7 +223,10 @@ class PhysicsCfg(PresetCfg):
         num_substeps=2,
     )
 
-    isaacsim_physx: PhysxCfg = PhysxCfg()
+    isaacsim_physx: PhysxCfg = PhysxCfg(
+        friction_offset_threshold=0.001,
+        friction_correlation_distance=0.005,
+    )
 
     default = newton_mjwarp_vbd_proxy
 
@@ -634,9 +637,6 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.gravity = (0.0, 0.0, -9.81)
         self.sim.physics = PhysicsCfg()
 
-        # Camera for --video / viewer: lower and closer, framed on the table/lift zone.
-        # The ViewerCfg default (7.5, 7.5, 7.5) -> (0, 0, 0) sits far too high above the action;
-        # the video recorder copies these into cfg.video_recorder (manager_based_rl_env).
-        self.viewer.eye = (0.5, 0.5, 0.6)
-        self.viewer.lookat = (0.0, 1.0, 0.35)
+        self.viewer.eye = (0.75, 0.25, 0.65)
+        self.viewer.lookat = (0.0, 0.75, 0.4)
         self.sim.default_visualizer_cfg = VisualizerCfg(eye=self.viewer.eye, lookat=self.viewer.lookat)
