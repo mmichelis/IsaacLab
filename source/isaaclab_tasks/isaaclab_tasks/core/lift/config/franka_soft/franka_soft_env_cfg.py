@@ -202,11 +202,7 @@ class PhysicsCfg(PresetCfg):
                 )
             ],
             iterations=1,
-            model_cfg=NewtonModelCfg(
-                soft_contact_ke=1.0e3,
-                soft_contact_kd=1.0e-2,
-                soft_contact_mu=1.0,
-            ),
+            model_cfg=NewtonModelCfg(soft_contact_ke=1.0e3),
         ),
         sdf_shape_cfgs=[
             NewtonShapeSDFCfg(
@@ -524,22 +520,6 @@ class CurriculumCfg:
 
 
 @configclass
-class SoftEventCfg(EventCfg):
-    """Parent reset events plus per-env randomization of the beam's Young's modulus and density."""
-
-    randomize_deformable_material = EventTerm(
-        func=mdp.randomize_deformable_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("deformable"),
-            "youngs_modulus_range": (5e5, 1e6),
-            "density_range": (900.0, 1000.0),
-            "poissons_ratio": 0.3,
-        },
-    )
-
-
-@configclass
 class TerminationsCfg:
     """Time out + table bounds/drop termination."""
 
@@ -568,11 +548,6 @@ class TerminationsCfg:
         func=mdp.joint_vel_out_of_sim_limit,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
-
-    # deformable_vel_out_of_limit = DoneTerm(
-    #     func=mdp.deformable_nodal_vel_above_maximum,
-    #     params={"maximum_velocity": 1.0, "asset_cfg": SceneEntityCfg("deformable")},
-    # )
 
     # real failure, not a time out: a diverged solve must bootstrap as a termination
     deformable_invalid = DoneTerm(
