@@ -8,7 +8,7 @@
 import isaaclab_newton.physics.newton_manager as newton_manager_module
 import newton
 import pytest
-from isaaclab_newton.physics import NewtonCfg, NewtonManager
+from isaaclab_newton.physics import NewtonManager, deformable_groups
 from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
 from isaaclab_newton.sim.spawners.materials import (
     NewtonDeformableBodyMaterialCfg,
@@ -19,7 +19,6 @@ from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 import isaaclab.sim as sim_utils
-from isaaclab.physics import PhysicsManager
 from isaaclab.sim.spawners.materials.physics_materials import spawn_deformable_body_material
 
 _CLOTH_PATH = "/World/Cloth/Sim"
@@ -134,7 +133,7 @@ def test_newton_body_cfg_authors_canonical_usd():
         (
             NewtonSurfaceDeformableBodyMaterialCfg(),
             "PhysicsSurfaceDeformableMaterialAPI",
-            {"density": 62.5, "thickness": 0.016, "stretchStiffness": 6.25e5, "bendStiffness": 1_220_703.125},
+            {"density": 1000.0, "thickness": 0.016, "stretchStiffness": 6.25e5, "bendStiffness": 1_220_703.125},
         ),
     ],
 )
@@ -149,6 +148,17 @@ def test_newton_material_cfgs_author_canonical_usd(cfg, family_api, expected):
     for name, value in expected.items():
         assert prim.GetAttribute(f"physics:{name}").Get() == pytest.approx(value)
     assert not any(attribute.GetName().startswith("newton:") for attribute in prim.GetAuthoredAttributes())
+
+
+def test_particle_contact_radius_is_python_only():
+    """particle_contact_radius is applied to the model, not authored to USD, even when set."""
+    cfg = NewtonDeformableBodyMaterialCfg(particle_contact_radius=0.02)
+    stage = Usd.Stage.CreateInMemory()
+    with sim_utils.use_stage(stage):
+        prim = spawn_deformable_body_material("/Material", cfg)
+
+    assert not prim.GetAttribute("physics:particleContactRadius").IsValid()
+    assert not any("articleContactRadius" in attr.GetName() for attr in prim.GetAuthoredAttributes())
 
 
 def test_add_usd_imports_canonical_surface_and_volume_deformables():
@@ -170,15 +180,12 @@ def test_add_usd_imports_canonical_surface_and_volume_deformables():
     ) == ([_SOFT_PATH], [-1], [4], [8])
 
 
-def test_manager_forwards_particle_radius_default(monkeypatch: pytest.MonkeyPatch):
-    """The scene particle default must configure volume import without changing cloth thickness."""
-    monkeypatch.setattr(PhysicsManager, "_cfg", NewtonCfg(default_particle_radius=0.012))
-    builder = NewtonManager.create_builder()
+def test_cloth_particle_radius_derives_from_thickness():
+    """Cloth particle radius is importer-set to half the authored thickness (0.01 -> 0.005)."""
+    builder = newton.ModelBuilder()
     builder.add_usd(_make_deformable_stage(), schema_resolvers=[SchemaResolverNewton(), SchemaResolverPhysx()])
 
-    assert builder.default_particle_radius == pytest.approx(0.012)
     assert builder.particle_radius[:4] == pytest.approx([0.005] * 4)
-    assert builder.particle_radius[4:] == pytest.approx([0.012] * 4)
 
 
 def test_deformable_groups_replicate_with_world_offsets():
@@ -219,7 +226,7 @@ def test_manager_rejects_invalid_deformable_particle_ranges(
     monkeypatch.setattr(NewtonManager, "_builder", builder)
 
     with pytest.raises(RuntimeError, match=error):
-        NewtonManager._get_deformable_particle_groups("/World/Cloth")
+        deformable_groups.get_deformable_particle_groups(builder, "/World/Cloth")
 
 
 def test_manager_env_count_resets_before_flat_import(monkeypatch: pytest.MonkeyPatch):
@@ -234,7 +241,7 @@ def test_manager_env_count_resets_before_flat_import(monkeypatch: pytest.MonkeyP
 
         NewtonManager.instantiate_builder_from_stage()
         assert NewtonManager.get_num_envs() == 1
-        groups = NewtonManager._get_deformable_particle_groups()
+        groups = deformable_groups.get_deformable_particle_groups(NewtonManager.get_builder())
         assert groups and {group.world for group in groups} == {0}
     finally:
         NewtonManager.clear()
@@ -249,14 +256,14 @@ def test_manager_skips_unsupported_visual_meshes(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(newton_manager_module, "get_current_stage", lambda fabric=False: stage)
     monkeypatch.setattr(NewtonManager, "_builder", builder)
 
-    bindings = NewtonManager._get_deformable_visual_bindings()
+    bindings = deformable_groups.get_deformable_visual_bindings(builder, stage)
     assert [binding.visual_prim_path for binding in bindings] == [_CLOTH_PATH]
     assert "expected one visual mesh" in caplog.text
 
     soft_visual = UsdGeom.Mesh.Define(stage, "/World/Soft/Visual")
     soft_visual.CreatePointsAttr([(0.0, 0.0, 2.0)] * 3)
     caplog.clear()
-    bindings = NewtonManager._get_deformable_visual_bindings()
+    bindings = deformable_groups.get_deformable_visual_bindings(builder, stage)
     assert [binding.visual_prim_path for binding in bindings] == [_CLOTH_PATH]
     assert "visual mesh has 3 points, imported 4" in caplog.text
 
@@ -269,7 +276,7 @@ def test_manager_skips_unsupported_visual_meshes(monkeypatch: pytest.MonkeyPatch
         ]
     )
     caplog.clear()
-    bindings = NewtonManager._get_deformable_visual_bindings()
+    bindings = deformable_groups.get_deformable_visual_bindings(builder, stage)
     assert [binding.visual_prim_path for binding in bindings] == [_CLOTH_PATH]
     assert "visual points do not match imported particles" in caplog.text
 
@@ -303,12 +310,12 @@ def test_manager_resolves_imported_groups_and_visual_meshes(monkeypatch: pytest.
     monkeypatch.setattr(newton_manager_module, "get_current_stage", lambda fabric=False: stage)
     monkeypatch.setattr(NewtonManager, "_builder", builder)
 
-    groups = NewtonManager._get_deformable_particle_groups("/World/Cloth")
+    groups = deformable_groups.get_deformable_particle_groups(builder, "/World/Cloth")
     assert [(group.family, group.world, group.particle_start, group.particle_end) for group in groups] == [
         ("cloth", 0, 0, 4)
     ]
 
-    bindings = NewtonManager._get_deformable_visual_bindings()
+    bindings = deformable_groups.get_deformable_visual_bindings(builder, stage)
     assert [
         (binding.visual_prim_path, binding.world, binding.particle_start, binding.particle_count)
         for binding in bindings

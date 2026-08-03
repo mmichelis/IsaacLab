@@ -35,6 +35,7 @@ class NewtonDeformableBodyMaterialCfg(DeformableBodyMaterialBaseCfg, NewtonDefor
     _usd_namespace: ClassVar[str | None] = "physics"
     _usd_applied_schema: ClassVar[str | None] = "PhysicsVolumeDeformableMaterialAPI"
     _usd_field_exceptions: ClassVar[dict] = {}
+    _usd_python_only_fields: ClassVar[tuple[str, ...]] = ("particle_contact_radius",)
 
     func: Callable | str = "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
 
@@ -43,6 +44,14 @@ class NewtonDeformableBodyMaterialCfg(DeformableBodyMaterialBaseCfg, NewtonDefor
 
     poissons_ratio: float = 0.25
     """Poisson's ratio [dimensionless]. Defaults to 0.25."""
+
+    particle_contact_radius: float | None = None
+    """Artificial particle contact radius [m] for volume deformables. Defaults to None.
+
+    Applied to Newton's model :attr:`particle_radius` after USD import; it is an artificial
+    collision parameter, independent of the physical mesh geometry, and is not authored to USD
+    (Newton's importer ignores authored particle radii). ``None`` leaves Newton's own default.
+    """
 
 
 @configclass
@@ -55,8 +64,8 @@ class NewtonSurfaceDeformableBodyMaterialCfg(SurfaceDeformableBodyMaterialBaseCf
 
     func: Callable | str = "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
 
-    density: float = 62.5
-    """The volume density [kg/m^3]. Preserves the previous default areal density."""
+    density: float = 1000.0
+    """The material density [kg/m^3]. Defaults to 1000.0 kg/m^3."""
 
     thickness: float = 0.016
     """The surface thickness [m]. Defaults to 0.016 m."""

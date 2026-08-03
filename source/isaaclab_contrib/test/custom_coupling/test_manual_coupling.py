@@ -51,12 +51,7 @@ def _make_coupled_cfg(coupling_mode: str) -> SimulationCfg:
     )
     return SimulationCfg(
         dt=1.0 / 60.0,
-        physics=NewtonCfg(
-            solver_cfg=solver_cfg,
-            default_particle_radius=0.005,
-            num_substeps=5,
-            use_cuda_graph=True,
-        ),
+        physics=NewtonCfg(solver_cfg=solver_cfg, num_substeps=5, use_cuda_graph=True),
     )
 
 
@@ -99,6 +94,7 @@ def generate_robot_and_two_cubes(
                     density=500.0,
                     youngs_modulus=2.5e5,
                     poissons_ratio=0.25,
+                    particle_contact_radius=0.005,
                 ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=colliding_cube_pos),
@@ -116,6 +112,7 @@ def generate_robot_and_two_cubes(
                     density=500.0,
                     youngs_modulus=2.5e4,
                     poissons_ratio=0.25,
+                    particle_contact_radius=0.005,
                 ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=free_cube_pos),
@@ -157,6 +154,7 @@ def generate_lateral_rigid_and_deformable_cubes(
                     density=1000.0,
                     youngs_modulus=2.5e5,
                     poissons_ratio=0.25,
+                    particle_contact_radius=0.005,
                 ),
             ),
             init_state=DeformableObjectCfg.InitialStateCfg(pos=deformable_cube_pos),

@@ -53,6 +53,7 @@ def generate_cubes_scene(
     num_cubes: int = 1,
     height: float = 1.0,
     device: str = "cuda:0",
+    particle_contact_radius: float | None = None,
 ) -> DeformableObject:
     """Generate a scene with deformable tet-mesh cubes.
 
@@ -60,6 +61,7 @@ def generate_cubes_scene(
         num_cubes: Number of cubes to generate.
         height: Height of the cubes.
         device: Device to use for the simulation.
+        particle_contact_radius: Optional artificial particle contact radius [m] for the cubes.
 
     Returns:
         The deformable object representing the cubes.
@@ -78,6 +80,7 @@ def generate_cubes_scene(
                 density=500.0,
                 youngs_modulus=2.5e4,
                 poissons_ratio=0.25,
+                particle_contact_radius=particle_contact_radius,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
@@ -202,6 +205,23 @@ def test_initialization(sim):
     # root_vel_w: (N, 3)
     root_vel = cube_object.data.root_vel_w.torch
     assert root_vel.shape == (num_cubes, 3)
+
+
+def test_particle_contact_radius_applied_to_model(sim):
+    """particle_contact_radius writes the finalized model's particle_radius for each volume instance."""
+    from isaaclab_newton.physics import NewtonManager
+
+    num_cubes = 2
+    radius = 0.017
+    cube_object = generate_cubes_scene(num_cubes=num_cubes, particle_contact_radius=radius)
+
+    sim.reset()
+
+    assert cube_object._deformable_type == "volume"
+    particle_radius = NewtonManager.get_model().particle_radius.numpy()
+    particles_per_body = cube_object._particles_per_body
+    for start in cube_object._recorded_particle_offsets:
+        assert particle_radius[start : start + particles_per_body] == pytest.approx([radius] * particles_per_body)
 
 
 def test_surface_initialization_and_freefall(sim):

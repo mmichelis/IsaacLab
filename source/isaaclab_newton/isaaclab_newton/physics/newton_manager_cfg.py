@@ -169,12 +169,6 @@ class NewtonCfg(PhysicsCfg):
     :class:`NewtonShapeCfg` for the declared fields.
     """
 
-    default_particle_radius: float = 0.008
-    """Default particle collision radius [m].
-
-    Forwarded to Newton's :attr:`ModelBuilder.default_particle_radius` before USD import.
-    """
-
     simplify_meshes: bool = True
     """Whether Newton replication simplifies mesh colliders to convex hulls.
 

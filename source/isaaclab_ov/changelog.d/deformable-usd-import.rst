@@ -1,4 +1,5 @@
-Fixed
-^^^^^
+Changed
+^^^^^^^
 
-* Bound OVRTX deformable rendering to particle ranges imported from USD by Newton.
+* Changed OVRTX deformable rendering to bind the particle ranges Newton imports from USD instead of
+  deriving them from the deformable registry.

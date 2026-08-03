@@ -51,7 +51,6 @@ class NewtonVBDManager(NewtonManager):
         This function finalizes the model and initializes the simulation state.
         Note: Collision pipeline is initialized later in initialize_solver() after
         we determine whether the solver needs external collision detection.
-
         """
         super().start_simulation()
 

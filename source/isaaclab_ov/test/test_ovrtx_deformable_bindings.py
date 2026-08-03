@@ -27,12 +27,13 @@ pytestmark = [
 
 if not _MISSING_MODULES:
     import isaaclab_ov.renderers.ovrtx_renderer as ovrtx_renderer_module  # noqa: E402
-    from isaaclab_newton.physics import NewtonManager  # noqa: E402
+    from isaaclab_newton.physics import NewtonManager, deformable_groups  # noqa: E402
     from isaaclab_ov.renderers import OVRTXRendererCfg  # noqa: E402
     from isaaclab_ov.renderers.ovrtx_renderer import OVRTXRenderer  # noqa: E402
     from ovrtx import BindingFlag, DataAccess  # noqa: E402
 else:
     NewtonManager = None
+    deformable_groups = None
     OVRTXRenderer = None
     OVRTXRendererCfg = None
     ovrtx_renderer_module = None
@@ -115,9 +116,9 @@ def test_points_array_binding_uses_write_not_map():
 
 def _set_deformable_bindings(monkeypatch: pytest.MonkeyPatch, bindings: list[SimpleNamespace]) -> None:
     monkeypatch.setattr(
-        NewtonManager,
-        "_get_deformable_visual_bindings",
-        classmethod(lambda cls: bindings),
+        deformable_groups,
+        "get_deformable_visual_bindings",
+        lambda builder, stage: bindings,
     )
 
 

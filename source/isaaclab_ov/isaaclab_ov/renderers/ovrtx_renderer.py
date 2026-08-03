@@ -23,6 +23,7 @@ import contextlib
 import logging
 import math
 import os
+import re
 from itertools import compress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, cast
@@ -713,12 +714,14 @@ class OVRTXRenderer(BaseRenderer):
             num_envs: Number of environments.
         """
         try:
-            from isaaclab_newton.physics import NewtonManager
+            from isaaclab_newton.physics import NewtonManager, deformable_groups
         except ImportError:
             logger.debug("NewtonManager not available, skipping deformable body bindings")
             return
 
-        bindings = NewtonManager._get_deformable_visual_bindings()
+        from isaaclab.sim.utils.stage import get_current_stage
+
+        bindings = deformable_groups.get_deformable_visual_bindings(NewtonManager.get_builder(), get_current_stage())
         if not bindings:
             logger.debug("No Newton deformable groups found, skipping deformable body bindings")
             return

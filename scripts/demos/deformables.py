@@ -75,6 +75,9 @@ if args_cli.physics == "newton_vbd":
     from isaaclab_newton.sim.spawners.materials import (
         NewtonSurfaceDeformableBodyMaterialCfg as SurfaceDeformableMaterialCfg,
     )
+
+    # Newton-only per-object contact radius [m] for the volume deformables.
+    _VOLUME_MATERIAL_KWARGS = {"particle_contact_radius": 0.008}
 else:
     from isaaclab_physx.sim.schemas import PhysxDeformableBodyPropertiesCfg as DeformableBodyPropertiesCfg
     from isaaclab_physx.sim.spawners.materials import (
@@ -83,6 +86,8 @@ else:
     from isaaclab_physx.sim.spawners.materials import (
         PhysxSurfaceDeformableBodyMaterialCfg as SurfaceDeformableMaterialCfg,
     )
+
+    _VOLUME_MATERIAL_KWARGS = {}
 
 
 def define_origins(num_origins: int, radius: float = 2.0, center_height: float = 3.0) -> list[list[float]]:
@@ -122,34 +127,34 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         radius=0.4,
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=VolumeDeformableMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(**_VOLUME_MATERIAL_KWARGS),
     )
     cfg_cuboid = sim_utils.MeshCuboidCfg(
         size=(0.6, 0.6, 0.6),
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=VolumeDeformableMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(**_VOLUME_MATERIAL_KWARGS),
     )
     cfg_cylinder = sim_utils.MeshCylinderCfg(
         radius=0.25,
         height=0.5,
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=VolumeDeformableMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(**_VOLUME_MATERIAL_KWARGS),
     )
     cfg_capsule = sim_utils.MeshCapsuleCfg(
         radius=0.35,
         height=0.5,
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=VolumeDeformableMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(**_VOLUME_MATERIAL_KWARGS),
     )
     cfg_cone = sim_utils.MeshConeCfg(
         radius=0.35,
         height=0.75,
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=VolumeDeformableMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(**_VOLUME_MATERIAL_KWARGS),
     )
     cfg_cloth = sim_utils.MeshRectangleCfg(
         size=(1.5, 1.0),
@@ -162,7 +167,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Objects/Teddy_Bear/teddy_bear.usd",
         deformable_props=DeformableBodyPropertiesCfg(),
         visual_material=sim_utils.PreviewSurfaceCfg(),
-        physics_material=VolumeDeformableMaterialCfg(),
+        physics_material=VolumeDeformableMaterialCfg(**_VOLUME_MATERIAL_KWARGS),
         scale=[0.05, 0.05, 0.05],
     )
     # create a dictionary of all the objects to be spawned
@@ -189,7 +194,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
         obj_cfg = objects_cfg[obj_name]
         # randomize the deformable material stiffness
         if args_cli.physics == "newton_vbd" and obj_name == "cloth":
-            obj_cfg.physics_material.stretch_stiffness = random.uniform(5e3, 5e4) / obj_cfg.physics_material.thickness
+            obj_cfg.physics_material.stretch_stiffness = random.uniform(3e5, 3e6)
         else:
             youngs_modulus = random.uniform(5e5, 1e8)
             poissons_ratio = random.uniform(0.25, 0.45)

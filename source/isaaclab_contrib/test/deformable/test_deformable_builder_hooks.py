@@ -6,7 +6,7 @@
 from types import SimpleNamespace
 
 import pytest
-from isaaclab_newton.physics import NewtonManager
+from isaaclab_newton.physics import NewtonManager, deformable_groups
 
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
 from isaaclab.cloner.replicate_session import REPLICATION_QUEUE, queue_replication
@@ -55,9 +55,9 @@ def test_newton_deformable_rejects_missing_world(monkeypatch):
     """Test that imported deformable groups cover every simulation world."""
     groups = [SimpleNamespace(family="cloth", world=0, particle_start=0, particle_end=4)]
     monkeypatch.setattr(
-        NewtonManager,
-        "_get_deformable_particle_groups",
-        classmethod(lambda cls, prim_path: groups),
+        deformable_groups,
+        "get_deformable_particle_groups",
+        lambda builder, prim_path: groups,
     )
     monkeypatch.setattr(NewtonManager, "get_num_envs", classmethod(lambda cls: 2))
     deformable = object.__new__(DeformableObject)

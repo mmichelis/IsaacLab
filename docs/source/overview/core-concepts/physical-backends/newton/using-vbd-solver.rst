@@ -428,9 +428,11 @@ for cloth or surface deformables:
     * - Parameter
       - Description
     * - ``density``
-      - Default: ``62.5`` [kg/m^3]. Volumetric density. With the default thickness, this preserves the previous default areal density.
+      - Default: ``1000.0`` [kg/m^3]. Material density.
     * - ``thickness``
-      - Default: ``0.016`` [m]. Surface thickness. Newton uses half this value as the particle contact radius.
+      - Default: ``0.016`` [m]. Physical surface thickness (sets cloth mass and bending). On import,
+        Newton seeds the cloth particle contact radius to half this value as a default; the two are not
+        physically coupled thereafter.
     * - ``stretch_stiffness``
       - Default: ``6.25e5`` [Pa]. Increase it to reduce cloth stretch.
     * - ``shear_stiffness``
@@ -477,9 +479,9 @@ Symptoms and First Parameters to Check
     * - Symptom
       - First parameters to check
     * - Rigid bodies visibly clip through the deformable.
-      - Increase ``soft_contact_ke``, VBD ``iterations``, ``num_substeps``, surface material ``thickness``, or
-        :attr:`~isaaclab_newton.physics.NewtonCfg.default_particle_radius` for volume deformables. The volume setting
-        is scene-wide.
+      - Increase ``soft_contact_ke``, VBD ``iterations``, ``num_substeps``, or, for volume deformables, the
+        per-object artificial
+        :attr:`~isaaclab_newton.sim.spawners.materials.NewtonDeformableBodyMaterialCfg.particle_contact_radius`.
     * - The robot cannot lift the deformable.
       - Check that the gripper bodies are included in the proxy, then increase ``soft_contact_mu`` and rigid-side shape friction (per-asset material ``mu`` or ``NewtonShapeCfg.mu``). Also check gripper actuator stiffness and effort limits.
     * - The deformable barely deforms.
