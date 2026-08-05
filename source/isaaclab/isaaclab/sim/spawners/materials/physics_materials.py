@@ -245,10 +245,7 @@ def spawn_deformable_body_material(
     # check if prim is a material
     if not prim.IsA(UsdShade.Material):
         raise ValueError(f"A prim already exists at path: '{prim_path}' but is not a material.")
-    # Drop the spawner ``func`` and any python-only fields the cfg declares (e.g. values applied
-    # to the finalized backend model rather than authored to USD).
-    skip = {"func", *getattr(cfg, "_usd_python_only_fields", ())}
-    cfg_dict = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg) if f.name not in skip}
+    cfg_dict = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg) if f.name != "func"}
     _apply_namespaced_schemas(prim, cfg, cfg_dict)
     # return the prim
     return prim

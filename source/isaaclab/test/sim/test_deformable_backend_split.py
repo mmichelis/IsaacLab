@@ -128,18 +128,6 @@ def test_newton_deformable_cfgs_use_core_schema_and_material_functions():
     assert {"density", "thickness", "stretch_stiffness", "shear_stiffness", "bend_stiffness"}.issubset(
         _field_names(type(surface_material))
     )
-    legacy_fields = {
-        "particle_radius",
-        "k_mu",
-        "k_lambda",
-        "k_damp",
-        "tri_ke",
-        "tri_ka",
-        "tri_kd",
-        "edge_ke",
-        "edge_kd",
-    }
-    assert legacy_fields.isdisjoint(_field_names(type(material)) | _field_names(type(surface_material)))
     assert NewtonDeformableMaterialCfg._usd_namespace == "physics"
     assert NewtonDeformableMaterialCfg._usd_applied_schema == "PhysicsMaterialAPI"
     assert type(material)._usd_applied_schema == "PhysicsVolumeDeformableMaterialAPI"

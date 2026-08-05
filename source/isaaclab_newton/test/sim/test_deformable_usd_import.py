@@ -150,17 +150,6 @@ def test_newton_material_cfgs_author_canonical_usd(cfg, family_api, expected):
     assert not any(attribute.GetName().startswith("newton:") for attribute in prim.GetAuthoredAttributes())
 
 
-def test_particle_contact_radius_is_python_only():
-    """particle_contact_radius is applied to the model, not authored to USD, even when set."""
-    cfg = NewtonDeformableBodyMaterialCfg(particle_contact_radius=0.02)
-    stage = Usd.Stage.CreateInMemory()
-    with sim_utils.use_stage(stage):
-        prim = spawn_deformable_body_material("/Material", cfg)
-
-    assert not prim.GetAttribute("physics:particleContactRadius").IsValid()
-    assert not any("articleContactRadius" in attr.GetName() for attr in prim.GetAuthoredAttributes())
-
-
 def test_add_usd_imports_canonical_surface_and_volume_deformables():
     """Canonical surface and volume schemas must populate Newton and its group metadata."""
     builder = newton.ModelBuilder()
@@ -186,6 +175,15 @@ def test_cloth_particle_radius_derives_from_thickness():
     builder.add_usd(_make_deformable_stage(), schema_resolvers=[SchemaResolverNewton(), SchemaResolverPhysx()])
 
     assert builder.particle_radius[:4] == pytest.approx([0.005] * 4)
+
+
+def test_volume_particle_radius_uses_builder_default():
+    """Volume deformables use Newton's builder default because USD has no radius field."""
+    builder = newton.ModelBuilder()
+    builder.default_particle_radius = 0.012
+    builder.add_usd(_make_deformable_stage(), schema_resolvers=[SchemaResolverNewton(), SchemaResolverPhysx()])
+
+    assert builder.particle_radius[4:] == pytest.approx([0.012] * 4)
 
 
 def test_deformable_groups_replicate_with_world_offsets():

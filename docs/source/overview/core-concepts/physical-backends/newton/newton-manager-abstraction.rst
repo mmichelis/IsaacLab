@@ -243,11 +243,6 @@ Tune the coupled contact behavior before training a policy:
 * If the deformable no longer visibly deforms, ``soft_contact_ke`` is likely too
   high.
 * If contacts are unstable or missed, increase the deformable mesh resolution.
-  For volume deformables, tune the per-object artificial
-  :attr:`~isaaclab_newton.sim.spawners.materials.NewtonDeformableBodyMaterialCfg.particle_contact_radius`,
-  which controls only the collision response. This is independent of the physical
-  mesh geometry; cloth ``thickness``, by contrast, sets mass and bending and is not
-  a contact-tuning knob.
 * If the rigid shapes still clip through the deformable, increase
   :attr:`~isaaclab_contrib.deformable.VBDSolverCfg.iterations`; more VBD
   iterations can improve contact convergence.

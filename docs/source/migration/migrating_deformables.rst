@@ -132,13 +132,11 @@ The deformable material hierarchy is now split by backend:
   :class:`~isaaclab_newton.sim.spawners.materials.NewtonSurfaceDeformableBodyMaterialCfg` author the canonical
   UsdPhysics deformable material APIs. Volume materials use ``density``, ``youngs_modulus``, and
   ``poissons_ratio``. Surface materials use volumetric ``density``, ``thickness``, and stretch, shear, and
-  bend stiffness. Surface density is divided by thickness when converting an old areal-density configuration.
+  bend stiffness.
 
-Move the old volume material ``particle_radius`` value to the per-object
-:attr:`~isaaclab_newton.sim.spawners.materials.NewtonDeformableBodyMaterialCfg.particle_contact_radius`.
-This artificial contact radius is applied to the Newton model after import; leaving it ``None`` keeps
-Newton's default. For surfaces, the importer seeds the cloth contact radius to ``0.5 * thickness``, so use
-``thickness = 2 * particle_radius``.
+The old volume material ``particle_radius`` has no canonical USD equivalent and is no longer migrated.
+Newton's importer uses ``ModelBuilder.default_particle_radius`` for volume particles. For surfaces, the
+importer seeds the cloth contact radius to ``0.5 * thickness``, so use ``thickness = 2 * particle_radius``.
 
 To preserve legacy volume stiffness, use
 ``poissons_ratio = k_lambda / (2 * (k_lambda + k_mu))`` and

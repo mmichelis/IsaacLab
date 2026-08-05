@@ -41,8 +41,8 @@ class NewtonVBDManager(NewtonManager):
     @classmethod
     def _prepare_builder_for_finalize(cls, builder: ModelBuilder) -> None:
         """Color imported particles before VBD model finalization."""
-        if builder.particle_count > 0:
-            builder.color()
+        super()._prepare_builder_for_finalize(builder)
+        builder.color()
 
     @classmethod
     def start_simulation(cls) -> None:

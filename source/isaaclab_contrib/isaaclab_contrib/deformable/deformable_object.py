@@ -501,8 +501,6 @@ class DeformableObject(BaseDeformableObject):
         logger.info("Number of instances: %d", self._num_instances)
         logger.info("Particles per body: %d", self._particles_per_body)
 
-        self._apply_particle_contact_radius(groups)
-
         # Build particle offset array on device
         self._particle_offsets = wp.array(self._recorded_particle_offsets, dtype=wp.int32, device=self.device)
 
@@ -526,29 +524,6 @@ class DeformableObject(BaseDeformableObject):
             PhysicsEvent.PHYSICS_READY,
             name=f"deformable_object_rebind_{self.cfg.prim_path}",
         )
-
-    def _apply_particle_contact_radius(self, groups) -> None:
-        """Apply the configured particle contact radius to this asset's model slices.
-
-        Volume deformables only: Newton's importer ignores authored particle radii, so the
-        python-only :attr:`particle_contact_radius` is written directly onto the finalized model's
-        ``particle_radius`` for each instance's own particle range. No-op when unset.
-
-        Args:
-            groups: Discovered particle groups whose disjoint ``[particle_start, particle_end)``
-                ranges are owned by this asset.
-        """
-        if self._deformable_type != "volume":
-            return
-        material = getattr(self.cfg.spawn, "physics_material", None)
-        radius = getattr(material, "particle_contact_radius", None)
-        if radius is None:
-            return
-        model = SimulationManager.get_model()
-        if model is None or getattr(model, "particle_radius", None) is None:
-            return
-        for group in groups:
-            model.particle_radius[group.particle_start : group.particle_end].fill_(float(radius))
 
     def _create_buffers(self):
         """Create buffers for storing data."""

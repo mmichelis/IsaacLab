@@ -414,6 +414,9 @@ for volume deformables:
       - Default: ``0.25``. Controls volume preservation under deformation.
 
 
+Volume particle contact radius is not part of the canonical USD deformable schemas. Newton's importer uses
+``ModelBuilder.default_particle_radius`` for volume particles.
+
 Surface Deformable Materials
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -479,9 +482,7 @@ Symptoms and First Parameters to Check
     * - Symptom
       - First parameters to check
     * - Rigid bodies visibly clip through the deformable.
-      - Increase ``soft_contact_ke``, VBD ``iterations``, ``num_substeps``, or, for volume deformables, the
-        per-object artificial
-        :attr:`~isaaclab_newton.sim.spawners.materials.NewtonDeformableBodyMaterialCfg.particle_contact_radius`.
+      - Increase ``soft_contact_ke``, VBD ``iterations``, or ``num_substeps``.
     * - The robot cannot lift the deformable.
       - Check that the gripper bodies are included in the proxy, then increase ``soft_contact_mu`` and rigid-side shape friction (per-asset material ``mu`` or ``NewtonShapeCfg.mu``). Also check gripper actuator stiffness and effort limits.
     * - The deformable barely deforms.

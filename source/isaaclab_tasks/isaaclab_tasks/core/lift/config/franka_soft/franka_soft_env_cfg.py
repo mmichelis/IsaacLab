@@ -98,7 +98,6 @@ class DeformableCfg(PresetCfg):
                 density=300.0,
                 youngs_modulus=YOUNGS_MODULUS,
                 poissons_ratio=POISSONS_RATIO,
-                particle_contact_radius=0.01,
             ),
         ),
     )

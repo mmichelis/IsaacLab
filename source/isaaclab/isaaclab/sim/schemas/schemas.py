@@ -2066,11 +2066,9 @@ def define_deformable_body_properties(
     if not vis_mesh_prim.IsValid():
         raise ValueError(f"Mesh prim path '{vis_mesh_prim.GetPrimPath()}' is not valid.")
 
-    # Define authors a fresh deformable setup; callers must clear any previous setup first.
-    # Newton deformables author the canonical ``PhysicsDeformableBodyAPI`` schema; every other
-    # backend (PhysX ``PhysxBaseDeformableBodyAPI``, OmniPhysics ``None``) uses the OmniPhysics APIs.
-    is_newton_deformable = getattr(cfg, "_usd_applied_schema", None) == "PhysicsDeformableBodyAPI"
-    use_omni_physics_apis = not is_newton_deformable
+    # define authors a fresh deformable setup; callers must clear any previous setup before calling this function.
+    # We check the applied schema to determine which API to use for the deformable body.
+    use_omni_physics_apis = getattr(cfg, "_usd_applied_schema", None) != "PhysicsDeformableBodyAPI"
 
     # create and set simulation/root prim properties based on the type of the deformable mesh (surface vs volume)
     sim_mesh_prim_path = prim_path + "/sim_mesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
@@ -2292,7 +2290,10 @@ def modify_deformable_body_properties(
     cfg_dict = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
 
     if cfg_dict.get("kinematic_enabled"):
-        logger.warning("Kinematic deformable bodies are not supported and may lead to unexpected behavior.")
+        logger.warning(
+            "Kinematic deformable bodies are not fully supported in the current version of Omni Physics. "
+            "Setting kinematic_enabled to True may lead to unexpected behavior."
+        )
 
     _apply_namespaced_schemas(deformable_body_prim, cfg, cfg_dict)
     # success
