@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import warp as wp
 from isaaclab_newton.physics.newton_manager import NewtonManager
-from newton import Model
+from newton import Model, eval_ik
 from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
 from newton.solvers import SolverVBD
 
@@ -249,6 +249,12 @@ class NewtonVBDManager(NewtonManager):
         NewtonManager._solver = cls._create_solver(model, solver_cfg)
         NewtonManager._use_single_state = False
         NewtonManager._needs_collision_pipeline = True
+
+    @classmethod
+    def _run_solver_substeps(cls, contacts) -> None:
+        """Run VBD and reconstruct generalized joint state."""
+        super()._run_solver_substeps(contacts)
+        eval_ik(cls._model, cls._state_0, cls._state_0.joint_q, cls._state_0.joint_qd)
 
     @classmethod
     def _simulate_physics_only(cls) -> None:

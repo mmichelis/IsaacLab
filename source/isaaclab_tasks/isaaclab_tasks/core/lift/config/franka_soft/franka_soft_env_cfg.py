@@ -37,6 +37,7 @@ from isaaclab.physics import PhysxAutoCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import CameraCfg, FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
+from isaaclab.sim import SimulationCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
@@ -117,6 +118,7 @@ class DeformableCfg(PresetCfg):
             ),
         ),
     )
+    newton_vbd = newton_mjwarp_vbd_proxy
 
     physx: DeformableObjectCfg = DeformableObjectCfg(
         prim_path="{ENV_REGEX_NS}/Deformable",
@@ -179,6 +181,16 @@ class PhysicsCfg(PresetCfg):
             iterations=1,
             model_cfg=NewtonModelCfg(soft_contact_ke=8.0e3, soft_contact_mu=10.0),
         ),
+        num_substeps=2,
+    )
+
+    newton_vbd: NewtonCfg = NewtonCfg(
+        solver_cfg=VBDSolverCfg(
+            iterations=10,
+            rigid_body_particle_contact_buffer_size=256,
+            model_cfg=NewtonModelCfg(soft_contact_ke=8.0e3, soft_contact_mu=10.0),
+        ),
+        collision_cfg=NewtonCollisionPipelineCfg(enable_rigid_soft_full_surface_contact=True),
         num_substeps=2,
     )
 
@@ -299,6 +311,30 @@ class _FrankaSoftCameraSceneCfg(_FrankaSoftSceneCfg):
     base_camera: CameraCfg = FRANKA_CAMERA_CFG
 
 
+@configclass
+class _FrankaSoftVBDSceneCfg(_FrankaSoftSceneCfg):
+    """Franka soft scene with native drives for the full VBD solve."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.robot.actuators["panda_finger2_passive"] = ImplicitActuatorCfg(
+            joint_names_expr=["panda_finger_joint2"],
+            effort_limit_sim=70.0,
+            velocity_limit=0.2,
+            velocity_limit_sim=2.0,
+            stiffness=350.0,
+            damping=175.0,
+            armature=0.1,
+        )
+
+
+@configclass
+class _FrankaSoftVBDCameraSceneCfg(_FrankaSoftVBDSceneCfg):
+    """Full VBD Franka soft scene with a base camera."""
+
+    base_camera: CameraCfg = FRANKA_CAMERA_CFG
+
+
 ##
 # MDP settings
 ##
@@ -374,6 +410,32 @@ class _IkActionsCfg:
 
 
 @configclass
+class _VBDActionsCfg:
+    """Relative arm targets and continuous finger targets for VBD."""
+
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.03)
+
+    gripper_action = mdp.JointPositionToLimitsActionCfg(
+        asset_name="robot", joint_names=["panda_finger_joint.*"], rescale_to_limits=True
+    )
+
+
+@configclass
+class _VBDPolicyTransferActionsCfg:
+    """Actions compatible with policies trained using both finger commands."""
+
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.03)
+
+    gripper_action = mdp.JointPositionToLimitsActionCfg(
+        class_type="isaaclab_tasks.core.lift.mdp.actions:LeaderOnlyJointPositionToLimitsAction",
+        asset_name="robot",
+        joint_names=["panda_finger_joint1", "panda_finger_joint2"],
+        preserve_order=True,
+        rescale_to_limits=True,
+    )
+
+
+@configclass
 class ActionsCfg(PresetCfg):
     """Action-space presets: joint-space for RL, task-space IK for scripted end-effector control."""
 
@@ -382,6 +444,14 @@ class ActionsCfg(PresetCfg):
     ik: _IkActionsCfg = _IkActionsCfg()
 
     default = joint
+
+
+@configclass
+class _FrankaSoftActionsCfg(ActionsCfg):
+    """Action presets for the Franka soft-body task."""
+
+    newton_vbd: _VBDActionsCfg = _VBDActionsCfg()
+    vbd_policy_transfer: _VBDPolicyTransferActionsCfg = _VBDPolicyTransferActionsCfg()
 
 
 @configclass
@@ -501,6 +571,29 @@ class EventCfg:
 
 
 @configclass
+class _VBDEventCfg(EventCfg):
+    """Reset events compatible with VBD rigid-body history."""
+
+    reset_robot_arm_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (1.0, 1.0),
+            "velocity_range": (0.0, 0.0),
+            "asset_cfg": SceneEntityCfg("robot", joint_names="panda_joint.*"),
+        },
+    )
+
+
+@configclass
+class FrankaSoftEventCfg(PresetCfg):
+    """Event presets for Franka soft lifting."""
+
+    newton_vbd: EventCfg = _VBDEventCfg()
+    default: EventCfg = EventCfg()
+
+
+@configclass
 class RewardsCfg:
     """Lift-to-target reward for a deformable object."""
 
@@ -600,6 +693,7 @@ class FrankaSoftSceneCfg(PresetCfg):
     newton_mjwarp_vbd_proxy: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(
         num_envs=2048, env_spacing=2.0, replicate_physics=True
     )
+    newton_vbd: _FrankaSoftVBDSceneCfg = _FrankaSoftVBDSceneCfg(num_envs=2048, env_spacing=2.0, replicate_physics=True)
 
     # PhysX does not support replicating physics for deformable objects
     physx: _FrankaSoftSceneCfg = _FrankaSoftSceneCfg(num_envs=2048, env_spacing=2.0, replicate_physics=False)
@@ -615,6 +709,9 @@ class FrankaSoftCameraSceneCfg(PresetCfg):
     newton_mjwarp_vbd_proxy: _FrankaSoftCameraSceneCfg = _FrankaSoftCameraSceneCfg(
         num_envs=128, env_spacing=2.0, replicate_physics=True
     )
+    newton_vbd: _FrankaSoftVBDCameraSceneCfg = _FrankaSoftVBDCameraSceneCfg(
+        num_envs=128, env_spacing=2.0, replicate_physics=True
+    )
     physx: _FrankaSoftCameraSceneCfg = _FrankaSoftCameraSceneCfg(num_envs=128, env_spacing=2.0, replicate_physics=False)
     isaacsim_physx = physx
     default = newton_mjwarp_vbd_proxy
@@ -626,20 +723,43 @@ class _FrankaSoftVisualizerCfg(VisualizerCfg):
     window_height: int = 1080
 
 
+_FRANKA_SOFT_SIM_CFG = SimulationCfg(
+    dt=1.0 / 120,
+    render_interval=4,
+    default_visualizer_cfg=_FrankaSoftVisualizerCfg(
+        eye=(0.75, 0.25, 0.65),
+        lookat=(0.0, 0.75, 0.4),
+    ),
+)
+
+
+@configclass
+class FrankaSoftSimulationCfg(PresetCfg):
+    """Simulation presets for Franka soft lifting."""
+
+    newton_mjwarp_vbd_proxy: SimulationCfg = _FRANKA_SOFT_SIM_CFG.replace(physics=PhysicsCfg().newton_mjwarp_vbd_proxy)
+    newton_vbd: SimulationCfg = _FRANKA_SOFT_SIM_CFG.replace(physics=PhysicsCfg().newton_vbd, use_newton_actuators=True)
+    isaacsim_physx: SimulationCfg = _FRANKA_SOFT_SIM_CFG.replace(physics=PhysicsCfg().isaacsim_physx)
+    physx: SimulationCfg = _FRANKA_SOFT_SIM_CFG.replace(physics=PhysicsCfg().physx)
+    default = newton_mjwarp_vbd_proxy
+
+
 @configclass
 class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
     """Manager-based RL environment: Franka Panda lifting a soft beam to a target pose."""
+
+    sim: FrankaSoftSimulationCfg = FrankaSoftSimulationCfg()
 
     # Scene settings
     scene: FrankaSoftSceneCfg = FrankaSoftSceneCfg()
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
-    actions: ActionsCfg = ActionsCfg()
+    actions: _FrankaSoftActionsCfg = _FrankaSoftActionsCfg()
     commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-    events: EventCfg = EventCfg()
+    events: FrankaSoftEventCfg = FrankaSoftEventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self) -> None:
@@ -647,17 +767,16 @@ class FrankaSoftEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 4
         self.episode_length_s = 5.0
 
-        # simulation settings
-        self.sim.dt = 1.0 / 120
-        self.sim.render_interval = self.decimation
-        self.sim.physics = PhysicsCfg()
-
         self.viewer.eye = (0.75, 0.25, 0.65)
         self.viewer.lookat = (0.0, 0.75, 0.4)
-        self.sim.default_visualizer_cfg = _FrankaSoftVisualizerCfg(
-            eye=self.viewer.eye,
-            lookat=self.viewer.lookat,
-        )
+        if isinstance(self.sim, SimulationCfg):
+            self.sim.dt = 1.0 / 120
+            self.sim.render_interval = self.decimation
+            self.sim.physics = PhysicsCfg()
+            self.sim.default_visualizer_cfg = _FrankaSoftVisualizerCfg(
+                eye=self.viewer.eye,
+                lookat=self.viewer.lookat,
+            )
 
     def play_mode(self):
         super().play_mode()

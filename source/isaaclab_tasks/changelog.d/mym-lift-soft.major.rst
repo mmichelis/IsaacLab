@@ -11,7 +11,9 @@ Changed
   ``presets=ik`` for task-space inverse-kinematics control; integrations using the cloth
   environments' previous absolute joint targets must update their actions.
 * **Breaking:** Changed the non-camera ``rsl_rl`` experiment name from ``franka_deformable`` to
-  ``franka_soft``. Update log and checkpoint paths that refer to ``logs/rsl_rl/franka_deformable``.
+  ``franka_soft`` for the soft-beam task and ``lift_cloth`` for the cloth task. Update soft-beam
+  log and checkpoint paths to ``logs/rsl_rl/franka_soft`` and cloth paths to
+  ``logs/rsl_rl/lift_cloth``.
 * Re-tuned the robot, scenes, contact handling, control rate, and ``rsl_rl`` configuration for
   gravity-based training.
 

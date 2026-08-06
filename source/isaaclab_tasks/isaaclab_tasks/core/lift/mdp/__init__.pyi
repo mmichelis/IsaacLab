@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 __all__ = [
+    "LeaderOnlyJointPositionToLimitsAction",
     "GraspTravelDistanceCfg",
     "MeshClearanceCfg",
     "SlabClearanceCfg",
@@ -52,6 +53,7 @@ __all__ = [
     "out_of_bound",
 ]
 
+from .actions import LeaderOnlyJointPositionToLimitsAction
 from .commands import DeformableUniformPoseCommandCfg, ObjectUniformPoseCommandCfg
 from .curriculums import DifficultyScheduler, gravity_range_linear, initial_final_interpolate_fn
 from .events import (
