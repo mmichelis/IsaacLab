@@ -129,9 +129,10 @@ The deformable material hierarchy is now split by backend:
   surface-specific properties: ``surface_thickness``, ``surface_stretch_stiffness``, ``surface_shear_stiffness``,
   ``surface_bend_stiffness``, and ``bend_damping``.
 - :class:`~isaaclab_newton.sim.spawners.materials.NewtonDeformableBodyMaterialCfg` and
-  :class:`~isaaclab_newton.sim.spawners.materials.NewtonSurfaceDeformableBodyMaterialCfg` contain Newton-specific
-  fields such as density, particle radius, direct Lame parameters ``k_mu``/``k_lambda`` for volume deformables,
-  and VBD stiffness parameters for surface deformables.
+  :class:`~isaaclab_newton.sim.spawners.materials.NewtonSurfaceDeformableBodyMaterialCfg` author the canonical
+  UsdPhysics deformable material APIs. Volume materials use ``density``, ``youngs_modulus``, and
+  ``poissons_ratio``. Surface materials use volumetric ``density``, ``thickness``, and stretch, shear, and
+  bend stiffness.
 
 The old ``damping_scale`` property has been removed. Use ``elasticity_damping`` directly instead.
 

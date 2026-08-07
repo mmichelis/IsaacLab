@@ -49,20 +49,29 @@ class NewtonRigidBodyPropertiesCfg(RigidBodyBaseCfg):
 
 @configclass
 class NewtonDeformableBodyPropertiesCfg(DeformableBodyPropertiesBaseCfg):
-    """Newton-specific properties to apply to a deformable body.
-
-    Currently empty. Backend-specific fields can be added here when Newton exposes
-    a registered deformable body property schema.
-
-    The ``newton:`` namespace is reserved here so future Newton-native
-    deformable-body fields can be added without an API change.
+    """UsdPhysics properties for a Newton deformable body.
 
     See :meth:`~isaaclab.sim.schemas.modify_deformable_body_properties` for more information.
     """
 
-    _usd_namespace: ClassVar[str | None] = "newton"
-    _usd_applied_schema: ClassVar[str | None] = None
+    _usd_namespace: ClassVar[str | None] = "physics"
+    _usd_applied_schema: ClassVar[str | None] = "PhysicsDeformableBodyAPI"
     _usd_field_exceptions: ClassVar[dict] = {}
+
+    body_enabled: bool | None = None
+    """Whether simulation is enabled. Writes ``physics:bodyEnabled``."""
+
+    kinematic_enabled: bool | None = None
+    """Whether the deformable body is kinematic. Newton skips unsupported kinematic deformables.
+
+    Writes ``physics:kinematicEnabled``.
+    """
+
+    mass: float | None = None
+    """The total body mass [kg]. Writes ``physics:mass``."""
+
+    density: float | None = None
+    """The body density [kg/m^3]. Writes ``physics:density``."""
 
 
 @configclass

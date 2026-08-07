@@ -16,6 +16,7 @@ from newton import GeoType, ModelBuilder, ShapeFlags, solvers
 
 from pxr import Usd, UsdGeom, UsdPhysics
 
+from isaaclab.cloner.path import rebase
 from isaaclab.sim.utils.newton_model_utils import replace_newton_builder_shape_colors
 
 # USD ``physics:approximation`` token (lower case) -> Newton remeshing method.
@@ -287,8 +288,15 @@ def replicate_builder_mapping(
     source_site_indices: dict[int, dict[str, list[int]]] | None = None,
     env_root_sites: dict[str, wp.transform] | None = None,
     per_world_builder_hooks: Sequence[Callable[[ModelBuilder, int, list[float], list[float]], None]] = (),
+    deformable_world_roots: dict[int, str] | None = None,
 ) -> tuple[dict[str, list[list[int]]], list[wp.transform]]:
-    """Replicate source builders into per-env Newton worlds."""
+    """Replicate source builders into per-env Newton worlds.
+
+    When ``deformable_world_roots`` maps each world column to its destination
+    root, cloth and soft-body group labels (cloned verbatim from ``sources[0]``)
+    are rewritten to those roots. Callers that instead run
+    :func:`rename_builder_labels` afterwards leave this ``None``.
+    """
     source_site_indices = source_site_indices or {}
     env_root_sites = env_root_sites or {}
     num_worlds = mapping.size(1)
@@ -331,6 +339,8 @@ def replicate_builder_mapping(
                 [base_shape + world * stride + local for local in local_indices] for world in range(num_worlds)
             ]
 
+        if deformable_world_roots is not None:
+            _rename_deformable_group_labels(builder, sources[0], deformable_world_roots)
         return local_site_map, world_xforms
 
     source_world_indices = mapping.to(dtype=torch.int64).argmax(dim=1).tolist()
@@ -381,6 +391,9 @@ def replicate_builder_mapping(
             hook(builder, col, xform_rows[col][:3], xform_rows[col][3:])
         builder.end_world()
 
+    if deformable_world_roots is not None:
+        _rename_deformable_group_labels(builder, sources[0], deformable_world_roots)
+
     return local_site_map, world_xforms
 
 
@@ -392,6 +405,20 @@ _BUILTIN_LABEL_TYPES: tuple[str, ...] = (
     "constraint_mimic",
     "equality_constraint",
 )
+
+
+def _rename_deformable_group_labels(builder: ModelBuilder, source_root: str, world_roots: dict[int, str]) -> None:
+    """Rewrite Newton deformable group labels to their destination roots."""
+    source_root = source_root.rstrip("/")
+    for family in ("cloth", "soft"):
+        labels = getattr(builder, f"_{family}_label", ())
+        worlds = getattr(builder, f"_{family}_world", ())
+        for index, (label, world) in enumerate(zip(labels, worlds, strict=True)):
+            if not isinstance(label, str) or world is None:
+                continue
+            world_root = world_roots.get(int(world))
+            if world_root is not None:
+                labels[index] = rebase(label, source_root, world_root)
 
 
 def rename_builder_labels(
@@ -410,12 +437,9 @@ def rename_builder_labels(
         source_root = source.rstrip("/") or "/"
         source_root_len = len(source_root)
         world_cols = torch.nonzero(mapping[source_index], as_tuple=True)[0].tolist()
-        # Pre-normalize the destination roots
+        # Key by world column index (world creation order); env_ids maps column -> env_id.
         destination = destinations[source_index]
-        world_roots = {
-            env_id: (destination.format(env_id).rstrip("/") or "/")
-            for env_id in (env_ids_list[col] for col in world_cols)
-        }
+        world_roots = {col: (destination.format(int(env_ids_list[col])).rstrip("/") or "/") for col in world_cols}
 
         def _rename_pair(values, worlds, *, collect_body_bindings: bool = False):
             for index, (value, world) in enumerate(zip(values, worlds, strict=True)):
@@ -442,6 +466,7 @@ def rename_builder_labels(
             (builder.constraint_mimic_label, builder.constraint_mimic_world, False),
         ):
             _rename_pair(labels, worlds, collect_body_bindings=collect_body_bindings)
+        _rename_deformable_group_labels(builder, source_root, world_roots)
 
         custom_attrs = builder.custom_attributes.values()
         worlds_by_freq = {attr.frequency: attr.values for attr in custom_attrs if attr.references == "world"}

@@ -18,66 +18,57 @@ from isaaclab.utils.configclass import configclass
 
 @configclass
 class NewtonDeformableMaterialCfg:
-    """Newton-specific material properties for a deformable body.
+    """Common UsdPhysics material properties for a Newton deformable body."""
 
-    These properties are set with the prefix ``newton:<property_name>``.
-    """
-
-    _usd_namespace: ClassVar[str | None] = "newton"
-    _usd_applied_schema: ClassVar[str | None] = None
+    _usd_namespace: ClassVar[str | None] = "physics"
+    _usd_applied_schema: ClassVar[str | None] = "PhysicsMaterialAPI"
     _usd_field_exceptions: ClassVar[dict] = {}
 
     density: float = 1.0
     """The material density [kg/m^3]. Defaults to 1.0 kg/m^3."""
 
-    particle_radius: float = 0.008
-    """Particle radius [m] used by the Newton backend."""
-
 
 @configclass
 class NewtonDeformableBodyMaterialCfg(DeformableBodyMaterialBaseCfg, NewtonDeformableMaterialCfg):
-    """Newton-specific physics material parameters for volume deformable bodies."""
+    """UsdPhysics material parameters for Newton volume deformable bodies."""
 
-    _usd_namespace: ClassVar[str | None] = "newton"
-    _usd_applied_schema: ClassVar[str | None] = None
+    _usd_namespace: ClassVar[str | None] = "physics"
+    _usd_applied_schema: ClassVar[str | None] = "PhysicsVolumeDeformableMaterialAPI"
     _usd_field_exceptions: ClassVar[dict] = {}
 
     func: Callable | str = "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
 
-    k_mu: float = 1e5
-    """First Lame material parameter [Pa]. Defaults to 1e5 Pa."""
+    youngs_modulus: float = 2.5e5
+    """Young's modulus [Pa]. Defaults to 2.5e5 Pa."""
 
-    k_lambda: float = 1e5
-    """Second Lame material parameter [Pa]. Defaults to 1e5 Pa."""
-
-    k_damp: float = 0.0
-    """Damping stiffness for tetrahedral elements [Pa*s]. Defaults to 0.0."""
+    poissons_ratio: float = 0.25
+    """Poisson's ratio [dimensionless]. Defaults to 0.25."""
 
 
 @configclass
 class NewtonSurfaceDeformableBodyMaterialCfg(SurfaceDeformableBodyMaterialBaseCfg, NewtonDeformableMaterialCfg):
-    """Newton-specific physics material parameters for surface deformable bodies."""
+    """UsdPhysics material parameters for Newton surface deformable bodies."""
 
-    _usd_namespace: ClassVar[str | None] = "newton"
-    _usd_applied_schema: ClassVar[str | None] = None
+    _usd_namespace: ClassVar[str | None] = "physics"
+    _usd_applied_schema: ClassVar[str | None] = "PhysicsSurfaceDeformableMaterialAPI"
     _usd_field_exceptions: ClassVar[dict] = {}
 
     func: Callable | str = "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
 
-    tri_ke: float = 1e4
-    """Triangle area-preserving stiffness [Pa]. Used by Newton backend for cloth meshes."""
+    density: float = 1000.0
+    """The material density [kg/m^3]. Defaults to 1000.0 kg/m^3."""
 
-    tri_ka: float = 1e4
-    """Triangle area stiffness [Pa]. Used by Newton backend for cloth meshes."""
+    thickness: float = 0.016
+    """The surface thickness [m]. Defaults to 0.016 m."""
 
-    tri_kd: float = 1.5e-6
-    """Triangle area damping [Pa*s]. Used by Newton backend for cloth meshes."""
+    stretch_stiffness: float = 6.25e5
+    """The stretch stiffness [Pa]. Defaults to 6.25e5 Pa."""
 
-    edge_ke: float = 5.0
-    """Bending stiffness [N*m]. Used by Newton backend for cloth meshes."""
+    shear_stiffness: float | None = None
+    """The shear stiffness [Pa]. Defaults to None."""
 
-    edge_kd: float = 1e-2
-    """Bending damping [N*m*s]. Used by Newton backend for cloth meshes."""
+    bend_stiffness: float = 1_220_703.125
+    """The bend stiffness [Pa]. Defaults to 1,220,703.125 Pa."""
 
 
 @configclass

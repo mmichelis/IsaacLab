@@ -111,6 +111,7 @@ from isaaclab_newton.cloner.newton_clone_utils import (
 from isaaclab_newton.physics.visualization_builder import build_visualization_builder_from_stage_envs
 from isaaclab_newton.physics.visualization_deformables import populate_shadow_deformable_registry
 
+from . import deformable_groups
 from .newton_manager_cfg import NewtonCfg, NewtonShapeCfg
 
 if TYPE_CHECKING:
@@ -483,6 +484,8 @@ class NewtonManager(PhysicsManager):
     # Views list for assets to register their views
     _views: list = []
     _mpm_object_registry: list = []
+    # Shadow deformable registry, populated only on the PhysX-backend visualization path.
+    _deformable_registry: list = []
 
     # CL: Cloning / Replication logic
     # TODO: These attributes support cloning-specific logic and should be moved into a cloner class
@@ -502,7 +505,6 @@ class NewtonManager(PhysicsManager):
     # path. Single-model consumers (e.g. batched Newton IK) finalize a single-env
     # model from these and resolve it via ``query.path_to_source``.
     _cl_protos: dict[str, ModelBuilder] = {}
-    _deformable_registry: list = []
     _per_world_builder_hooks: list[Callable[[ModelBuilder, int, list[float], list[float]], None]] = []
 
     @classmethod
@@ -1069,6 +1071,7 @@ class NewtonManager(PhysicsManager):
         # a CUDA graph (see :meth:`_is_all_graphable`).
         NewtonManager._use_newton_actuators_active = False
         NewtonManager._decimation = 1
+        NewtonManager._num_envs = None
         # Per-world reset masks
         NewtonManager._world_reset_mask = None
         NewtonManager._fk_reset_mask = None
@@ -1120,6 +1123,11 @@ class NewtonManager(PhysicsManager):
     def set_builder(cls, builder: ModelBuilder) -> None:
         """Set the Newton model builder."""
         NewtonManager._builder = builder
+
+    @classmethod
+    def get_builder(cls) -> ModelBuilder:
+        """Get the Newton model builder."""
+        return cls._builder
 
     @classmethod
     def create_builder(cls, up_axis: str | None = None, **kwargs) -> ModelBuilder:
@@ -1570,13 +1578,24 @@ class NewtonManager(PhysicsManager):
                 cls._usdrt_stage.GetFabricId(), cls._usdrt_stage.GetStageIdAsStageId()
             )
 
+            deformable_bindings = deformable_groups.get_deformable_visual_bindings(cls._builder, get_current_stage())
+
             NewtonManager._initialize_fabric_body_prims(cls._usdrt_stage, fabric_hierarchy, usdrt, body_bindings)
             NewtonManager._initialize_fabric_cable_prims(cls._usdrt_stage, fabric_hierarchy, usdrt)
+            NewtonManager._initialize_fabric_deformable_prims(
+                cls._usdrt_stage,
+                usdrt,
+                deformable_bindings,
+            )
+            particle_paths = [
+                *NewtonManager._particle_visual_prims,
+                *(binding.visual_prim_path for binding in deformable_bindings),
+            ]
             NewtonManager._initialize_fabric_particle_prims(
                 cls._usdrt_stage,
                 fabric_hierarchy,
                 usdrt,
-                NewtonManager._particle_visual_prims,
+                particle_paths,
             )
 
             cls._mark_state_dirty()
@@ -1670,6 +1689,29 @@ class NewtonManager(PhysicsManager):
             cls._model.shape_scale.to("cpu"),
         )
         fabric_hierarchy.update_world_xforms()
+
+    @staticmethod
+    def _initialize_fabric_deformable_prims(
+        stage, usdrt, bindings: Sequence[deformable_groups.DeformableVisualBinding]
+    ) -> None:
+        """Tag deformable visual meshes with their Newton particle ranges."""
+        for binding in bindings:
+            prim = stage.GetPrimAtPath(binding.visual_prim_path)
+            if not prim.IsValid():
+                logger.warning("Fabric deformable prim not found at %s", binding.visual_prim_path)
+                continue
+            offset_attr = prim.CreateAttribute(
+                NewtonManager._newton_particle_offset_attr,
+                usdrt.Sdf.ValueTypeNames.UInt,
+                custom=True,
+            )
+            count_attr = prim.CreateAttribute(
+                NewtonManager._newton_particle_count_attr,
+                usdrt.Sdf.ValueTypeNames.UInt,
+                custom=True,
+            )
+            offset_attr.Set(binding.particle_start)
+            count_attr.Set(binding.particle_count)
 
     @staticmethod
     def _initialize_fabric_particle_prims(stage, fabric_hierarchy, usdrt, prim_paths: Iterable[str]) -> None:
@@ -1837,6 +1879,7 @@ class NewtonManager(PhysicsManager):
                 source_site_indices=source_site_indices,
                 env_root_sites=env_root_sites,
                 per_world_builder_hooks=cls._per_world_builder_hooks,
+                deformable_world_roots={col: path for col, (_, path) in enumerate(env_paths)},
             )
 
             NewtonManager._cl_site_index_map = {label: (idx, None) for label, idx in global_site_indices.items()}
@@ -1844,8 +1887,8 @@ class NewtonManager(PhysicsManager):
                 (label, (None, per_world)) for label, per_world in local_site_map.items()
             )
             NewtonManager._world_xforms = world_xforms
-            NewtonManager._num_envs = len(env_paths)
 
+        NewtonManager._num_envs = len(NewtonManager._world_xforms)
         cls.set_builder(builder)
 
     @classmethod

@@ -14,6 +14,7 @@ import warp as wp
 from isaaclab_newton.cloner import newton_clone_utils as newton_clone_utils_module
 from isaaclab_newton.cloner.newton_clone_utils import (
     _BUILTIN_LABEL_TYPES,
+    _rename_deformable_group_labels,
     rename_builder_labels,
     replicate_builder_mapping,
 )
@@ -208,6 +209,40 @@ class TestRenameBuilderLabels(unittest.TestCase):
             [f"{_DST.format(int(w))}/Tendon_{int(w)}" for w in tendon_worlds],
         )
 
+    def test_deformable_group_labels_rewritten_per_world(self):
+        builder = _make_builder(self.worlds)
+        builder._cloth_label = [f"{_SRC}/cloth_{world}" for world in self.worlds]
+        builder._cloth_world = list(self.worlds)
+        builder._soft_label = [f"{_SRC}/soft_{world}" for world in self.worlds]
+        builder._soft_world = list(self.worlds)
+
+        self._rename(builder)
+
+        self.assertEqual(
+            builder._cloth_label,
+            [f"{_DST.format(world)}/cloth_{world}" for world in self.worlds],
+        )
+        self.assertEqual(
+            builder._soft_label,
+            [f"{_DST.format(world)}/soft_{world}" for world in self.worlds],
+        )
+
+    def test_deformable_group_labels_use_explicit_world_roots(self):
+        builder = newton.ModelBuilder()
+        builder._cloth_label = ["/World/Env_10/Cloth", "/World/Env_10/Cloth"]
+        builder._cloth_world = [0, 1]
+        builder._soft_label = ["/World/Env_10/Soft", "/World/Env_10/Soft"]
+        builder._soft_world = [0, 1]
+
+        _rename_deformable_group_labels(
+            builder,
+            "/World/Env_10",
+            {0: "/World/Env_10", 1: "/World/Env_20"},
+        )
+
+        self.assertEqual(builder._cloth_label, ["/World/Env_10/Cloth", "/World/Env_20/Cloth"])
+        self.assertEqual(builder._soft_label, ["/World/Env_10/Soft", "/World/Env_20/Soft"])
+
     def test_source_root_boundary_cases(self):
         builder = _make_builder(self.worlds)
         builder.body_label.append(_SRC)
@@ -230,13 +265,29 @@ class TestRenameBuilderLabels(unittest.TestCase):
         self.assertEqual(builder.custom_attributes["mujoco:tendon_label"].values[-1], "named_tendon")
 
     def test_sparse_env_ids(self):
-        for worlds in ([10, 20, 30], [0, 1_000_000, 2_147_000_000]):
+        for env_ids_values in ([10, 20, 30], [0, 1_000_000, 2_147_000_000]):
+            worlds = list(range(len(env_ids_values)))
             builder = newton.ModelBuilder()
             SolverMuJoCo.register_custom_attributes(builder)
             _inject_builtins(builder, ("body",), _SRC, worlds)
-            env_ids = torch.tensor(worlds, dtype=torch.int32)
+            builder._cloth_label = [f"{_SRC}/cloth_{world}" for world in worlds]
+            builder._cloth_world = worlds.copy()
+            builder._soft_label = [f"{_SRC}/soft_{world}" for world in worlds]
+            builder._soft_world = worlds.copy()
+            env_ids = torch.tensor(env_ids_values, dtype=torch.int32)
             rename_builder_labels(builder, [_SRC], [_DST], env_ids, torch.ones(1, len(worlds), dtype=torch.bool))
-            self._assert_builtins(builder, ("body",))
+            self.assertEqual(
+                builder.body_label,
+                [f"{_DST.format(env_id)}/body_{world}" for world, env_id in zip(worlds, env_ids_values)],
+            )
+            self.assertEqual(
+                builder._cloth_label,
+                [f"{_DST.format(env_id)}/cloth_{world}" for world, env_id in zip(worlds, env_ids_values)],
+            )
+            self.assertEqual(
+                builder._soft_label,
+                [f"{_DST.format(env_id)}/soft_{world}" for world, env_id in zip(worlds, env_ids_values)],
+            )
 
 
 class TestRenameCustomAttributes(unittest.TestCase):

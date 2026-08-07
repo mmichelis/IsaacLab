@@ -76,8 +76,8 @@ def generate_cubes_scene(
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
             physics_material=NewtonDeformableBodyMaterialCfg(
                 density=500.0,
-                k_mu=1e4,
-                k_lambda=1e4,
+                youngs_modulus=2.5e4,
+                poissons_ratio=0.25,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
@@ -115,7 +115,7 @@ def generate_cloth_scene(
             resolution=(3, 3),
             deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.2, 0.8)),
-            physics_material=NewtonSurfaceDeformableBodyMaterialCfg(density=0.02, particle_radius=0.005),
+            physics_material=NewtonSurfaceDeformableBodyMaterialCfg(density=2.0, thickness=0.01),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(
             pos=(0.0, 0.0, height),
@@ -137,8 +137,8 @@ def generate_cuboid_and_cylinder_scene(height: float = 1.0) -> tuple[DeformableO
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0.8, 0.2)),
             physics_material=NewtonDeformableBodyMaterialCfg(
                 density=500.0,
-                k_mu=1e4,
-                k_lambda=1e4,
+                youngs_modulus=2.5e4,
+                poissons_ratio=0.25,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.0, 0.0, height)),
@@ -152,8 +152,8 @@ def generate_cuboid_and_cylinder_scene(height: float = 1.0) -> tuple[DeformableO
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.2, 0.2)),
             physics_material=NewtonDeformableBodyMaterialCfg(
                 density=500.0,
-                k_mu=1e4,
-                k_lambda=1e4,
+                youngs_modulus=2.5e4,
+                poissons_ratio=0.25,
             ),
         ),
         init_state=DeformableObjectCfg.InitialStateCfg(pos=(0.4, 0.0, height + 0.2)),

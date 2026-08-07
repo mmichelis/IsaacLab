@@ -714,57 +714,28 @@ class OVRTXRenderer(BaseRenderer):
             num_envs: Number of environments.
         """
         try:
-            from isaaclab_newton.physics import NewtonManager
+            from isaaclab_newton.physics import NewtonManager, deformable_groups
         except ImportError:
             logger.debug("NewtonManager not available, skipping deformable body bindings")
             return
 
-        # Early return if the deformable registry is empty.
-        deformable_registry = NewtonManager._deformable_registry
-        if not deformable_registry:
-            logger.debug("Deformable registry is empty, skipping deformable body bindings")
+        from isaaclab.sim.utils.stage import get_current_stage
+
+        bindings = deformable_groups.get_deformable_visual_bindings(NewtonManager.get_builder(), get_current_stage())
+        if not bindings:
+            logger.debug("No Newton deformable groups found, skipping deformable body bindings")
             return
 
-        # Validate the number of particle offsets for each deformable entry upfront.
-        bad_entries = [entry for entry in deformable_registry if len(entry.particle_offsets) != num_envs]
-        if bad_entries:
-            details = "\n".join(
-                f"- '{entry.prim_path}' has {len(entry.particle_offsets)} particle offsets" for entry in bad_entries
-            )
+        worlds = {binding.world for binding in bindings}
+        if worlds != set(range(num_envs)):
             raise RuntimeError(
-                f"OVRTX expects one particle offset per environment ({num_envs}), but the following "
-                f"deformable entries have a mismatched offset count:\n{details}"
+                f"OVRTX expected deformable groups in worlds 0 through {num_envs - 1}, found {sorted(worlds)}."
             )
 
-        self._deformable_particle_offsets = []
-        self._deformable_particle_counts = []
-
-        vis_mesh_prim_paths: list[str] = []
-
-        # Each registry entry is one deformable asset registered at spawn time. Its
-        # ``vis_mesh_prim_path`` uses a regex env wildcard (e.g. ``env_.*``) to denote one
-        # homogeneous visual mesh replicated into every environment, not a subset of envs.
-        # During replication, Newton appends one particle block per env in contiguous env order
-        # and records the start index in ``entry.particle_offsets``; ``particles_per_body`` is
-        # the block size. The inner loop therefore emits one OVRTX mesh binding per env,
-        # resolving the env wildcard with ``env_idx`` and pairing it with that env's slice in
-        # the flat ``particle_q`` array.
-        #
-        # This mapping is valid only while deformable registry entries remain homogeneous across
-        # all envs with dense, contiguous env ids. If deformables later support env subsets or
-        # non-contiguous env ids, OVRTX must consume explicit per-instance env metadata instead
-        # of deriving env ids from ``enumerate(entry.particle_offsets)``.
-        for entry in deformable_registry:
-            for idx, particle_offset in enumerate(entry.particle_offsets):
-                self._deformable_particle_offsets.append(particle_offset)
-                self._deformable_particle_counts.append(entry.particles_per_body)
-
-                vis_mesh_prim_paths.append(re.sub(r"(?<=[Ee]nv_)\.\*", str(idx), entry.vis_mesh_prim_path))
-
+        self._deformable_particle_offsets = [binding.particle_start for binding in bindings]
+        self._deformable_particle_counts = [binding.particle_count for binding in bindings]
+        vis_mesh_prim_paths = [binding.visual_prim_path for binding in bindings]
         prim_count = len(vis_mesh_prim_paths)
-        if prim_count == 0:
-            logger.warning("No deformable visual prim paths collected, skipping deformable body bindings")
-            return
 
         # World-space particle_q is written directly into mesh points. Reset the xform stack
         # and pin identity omni:xform so inherited env/asset transforms are not applied twice.
@@ -972,13 +943,7 @@ class OVRTXRenderer(BaseRenderer):
             for particle_offset, particle_count in zip(particle_offsets, particle_counts, strict=True)
         ]
 
-        # Array attributes cannot use ``binding.map()`` like rigid-body xforms, and
-        # ``DataAccess.ASYNC`` lets OVRTX read the slices in place (no copy on ingest).
-        # Because the slices alias ``particle_q``, OVRTX must not read them until the
-        # Warp kernels that wrote ``particle_q`` have finished. Passing ``cuda_stream``
-        # hands OVRTX the Warp stream those kernels were enqueued on so it can insert a
-        # GPU-side wait (a cross-stream dependency) before its read, instead of us
-        # forcing a host-side ``wp.synchronize_device()`` that would stall the CPU.
+        # ASYNC keeps the slices zero-copy; cuda_stream orders OVRTX reads after Warp writes.
         cuda_stream = wp.get_stream(self._device).cuda_stream
         binding.write(
             cast(Any, particle_slices),

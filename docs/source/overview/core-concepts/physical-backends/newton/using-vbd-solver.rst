@@ -408,15 +408,10 @@ for volume deformables:
       - Description
     * - ``density``
       - Default: ``1.0`` [kg/m^3]. Material density. Higher density increases particle mass and inertia, so the object accelerates and deforms less for the same contact forces.
-    * - ``particle_radius``
-      - Default: ``0.008`` [m]. Particle contact radius used by Newton. Increase it when contacts are missed or detected too late. If it is too large relative to the mesh resolution, contacts can start too early.
-    * - ``k_mu``
-      - Default: ``1.0e5`` [Pa]. First Lame material parameter. Higher values make the deformable object stiffer and usually require more VBD iterations, more substeps, or a smaller timestep.
-    * - ``k_lambda``
-      - Default: ``1.0e5`` [Pa]. Second Lame material parameter. Higher values make the deformable object stiffer and usually require more VBD iterations, more substeps, or a smaller timestep.
-    * - ``k_damp``
-      - Default: ``0.0`` [Pa*s]. Damping for tetrahedral elements. Increase it to reduce oscillations after deformation, but avoid overdamping if the object should rebound.
-
+    * - ``youngs_modulus``
+      - Default: ``2.5e5`` [Pa]. Higher values make the deformable stiffer.
+    * - ``poissons_ratio``
+      - Default: ``0.25``. Controls volume preservation under deformation.
 
 Surface Deformable Materials
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -432,19 +427,17 @@ for cloth or surface deformables:
     * - Parameter
       - Description
     * - ``density``
-      - Default: ``1.0`` [kg/m^3]. Material density. Higher density increases particle mass and inertia.
-    * - ``particle_radius``
-      - Default: ``0.008`` [m]. Particle contact radius used by Newton.
-    * - ``tri_ke``
-      - Default: ``1.0e4`` [Pa]. Triangle area-preserving stiffness. Increase it to reduce cloth stretch.
-    * - ``tri_ka``
-      - Default: ``1.0e4`` [Pa]. Triangle area stiffness. Increase it to reduce cloth area change.
-    * - ``tri_kd``
-      - Default: ``1.5e-6`` [Pa*s]. Triangle area damping. Increase it to reduce cloth vibration after stretching.
-    * - ``edge_ke``
-      - Default: ``5.0`` [N*m]. Bending stiffness. Increase it for stiffer cloth folds; decrease it for softer draping.
-    * - ``edge_kd``
-      - Default: ``1.0e-2`` [N*m*s]. Bending damping. Increase it to damp fold oscillations.
+      - Default: ``1000.0`` [kg/m^3]. Material density.
+    * - ``thickness``
+      - Default: ``0.016`` [m]. Physical surface thickness (sets cloth mass and bending). On import,
+        Newton seeds the cloth particle contact radius to half this value as a default; the two are not
+        physically coupled thereafter.
+    * - ``stretch_stiffness``
+      - Default: ``6.25e5`` [Pa]. Increase it to reduce cloth stretch.
+    * - ``shear_stiffness``
+      - Default: ``None``. The current Newton isotropic cloth importer preserves but does not apply this value.
+    * - ``bend_stiffness``
+      - Default: ``1,220,703.125`` [Pa]. Increase it for stiffer cloth folds.
 
 Tuning Workflow
 ---------------
