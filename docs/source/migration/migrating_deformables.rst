@@ -134,17 +134,6 @@ The deformable material hierarchy is now split by backend:
   ``poissons_ratio``. Surface materials use volumetric ``density``, ``thickness``, and stretch, shear, and
   bend stiffness.
 
-The old volume material ``particle_radius`` has no canonical USD equivalent and is no longer migrated.
-Newton's importer uses ``ModelBuilder.default_particle_radius`` for volume particles. For surfaces, the
-importer seeds the cloth contact radius to ``0.5 * thickness``, so use ``thickness = 2 * particle_radius``.
-
-To preserve legacy volume stiffness, use
-``poissons_ratio = k_lambda / (2 * (k_lambda + k_mu))`` and
-``youngs_modulus = k_mu * (3 * k_lambda + 2 * k_mu) / (k_lambda + k_mu)``.
-For surfaces, use ``stretch_stiffness = tri_ke / thickness`` and
-``bend_stiffness = edge_ke / thickness**3``. ``tri_ka`` and the legacy damping fields have no canonical
-equivalent; Newton sets its area-preservation term to zero.
-
 The old ``damping_scale`` property has been removed. Use ``elasticity_damping`` directly instead.
 
 DeformableObject View Change
