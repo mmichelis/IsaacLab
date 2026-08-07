@@ -413,10 +413,6 @@ for volume deformables:
     * - ``poissons_ratio``
       - Default: ``0.25``. Controls volume preservation under deformation.
 
-
-Volume particle contact radius is not part of the canonical USD deformable schemas. Newton's importer uses
-``ModelBuilder.default_particle_radius`` for volume particles.
-
 Surface Deformable Materials
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -453,8 +449,8 @@ Use the following sequence when bringing up a new VBD task:
 2. Add a task-specific VBD or proxy-coupled VBD preset copied from the closest
    supported task.
 3. Run a small visual smoke test with ``--num_envs 1`` before training.
-4. Tune deformable material stiffness until the object deforms in the expected
-   range without rigid contact.
+4. Tune deformable material stiffness and damping until the object deforms in
+   the expected range without rigid contact.
 5. Increase ``num_substeps`` or decrease ``dt`` if the object is unstable before
    increasing stiffness further.
 6. Increase :attr:`~isaaclab_contrib.deformable.VBDSolverCfg.iterations` when
@@ -482,13 +478,13 @@ Symptoms and First Parameters to Check
     * - Symptom
       - First parameters to check
     * - Rigid bodies visibly clip through the deformable.
-      - Increase ``soft_contact_ke``, VBD ``iterations``, or ``num_substeps``.
+      - Increase ``soft_contact_ke``, VBD ``iterations``, ``num_substeps``, or the deformable material ``particle_radius``.
     * - The robot cannot lift the deformable.
       - Check that the gripper bodies are included in the proxy, then increase ``soft_contact_mu`` and rigid-side shape friction (per-asset material ``mu`` or ``NewtonShapeCfg.mu``). Also check gripper actuator stiffness and effort limits.
     * - The deformable barely deforms.
       - Reduce material stiffness, ``soft_contact_ke``, or shape contact stiffness.
     * - Contact chatters or bounces.
-      - Increase ``soft_contact_kd`` and consider using more substeps.
+      - Increase ``soft_contact_kd`` or material damping, and consider using more substeps.
     * - Cloth passes through itself.
       - Enable ``particle_enable_self_contact``, increase ``particle_self_contact_radius`` if the active self-contact thickness is too small, increase ``particle_self_contact_margin`` if contacts are missed, and use a positive ``particle_collision_detection_interval``.
     * - Self-contact is too expensive.
