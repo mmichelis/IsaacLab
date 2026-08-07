@@ -242,7 +242,8 @@ Tune the coupled contact behavior before training a policy:
   maximum effort limit the actual squeeze.
 * If the deformable no longer visibly deforms, ``soft_contact_ke`` is likely too
   high.
-* If contacts are unstable or missed, increase the deformable mesh resolution.
+* If contacts are unstable or missed, increase the deformable mesh resolution or
+  the particle contact radius so contact is detected earlier from a larger distance.
 * If the rigid shapes still clip through the deformable, increase
   :attr:`~isaaclab_contrib.deformable.VBDSolverCfg.iterations`; more VBD
   iterations can improve contact convergence.
