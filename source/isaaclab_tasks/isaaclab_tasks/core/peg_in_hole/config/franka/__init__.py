@@ -12,7 +12,7 @@ from isaaclab_tasks.core.peg_in_hole.config.franka import agents
 ##
 
 ##
-# Joint Position Control
+# Franka
 ##
 
 gym.register(

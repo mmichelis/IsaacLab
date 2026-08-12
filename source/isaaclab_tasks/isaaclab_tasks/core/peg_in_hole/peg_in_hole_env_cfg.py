@@ -131,12 +131,7 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    """Action specifications for the MDP."""
-
-    arm_action: (
-        mdp.JointPositionActionCfg | mdp.RelativeJointPositionActionCfg | mdp.DifferentialInverseKinematicsActionCfg
-    ) = MISSING
-    gripper_action: mdp.BinaryJointPositionActionCfg | mdp.JointPositionToLimitsActionCfg = MISSING
+    pass
 
 
 @configclass
@@ -189,11 +184,30 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
+    reset_robot_arm_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (0.9, 1.1),
+            "velocity_range": (0.0, 0.0),
+            "asset_cfg": SceneEntityCfg("robot", joint_names="panda_joint.*"),
+        },
+    )
+
+    reset_robot_gripper_joints = EventTerm(
+        func=mdp.reset_joints_shared_offset,
+        mode="reset",
+        params={
+            "position_range": (-0.02, 0.0),
+            "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint.*"),
+        },
+    )
+
     variable_gravity = EventTerm(
         func=mdp.randomize_physics_scene_gravity,
         mode="reset",
         params={
-            "gravity_distribution_params": ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            "gravity_distribution_params": ([0.0, 0.0, -9.81], [0.0, 0.0, -9.81]),
             "operation": "abs",
         },
     )
@@ -273,16 +287,16 @@ class RewardsCfg:
 
     reaching_object = RewTerm(
         func=mdp.object_ee_distance,
-        params={"std": 0.2, "object_cfg": SceneEntityCfg("object", body_names="Object")},
-        weight=1.0,
+        params={"std": 0.1, "object_cfg": SceneEntityCfg("object", body_names="Object")},
+        weight=5.0,
     )
 
     # Dense lift-off shaping: bridges the flat region between reaching and goal tracking.
     lifting_object = RewTerm(
         func=mdp.object_lifting,
         params={
-            "std": 0.05,
-            "minimal_height": 0.055,
+            "std": 0.1,
+            "minimal_height": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
         weight=5.0,
@@ -308,7 +322,7 @@ class RewardsCfg:
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
-        weight=3.0,
+        weight=2.0,
     )
 
     success_bonus = RewTerm(
@@ -319,11 +333,11 @@ class RewardsCfg:
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
-        weight=50.0,
+        weight=20.0,
     )
 
     # action penalty
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-3)
 
 
 @configclass
@@ -337,7 +351,7 @@ class TerminationsCfg:
         params={
             "x_bounds": (0.0, 1.0),
             "y_bounds": (-0.5, 0.5),
-            "z_bounds": (-0.05, 1.0),
+            "z_bounds": (-0.02, 1.0),
             "asset_cfg": SceneEntityCfg("object"),
         },
     )
@@ -353,7 +367,7 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 50000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 15000}
     )
 
     # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
@@ -364,7 +378,7 @@ class CurriculumCfg:
             "start_gravity_z": -0.0001,
             "end_gravity_z": -9.81,
             "start_step": 0,
-            "end_step": 20000,
+            "end_step": 10000,
         },
     )
 
@@ -461,3 +475,8 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = eye
         self.viewer.lookat = lookat
         self.sim.visualizer_cfgs = [NewtonVisualizerCfg(eye=eye, lookat=lookat, window_width=1920, window_height=1080)]
+
+    def play_mode(self):
+        super().play_mode()
+        if self.curriculum is not None:
+            self.curriculum.gravity = None
