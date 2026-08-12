@@ -289,49 +289,49 @@ class RewardsCfg:
     )
 
     # Dense lift-off shaping: bridges the flat region between reaching and goal tracking.
-    # lifting_object = RewTerm(
-    #     func=mdp.object_lifting,
-    #     params={
-    #         "std": 0.1,
-    #         "minimal_height": 0.05,
-    #         "object_cfg": SceneEntityCfg("object", body_names="Object"),
-    #     },
-    #     weight=5.0,
-    # )
+    lifting_object = RewTerm(
+        func=mdp.object_lifting,
+        params={
+            "std": 0.1,
+            "minimal_height": 0.05,
+            "object_cfg": SceneEntityCfg("object", body_names="Object"),
+        },
+        weight=5.0,
+    )
 
-    # object_goal_tracking_delta = RewTerm(
-    #     func=mdp.object_goal_distance_delta,
-    #     params={
-    #         "minimal_height": 0.0,
-    #         "command_name": "object_pose",
-    #         "success_threshold": 0.05,
-    #         "object_cfg": SceneEntityCfg("object", body_names="Object"),
-    #     },
-    #     weight=500.0,
-    # )
+    object_goal_tracking_delta = RewTerm(
+        func=mdp.object_goal_distance_delta,
+        params={
+            "minimal_height": 0.0,
+            "command_name": "object_pose",
+            "success_threshold": 0.05,
+            "object_cfg": SceneEntityCfg("object", body_names="Object"),
+        },
+        weight=500.0,
+    )
 
-    # object_goal_tracking = RewTerm(
-    #     func=mdp.object_goal_distance,
-    #     params={
-    #         "std": 0.3,
-    #         "minimal_height": 0.0,
-    #         "command_name": "object_pose",
-    #         "success_threshold": 0.05,
-    #         "object_cfg": SceneEntityCfg("object", body_names="Object"),
-    #     },
-    #     weight=2.0,
-    # )
+    object_goal_tracking = RewTerm(
+        func=mdp.object_goal_distance,
+        params={
+            "std": 0.3,
+            "minimal_height": 0.0,
+            "command_name": "object_pose",
+            "success_threshold": 0.05,
+            "object_cfg": SceneEntityCfg("object", body_names="Object"),
+        },
+        weight=2.0,
+    )
 
-    # success_bonus = RewTerm(
-    #     func=mdp.object_goal_reached,
-    #     params={
-    #         "minimal_height": 0.0,
-    #         "command_name": "object_pose",
-    #         "success_threshold": 0.05,
-    #         "object_cfg": SceneEntityCfg("object", body_names="Object"),
-    #     },
-    #     weight=20.0,
-    # )
+    success_bonus = RewTerm(
+        func=mdp.object_goal_reached,
+        params={
+            "minimal_height": 0.0,
+            "command_name": "object_pose",
+            "success_threshold": 0.05,
+            "object_cfg": SceneEntityCfg("object", body_names="Object"),
+        },
+        weight=20.0,
+    )
 
     # action penalty
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-3)
