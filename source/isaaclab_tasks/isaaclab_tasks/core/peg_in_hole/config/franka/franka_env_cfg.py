@@ -5,6 +5,7 @@
 
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.controllers import DifferentialIKControllerCfg
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_tasks.core.peg_in_hole import mdp
@@ -67,6 +68,9 @@ class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.rewards.reaching_object.params["robot_cfg"] = SceneEntityCfg(
+            "robot", body_names=["panda_leftfinger", "panda_rightfinger"]
+        )
 
         self.scene.robot.actuators = {
             # inspired by libfranka's joint_impedance_control.cpp

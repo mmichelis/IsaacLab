@@ -21,7 +21,7 @@ __all__ = [
     "gravity_range_linear",
 ]
 
-from isaaclab_tasks.core.lift.mdp import ObjectUniformPoseCommandCfg, gravity_range_linear, object_point_cloud_b
+from isaaclab_tasks.core.lift.mdp import ObjectUniformPoseCommandCfg, gravity_range_linear, object_point_cloud_b, reset_joints_shared_offset
 from .rewards import (
     object_ee_distance,
     object_fingertip_distance,
