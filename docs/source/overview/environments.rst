@@ -1195,7 +1195,7 @@ including disabling runtime perturbations used for training.
       -
     * - Isaac-Peg-In-Hole-Franka
       - Manager Based
-      - **rl_games** (PPO), **rsl_rl** (PPO), **skrl** (PPO), **sb3** (PPO)
+      - **rsl_rl** (PPO)
       - **physics=** ``isaacsim_physx``, ``newton_mjwarp``, ``newton_mjwarp_vbd_proxy``
     * - Isaac-Pendulum-Direct
       - Direct

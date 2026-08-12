@@ -32,7 +32,7 @@
             ["Isaac-Lift-Soft-Franka-Camera", "rsl_rl", "isaacsim_physx,newton_mjwarp_vbd_proxy", "isaacsim_rtx,newton_renderer,ovrtx", "ik,joint"],
             ["Isaac-Open-Drawer-Franka-Direct", "rl_games,rsl_rl,skrl", "", "", ""],
             ["Isaac-Open-Drawer-Franka", "rl_games,rsl_rl,skrl", "", "", ""],
-            ["Isaac-Peg-In-Hole-Franka", "rl_games,rsl_rl,skrl,sb3", "isaacsim_physx,newton_mjwarp,newton_mjwarp_vbd_proxy", "", ""],
+            ["Isaac-Peg-In-Hole-Franka", "rsl_rl", "isaacsim_physx,newton_mjwarp,newton_mjwarp_vbd_proxy", "", ""],
             ["Isaac-Pendulum-Direct", "rl_games,skrl", "", "", ""],
             ["Isaac-Reach-Franka", "rl_games,rsl_rl,skrl", "isaacsim_physx,newton_mjwarp,ovphysx", "", "diffik,diffik_abs,joint_pos,newton_ik"],
             ["Isaac-Reach-Franka-OSC", "rsl_rl", "isaacsim_physx,newton_mjwarp,ovphysx", "", "diffik_abs"],
