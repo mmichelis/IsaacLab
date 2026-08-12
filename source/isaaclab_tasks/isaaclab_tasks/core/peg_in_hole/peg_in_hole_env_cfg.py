@@ -6,6 +6,7 @@
 from dataclasses import MISSING
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
+from isaaclab_newton.sim.spawners.materials import NewtonMaterialCfg
 from isaaclab_physx.physics import PhysxCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
@@ -22,8 +23,8 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.physics import PhysxAutoCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg
+from isaaclab.sim.spawners.materials import UsdPhysicsRigidBodyMaterialCfg
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_contrib.coupling import CouplerEntryCfg, CouplerProxyCfg, CouplerProxyMappingCfg
@@ -54,23 +55,16 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # target object
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0, 0.055], rot=[0, 0, 0, 1]),
-        spawn=sim_utils.MultiAssetSpawnerCfg(
-            assets_cfg=[
-                UsdFileCfg(
-                    usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
-                    scale=(scale, scale, scale),
-                )
-                for scale in (0.64, 0.72, 0.80, 0.88, 0.96)
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.035]),
+        spawn=sim_utils.CuboidCfg(
+            size=(0.03, 0.03, 0.05),
+            physics_material=[
+                UsdPhysicsRigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
+                NewtonMaterialCfg(contact_stiffness=2500.0, contact_damping=100.0),
             ],
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=1,
-                max_angular_velocity=1000.0,
-                max_linear_velocity=1000.0,
-                max_depenetration_velocity=5.0,
-                disable_gravity=False,
-            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.2),
         ),
     )
 
@@ -112,7 +106,7 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.ObjectUniformPoseCommandCfg.Ranges(
-            pos_x=(0.4, 0.6), pos_y=(-0.25, 0.25), pos_z=(0.25, 0.5), roll=(0.0, 0.0), pitch=(0.0, 0.0), yaw=(0.0, 0.0)
+            pos_x=(0.4, 0.6), pos_y=(-0.25, 0.25), pos_z=(0.25, 0.5), roll=(0.0, 0.0), pitch=(0.0, 0.0), yaw=(-0.5, 0.5)
         ),
         success_vis_asset_name="table",
         success_visualizer_cfg=VisualizationMarkersCfg(
@@ -288,12 +282,11 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    # Dense lift-off shaping: bridges the flat region between reaching and goal tracking.
     lifting_object = RewTerm(
         func=mdp.object_lifting,
         params={
             "std": 0.1,
-            "minimal_height": 0.05,
+            "minimal_height": 0.025,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
         weight=5.0,
@@ -304,7 +297,7 @@ class RewardsCfg:
         params={
             "minimal_height": 0.0,
             "command_name": "object_pose",
-            "success_threshold": 0.05,
+            "success_threshold": 0.04,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
         weight=500.0,
