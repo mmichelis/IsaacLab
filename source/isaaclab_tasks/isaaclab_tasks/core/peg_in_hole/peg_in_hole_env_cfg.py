@@ -55,16 +55,16 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # target object
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.035]),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.03]),
         spawn=sim_utils.CuboidCfg(
-            size=(0.03, 0.03, 0.05),
+            size=(0.02, 0.02, 0.05),
             physics_material=[
                 UsdPhysicsRigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-                NewtonMaterialCfg(contact_stiffness=2500.0, contact_damping=100.0),
+                NewtonMaterialCfg(contact_stiffness=1.0e4, contact_damping=100.0),
             ],
             rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
             collision_props=sim_utils.CollisionPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.2),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.1),
         ),
     )
 
@@ -278,8 +278,8 @@ class RewardsCfg:
 
     reaching_object = RewTerm(
         func=mdp.object_ee_distance,
-        params={"std": 0.1, "object_cfg": SceneEntityCfg("object", body_names="Object")},
-        weight=5.0,
+        params={"std": 0.2, "object_cfg": SceneEntityCfg("object", body_names="Object")},
+        weight=1.0,
     )
 
     lifting_object = RewTerm(
@@ -297,7 +297,7 @@ class RewardsCfg:
         params={
             "minimal_height": 0.0,
             "command_name": "object_pose",
-            "success_threshold": 0.04,
+            "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
         weight=500.0,
@@ -312,7 +312,7 @@ class RewardsCfg:
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
-        weight=2.0,
+        weight=5.0,
     )
 
     success_bonus = RewTerm(
@@ -323,7 +323,7 @@ class RewardsCfg:
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
-        weight=20.0,
+        weight=10.0,
     )
 
     # action penalty
@@ -357,7 +357,7 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 15000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 20000}
     )
 
     # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
@@ -438,7 +438,7 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
     """Initial peg-in-hole configuration copied from the lift task."""
 
     # Scene settings
-    scene: ObjectTableSceneCfg = ObjectTableSceneCfg(num_envs=8192, env_spacing=2.5)
+    scene: ObjectTableSceneCfg = ObjectTableSceneCfg(num_envs=8192, env_spacing=2.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
