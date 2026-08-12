@@ -103,14 +103,14 @@ class object_goal_distance(ManagerTermBase):
         super().__init__(cfg, env)
         self._track_success = cfg.params.get("success_threshold") is not None
         if self._track_success:
-            self._succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+            self.succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
 
     def reset(self, env_ids: torch.Tensor):
         if self._track_success:
             self._env.extras.setdefault("log", {})["Metrics/success_rate"] = (
-                self._succeeded[env_ids].float().mean().item()
+                self.succeeded[env_ids].float().mean().item()
             )
-            self._succeeded[env_ids] = False
+            self.succeeded[env_ids] = False
 
     def __call__(
         self,
@@ -132,7 +132,7 @@ class object_goal_distance(ManagerTermBase):
         distance = torch.linalg.norm(des_pos_w - object_pos_w, dim=1)
         is_lifted = object_pos_w[:, 2] > minimal_height
         if success_threshold is not None:
-            self._succeeded |= is_lifted & (distance < success_threshold)
+            self.succeeded |= is_lifted & (distance < success_threshold)
         return is_lifted.float() * (1 - torch.tanh(distance / std))
 
 

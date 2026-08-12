@@ -200,7 +200,7 @@ class EventCfg:
         func=mdp.randomize_physics_scene_gravity,
         mode="reset",
         params={
-            "gravity_distribution_params": ([0.0, 0.0, -9.81], [0.0, 0.0, -9.81]),
+            "gravity_distribution_params": ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
             "operation": "abs",
         },
     )
@@ -279,7 +279,7 @@ class RewardsCfg:
     reaching_object = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.2, "object_cfg": SceneEntityCfg("object", body_names="Object")},
-        weight=1.0,
+        weight=5.0,
     )
 
     lifting_object = RewTerm(
@@ -303,7 +303,7 @@ class RewardsCfg:
         weight=500.0,
     )
 
-    object_goal_tracking = RewTerm(
+    success = RewTerm(
         func=mdp.object_goal_distance,
         params={
             "std": 0.3,
@@ -356,19 +356,24 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
+    adr = CurrTerm(
+        func=mdp.DifficultyScheduler, params={"init_difficulty": 0, "min_difficulty": 0, "max_difficulty": 10}
+    )
+
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 30000}
     )
 
-    # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
-    gravity = CurrTerm(
-        func=mdp.gravity_range_linear,
+    gravity_adr = CurrTerm(
+        func=mdp.modify_term_cfg,
         params={
-            "event_name": "variable_gravity",
-            "start_gravity_z": -0.0001,
-            "end_gravity_z": -9.81,
-            "start_step": 0,
-            "end_step": 10000,
+            "address": "events.variable_gravity.params.gravity_distribution_params",
+            "modify_fn": mdp.initial_final_interpolate_fn,
+            "modify_params": {
+                "initial_value": ((0.0, 0.0, -0.01), (0.0, 0.0, -0.01)),
+                "final_value": ((0.0, 0.0, -9.81), (0.0, 0.0, -9.81)),
+                "difficulty_term_str": "adr",
+            },
         },
     )
 
@@ -469,4 +474,5 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
     def play_mode(self):
         super().play_mode()
         if self.curriculum is not None:
-            self.curriculum.gravity = None
+            self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
+            self.curriculum.adr.params["promotion_only"] = True

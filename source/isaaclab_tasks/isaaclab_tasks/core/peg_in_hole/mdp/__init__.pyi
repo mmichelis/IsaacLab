@@ -7,6 +7,7 @@ __all__ = [
     # observations
     "object_point_cloud_b",
     "ObjectUniformPoseCommandCfg",
+    "reset_joints_shared_offset",
     # rewards
     "object_ee_distance",
     "object_lifting",
@@ -18,10 +19,17 @@ __all__ = [
     "object_outside_bounds",
     "joint_vel_out_of_sim_limit",
     # curriculums
-    "gravity_range_linear",
+    "DifficultyScheduler",
+    "initial_final_interpolate_fn",
 ]
 
-from isaaclab_tasks.core.lift.mdp import ObjectUniformPoseCommandCfg, gravity_range_linear, object_point_cloud_b, reset_joints_shared_offset
+from isaaclab_tasks.core.lift.mdp import (
+    DifficultyScheduler,
+    ObjectUniformPoseCommandCfg,
+    initial_final_interpolate_fn,
+    object_point_cloud_b,
+    reset_joints_shared_offset,
+)
 from .rewards import (
     object_ee_distance,
     object_fingertip_distance,
