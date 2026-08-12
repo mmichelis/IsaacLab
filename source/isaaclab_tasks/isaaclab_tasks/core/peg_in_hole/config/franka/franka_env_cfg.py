@@ -3,32 +3,72 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg
-from isaaclab.sensors import FrameTransformerCfg
-from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
-from isaaclab.sim import CollisionPropertiesCfg
-from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
+from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.controllers import DifferentialIKControllerCfg
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_tasks.core.peg_in_hole import mdp
 from isaaclab_tasks.core.peg_in_hole.peg_in_hole_env_cfg import PegInHoleEnvCfg
-from isaaclab_tasks.utils import preset
+from isaaclab_tasks.utils import PresetCfg
 
 ##
 # Pre-defined configs
 ##
-from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 from isaaclab_assets.robots.franka import FRANKA_PANDA_MENAGERIE_CFG  # isort: skip
 
 
 @configclass
+class _JointActionsCfg:
+    """Relative joint-position arm targets and a limit-rescaled gripper target."""
+
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.075)
+    gripper_action = mdp.JointPositionToLimitsActionCfg(
+        asset_name="robot", joint_names=["panda_finger_joint1"], rescale_to_limits=True
+    )
+
+
+@configclass
+class _IkActionsCfg:
+    """Absolute end-effector pose targets and a binary gripper target."""
+
+    arm_action = mdp.DifferentialInverseKinematicsActionCfg(
+        asset_name="robot",
+        joint_names=["panda_joint.*"],
+        body_name="panda_hand",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.6},
+        ),
+        body_offset=mdp.DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+    )
+    gripper_action = mdp.BinaryJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["panda_finger_joint1"],
+        open_command_expr={"panda_finger_joint1": 0.04},
+        close_command_expr={"panda_finger_joint1": 0.015},
+    )
+
+
+@configclass
+class ActionsCfg(PresetCfg):
+    """Franka action-space presets."""
+
+    joint: _JointActionsCfg = _JointActionsCfg()
+    ik: _IkActionsCfg = _IkActionsCfg()
+    default = joint
+
+
+@configclass
 class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
+    actions: ActionsCfg = ActionsCfg()
+
     def __post_init__(self):
         super().__post_init__()
         self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
-        self.robot.actuators = {
+        self.scene.robot.actuators = {
             # inspired by libfranka's joint_impedance_control.cpp
             "panda_arm": ImplicitActuatorCfg(
                 joint_names_expr=["panda_joint[1-7]"],
@@ -71,29 +111,3 @@ class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
                 armature=0.1,
             ),
         }
-
-        # Set actions for the specific robot type (franka)
-        self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
-            asset_name="robot", joint_names=["panda_joint.*"], scale=0.075
-        )
-        self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
-            asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
-        )
-        # Listens to the required transforms
-        marker_cfg = FRAME_MARKER_CFG.copy()
-        marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
-        marker_cfg.prim_path = "/Visuals/FrameTransformer"
-        self.scene.ee_frame = FrameTransformerCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/panda_link0",
-            debug_vis=False,
-            visualizer_cfg=marker_cfg,
-            target_frames=[
-                FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
-                    name="end_effector",
-                    offset=OffsetCfg(
-                        pos=[0.0, 0.0, 0.1034],
-                    ),
-                ),
-            ],
-        )

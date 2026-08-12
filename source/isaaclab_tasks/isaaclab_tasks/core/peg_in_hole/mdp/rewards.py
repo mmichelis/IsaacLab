@@ -17,27 +17,21 @@ from isaaclab.utils.math import combine_frame_transforms, quat_apply
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
-    from isaaclab.sensors import FrameTransformer
 
 
 def object_ee_distance(
     env: ManagerBasedRLEnv,
     std: float,
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=".*finger"),
 ) -> torch.Tensor:
-    """Reward the agent for reaching the object using tanh-kernel."""
-    # extract the used quantities (to enable type-hinting)
+    """Reward the selected robot bodies for reaching the object using a tanh kernel."""
     object: RigidObject = env.scene[object_cfg.name]
-    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
-    # Target object position: (num_envs, 3)
-    cube_pos_w = _object_position_w(object, object_cfg)
-    # End-effector position: (num_envs, 3)
-    ee_w = ee_frame.data.target_pos_w.torch[..., 0, :]
-    # Distance of the end-effector to the object: (num_envs,)
-    object_ee_distance = torch.linalg.norm(cube_pos_w - ee_w, dim=1)
-
-    return 1 - torch.tanh(object_ee_distance / std)
+    robot: Articulation = env.scene[robot_cfg.name]
+    object_pos_w = _object_position_w(object, object_cfg)
+    body_pos_w = robot.data.body_pos_w.torch[:, robot_cfg.body_ids]
+    distance = torch.linalg.norm(body_pos_w - object_pos_w[:, None, :], dim=-1).max(dim=-1).values
+    return 1.0 - torch.tanh(distance / std)
 
 
 def object_lifting(
