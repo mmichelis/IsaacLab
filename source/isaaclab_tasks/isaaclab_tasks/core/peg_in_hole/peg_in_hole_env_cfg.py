@@ -6,7 +6,6 @@
 from dataclasses import MISSING
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
-from isaaclab_physx.assets import DeformableObjectCfg
 from isaaclab_physx.physics import PhysxCfg
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
@@ -26,6 +25,9 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg
 from isaaclab.utils.configclass import configclass
+
+from isaaclab_contrib.coupling import CouplerEntryCfg, CouplerProxyCfg, CouplerProxyMappingCfg
+from isaaclab_contrib.deformable.newton_manager_cfg import VBDSolverCfg
 
 from isaaclab_tasks.core.peg_in_hole import mdp
 from isaaclab_tasks.utils import PresetCfg
@@ -52,7 +54,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # end-effector sensor: will be populated by agent env cfg
     ee_frame: FrameTransformerCfg = MISSING
     # target object: will be populated by agent env cfg
-    object: RigidObjectCfg | DeformableObjectCfg = MISSING
+    object: RigidObjectCfg = MISSING
 
     # table
     table = RigidObjectCfg(
@@ -370,6 +372,37 @@ class PegInHolePhysicsCfg(PresetCfg):
         ),
         num_substeps=2,
         collision_decimation=1,
+    )
+
+    newton_mjwarp_vbd_proxy: NewtonCfg = NewtonCfg(
+        solver_cfg=CouplerProxyCfg(
+            entries=[
+                CouplerEntryCfg(
+                    name="rigid",
+                    solver_cfg=MJWarpSolverCfg(cone="elliptic", ls_iterations=20, integrator="implicitfast"),
+                    bodies=[r"/World/envs/env_.*/Robot", r"/World/envs/env_.*/Table"],
+                ),
+                CouplerEntryCfg(
+                    name="object",
+                    solver_cfg=VBDSolverCfg(iterations=10),
+                    bodies=[r"/World/envs/env_.*/Object"],
+                    include_static_shapes=True,
+                ),
+            ],
+            proxies=[
+                CouplerProxyMappingCfg(
+                    source="rigid",
+                    destination="object",
+                    bodies=[
+                        r"/World/envs/env_.*/Robot/panda_hand",
+                        r"/World/envs/env_.*/Robot/panda_(left|right)finger",
+                        r"/World/envs/env_.*/Table",
+                    ],
+                )
+            ],
+            iterations=1,
+        ),
+        num_substeps=2,
     )
 
     default = newton_mjwarp

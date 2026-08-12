@@ -20,14 +20,6 @@ if TYPE_CHECKING:
     from isaaclab.sensors import FrameTransformer
 
 
-def object_is_lifted(
-    env: ManagerBasedRLEnv, minimal_height: float, object_cfg: SceneEntityCfg = SceneEntityCfg("object")
-) -> torch.Tensor:
-    """Reward the agent for lifting the object above the minimal height."""
-    object: RigidObject = env.scene[object_cfg.name]
-    return torch.where(object.data.root_pos_w.torch[:, 2] > minimal_height, 1.0, 0.0)
-
-
 def object_ee_distance(
     env: ManagerBasedRLEnv,
     std: float,
@@ -76,7 +68,7 @@ class object_fingertip_distance(ManagerTermBase):
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        from .utils import sample_object_point_cloud
+        from isaaclab_tasks.core.lift.mdp.utils import sample_object_point_cloud
 
         object_cfg: SceneEntityCfg = cfg.params.get("object_cfg", SceneEntityCfg("object"))
         num_points = 32
@@ -234,24 +226,6 @@ def object_goal_reached(
     distance = torch.linalg.norm(des_pos_w - object_pos_w, dim=1)
     is_lifted = object_pos_w[:, 2] > minimal_height
     return (is_lifted & (distance < success_threshold)).float()
-
-
-def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:
-    """Penalty signal for commanding the gripper to close.
-
-    The binary gripper action uses negative float actions for close commands and
-    non-negative actions for open commands.
-
-    Args:
-        env: The environment instance.
-        action_name: Name of the gripper action term.
-
-    Returns:
-        Tensor with shape ``(num_envs,)`` containing ``1`` when the gripper is
-        commanded closed and ``0`` otherwise.
-    """
-    gripper_action = env.action_manager.get_term(action_name).raw_actions
-    return torch.any(gripper_action < 0.0, dim=1).float()
 
 
 def _object_position_w(object: RigidObject, object_cfg: SceneEntityCfg) -> torch.Tensor:
