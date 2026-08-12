@@ -57,8 +57,6 @@ from isaaclab_tasks.utils.presets import MultiBackendRendererCfg
 
 from ... import mdp
 
-from . import mdp
-
 ##
 # Pre-defined configs
 ##
@@ -501,35 +499,11 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Deformable analogue of the winning rigid-cube lift recipe.
-
-    The dense lift reward is ungated (``minimal_height`` 0.0) so it is graded across the FULL COM
-    height range: pressing the soft beam into the table (which drops its COM below rest) is
-    penalized and raising it is rewarded, giving a continuous escape gradient from the
-    press-into-table local optimum. Goal-tracking gates sit just above rest (0.06 m) so those
-    terms engage only after a genuine lift. Success = COM within 5 cm of the goal position.
-    """
+    """Lift-to-target reward for a deformable object."""
 
     reaching_deformable = RewTerm(
         func=mdp.deformable_com_ee_distance,
         params={"std": 0.1, "asset_cfg": SceneEntityCfg("deformable")},
-        weight=2.0,
-    )
-
-    grasping_deformable = RewTerm(
-        func=mdp.deformable_fingertip_distance,
-        params={
-            "std": 0.1,
-            "asset_cfg": SceneEntityCfg("deformable"),
-            "robot_cfg": SceneEntityCfg("robot", body_names=["panda_leftfinger", "panda_rightfinger"]),
-            "target_com": True,
-        },
-        weight=2.0,
-    )
-
-    lifting_deformable = RewTerm(
-        func=mdp.deformable_lifting,
-        params={"std": 0.1, "minimal_height": 0.05, "asset_cfg": SceneEntityCfg("deformable")},
         weight=5.0,
     )
 

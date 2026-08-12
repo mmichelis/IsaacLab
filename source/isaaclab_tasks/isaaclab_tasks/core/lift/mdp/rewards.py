@@ -469,40 +469,6 @@ def deformable_com_goal_reached(
     return (is_lifted & (distance < success_threshold)).float()
 
 
-class deformable_com_goal_distance_delta(ManagerTermBase):
-    """Reward progress of the deformable COM toward the commanded goal."""
-
-    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
-        super().__init__(cfg, env)
-        self._prev_distance = torch.zeros(env.num_envs, device=env.device)
-        self._needs_baseline = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
-
-    def reset(self, env_ids: torch.Tensor):
-        self._needs_baseline[env_ids] = True
-
-    def __call__(
-        self,
-        env: ManagerBasedRLEnv,
-        minimal_height: float,
-        command_name: str,
-        robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-        asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
-    ) -> torch.Tensor:
-        robot: Articulation = env.scene[robot_cfg.name]
-        asset: DeformableObject = env.scene[asset_cfg.name]
-        command = env.command_manager.get_command(command_name)
-        des_pos_w, _ = combine_frame_transforms(
-            wp.to_torch(robot.data.root_pos_w), wp.to_torch(robot.data.root_quat_w), command[:, :3]
-        )
-        com_w = wp.to_torch(asset.data.root_pos_w)
-        distance = torch.linalg.norm(des_pos_w - com_w, dim=1)
-        self._prev_distance = torch.where(self._needs_baseline, distance, self._prev_distance)
-        self._needs_baseline[:] = False
-        delta = self._prev_distance - distance
-        self._prev_distance = distance
-        return (com_w[:, 2] > minimal_height) * delta
-
-
 def gripper_close_action(env: ManagerBasedRLEnv, action_name: str = "gripper_action") -> torch.Tensor:
     """Return one when the binary gripper action commands closing and zero otherwise."""
     gripper_action = env.action_manager.get_term(action_name).raw_actions
@@ -594,14 +560,3 @@ def cable_segment_goal_reached(
     """Reward a cable segment for reaching the goal."""
     distance = _cable_segment_goal_metrics(env, command_name, segment_index, robot_cfg, asset_cfg)
     return (distance < success_threshold).float()
-
-
-def _object_position_w(object: RigidObject, object_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Return the object's root or single selected body position [m]."""
-    if object_cfg.body_names is None and object_cfg.body_ids == slice(None):
-        return object.data.root_pos_w.torch
-
-    body_pos_w = object.data.body_pos_w.torch[:, object_cfg.body_ids]
-    if body_pos_w.shape[1] != 1:
-        raise ValueError("Rigid-object rewards require exactly one selected body.")
-    return body_pos_w[:, 0]

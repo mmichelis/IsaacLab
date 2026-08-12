@@ -29,7 +29,7 @@ ALGO_CFG = RslRlPpoAlgorithmCfg(
 
 
 @configclass
-class FrankaSoftLiftPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class FrankaDeformablePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 3000
     save_interval = 50
@@ -83,13 +83,6 @@ class FrankaDeformableCameraPPORunnerCfg(RslRlOnPolicyRunnerCfg):
             activation="elu",
         ),
         activation="elu",
-        obs_normalization=True,
-        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=1.0),
-    )
-    critic = RslRlMLPModelCfg(
-        hidden_dims=[256, 128, 64],
-        activation="elu",
-        obs_normalization=True,
     )
     critic = RslRlMLPModelCfg(
         obs_normalization=True,

@@ -3,8 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""This sub-module contains the functions that are specific to the deformable lift environments."""
+__all__ = [
+    "DeformableUniformPoseCommandCfg",
+    "ObjectUniformPoseCommandCfg",
+]
 
-from isaaclab.utils.module import lazy_export
-
-lazy_export()
+from .pose_commands_cfg import DeformableUniformPoseCommandCfg, ObjectUniformPoseCommandCfg
