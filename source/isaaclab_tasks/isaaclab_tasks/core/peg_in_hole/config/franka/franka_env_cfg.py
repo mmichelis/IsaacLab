@@ -4,15 +4,11 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, RigidObjectCfg
-from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim import CollisionPropertiesCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
-from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_tasks.core.peg_in_hole import mdp
@@ -23,33 +19,58 @@ from isaaclab_tasks.utils import preset
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from isaaclab_assets.robots.franka import FRANKA_PANDA_CFG  # isort: skip
+from isaaclab_assets.robots.franka import FRANKA_PANDA_MENAGERIE_CFG  # isort: skip
 
 
 @configclass
 class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
     def __post_init__(self):
-        # post init of parent
         super().__post_init__()
-        # Set Franka as robot (legacy asset: both fingers driven independently, no mimic)
-        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
-        self.scene.table = preset(
-            default=self.scene.table,
-            newton_mjwarp_vbd_proxy=ArticulationCfg(
-                prim_path="{ENV_REGEX_NS}/Table",
-                init_state=ArticulationCfg.InitialStateCfg(
-                    pos=(0.5, 0.0, -0.525), rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
-                ),
-                spawn=sim_utils.CuboidCfg(
-                    size=(1.3, 0.9, 1.05),
-                    collision_props=CollisionPropertiesCfg(),
-                    rigid_props=RigidBodyPropertiesCfg(kinematic_enabled=True),
-                ),
-                actuators={},
-                articulation_root_prim_path="",
+        self.robot.actuators = {
+            # inspired by libfranka's joint_impedance_control.cpp
+            "panda_arm": ImplicitActuatorCfg(
+                joint_names_expr=["panda_joint[1-7]"],
+                effort_limit_sim={"panda_joint[1-4]": 87.0, "panda_joint[5-7]": 12.0},
+                velocity_limit_sim={"panda_joint[1-4]": 2.175, "panda_joint[5-7]": 2.61},
+                stiffness={
+                    "panda_joint[1-4]": 600.0,
+                    "panda_joint5": 250.0,
+                    "panda_joint6": 150.0,
+                    "panda_joint7": 50.0,
+                },
+                damping={
+                    "panda_joint[1-4]": 50.0,
+                    "panda_joint5": 30.0,
+                    "panda_joint6": 25.0,
+                    "panda_joint7": 15.0,
+                },
+                armature={
+                    "panda_joint[1-2]": 0.6057,
+                    "panda_joint[3-4]": 0.4625,
+                    "panda_joint[5-7]": 0.2055,
+                },
             ),
-        )
+            "panda_hand": ImplicitActuatorCfg(
+                joint_names_expr=["panda_finger_joint1"],
+                effort_limit_sim=70.0,
+                velocity_limit=0.2,
+                velocity_limit_sim=2.0,
+                stiffness=350.0,
+                damping=175.0,
+                armature=0.1,
+            ),
+            "panda_finger2_passive": ImplicitActuatorCfg(
+                joint_names_expr=["panda_finger_joint2"],
+                effort_limit_sim=1.0,
+                velocity_limit=0.2,
+                velocity_limit_sim=2.0,
+                stiffness=0.0,
+                damping=0.0,
+                armature=0.1,
+            ),
+        }
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
@@ -58,31 +79,6 @@ class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
         self.actions.gripper_action = mdp.JointPositionToLimitsActionCfg(
             asset_name="robot", joint_names=["panda_finger.*"], rescale_to_limits=True
         )
-        # Set Cube as object. Multi-asset spawner distributes differently-sized DexCubes
-        # across envs (per-env size randomization).
-        cube_rigid_props = RigidBodyPropertiesCfg(
-            solver_position_iteration_count=16,
-            solver_velocity_iteration_count=1,
-            max_angular_velocity=1000.0,
-            max_linear_velocity=1000.0,
-            max_depenetration_velocity=5.0,
-            disable_gravity=False,
-        )
-        self.scene.object = RigidObjectCfg(
-            prim_path="{ENV_REGEX_NS}/Object",
-            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0, 0.055], rot=[0, 0, 0, 1]),
-            spawn=sim_utils.MultiAssetSpawnerCfg(
-                assets_cfg=[
-                    UsdFileCfg(
-                        usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
-                        scale=(s, s, s),
-                    )
-                    for s in (0.64, 0.72, 0.80, 0.88, 0.96)
-                ],
-                rigid_props=cube_rigid_props,
-            ),
-        )
-
         # Listens to the required transforms
         marker_cfg = FRAME_MARKER_CFG.copy()
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
@@ -100,16 +96,4 @@ class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
                     ),
                 ),
             ],
-        )
-
-        # Grasp shaping: draw both fingers onto the nearest point of the cube surface to reward
-        # the finger-closing stage the hand-midpoint reach reward ignores (Franka-specific bodies).
-        self.rewards.grasping_object = RewTerm(
-            func=mdp.object_fingertip_distance,
-            params={
-                "std": 0.05,
-                "object_cfg": SceneEntityCfg("object", body_names="Object"),
-                "robot_cfg": SceneEntityCfg("robot", body_names=["panda_leftfinger", "panda_rightfinger"]),
-            },
-            weight=2.0,
         )
