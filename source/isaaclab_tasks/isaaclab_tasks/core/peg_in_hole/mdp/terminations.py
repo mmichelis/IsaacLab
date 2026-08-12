@@ -34,25 +34,28 @@ def joint_vel_out_of_sim_limit(
     return torch.any(torch.abs(asset.data.joint_vel.torch[:, joint_ids]) > limits[:, joint_ids], dim=1)
 
 
-def object_outside_table_bounds(
+def object_outside_bounds(
     env: ManagerBasedRLEnv,
     x_bounds: tuple[float, float],
     y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
     asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
 ) -> torch.Tensor:
-    """Terminate if the rigid object's center leaves the table footprint in xy.
+    """Terminate if the rigid object's center leaves the workspace bounds.
 
     Args:
         env: The environment instance.
         x_bounds: Allowed x-position range in the environment frame [m].
         y_bounds: Allowed y-position range in the environment frame [m].
+        z_bounds: Allowed z-position range in the environment frame [m].
         asset_cfg: The rigid object entity.
 
     Returns:
         Boolean tensor with shape ``(num_envs,)``.
     """
     asset: RigidObject = env.scene[asset_cfg.name]
-    pos = asset.data.root_pos_w.torch[:, :2] - env.scene.env_origins[:, :2]
+    pos = asset.data.root_pos_w.torch[:, :3] - env.scene.env_origins[:, :3]
     outside_x = (pos[:, 0] < x_bounds[0]) | (pos[:, 0] > x_bounds[1])
     outside_y = (pos[:, 1] < y_bounds[0]) | (pos[:, 1] > y_bounds[1])
-    return outside_x | outside_y
+    outside_z = (pos[:, 2] < z_bounds[0]) | (pos[:, 2] > z_bounds[1])
+    return outside_x | outside_y | outside_z

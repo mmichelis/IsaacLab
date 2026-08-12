@@ -312,13 +312,14 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    object_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
-    )
-
     object_out_of_bounds = DoneTerm(
-        func=mdp.object_outside_table_bounds,
-        params={"x_bounds": (0.0, 1.0), "y_bounds": (-0.5, 0.5), "asset_cfg": SceneEntityCfg("object")},
+        func=mdp.object_outside_bounds,
+        params={
+            "x_bounds": (0.0, 1.0),
+            "y_bounds": (-0.5, 0.5),
+            "z_bounds": (-0.05, 1.0),
+            "asset_cfg": SceneEntityCfg("object"),
+        },
     )
 
     joint_vel_out_of_limit = DoneTerm(

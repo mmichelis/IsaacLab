@@ -15,7 +15,7 @@ __all__ = [
     "object_goal_distance_delta",
     "object_goal_reached",
     # terminations
-    "object_outside_table_bounds",
+    "object_outside_bounds",
     "joint_vel_out_of_sim_limit",
     # curriculums
     "gravity_range_linear",
@@ -30,5 +30,5 @@ from .rewards import (
     object_goal_reached,
     object_lifting,
 )
-from .terminations import joint_vel_out_of_sim_limit, object_outside_table_bounds
+from .terminations import joint_vel_out_of_sim_limit, object_outside_bounds
 from isaaclab.envs.mdp import *
