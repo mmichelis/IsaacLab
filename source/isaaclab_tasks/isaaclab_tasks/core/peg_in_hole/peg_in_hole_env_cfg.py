@@ -60,7 +60,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
             size=(0.02, 0.02, 0.05),
             physics_material=[
                 UsdPhysicsRigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-                NewtonMaterialCfg(contact_stiffness=1.0e4, contact_damping=100.0),
+                # NewtonMaterialCfg(contact_stiffness=1.0e4, contact_damping=100.0),
             ],
             rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -177,22 +177,66 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
-    reset_robot_arm_joints = EventTerm(
-        func=mdp.reset_joints_by_scale,
+    conditional_reset = EventTerm(
+        func="isaaclab_tasks.core.lift.mdp.events:conditional_reset",
         mode="reset",
         params={
-            "position_range": (0.9, 1.1),
-            "velocity_range": (0.0, 0.0),
-            "asset_cfg": SceneEntityCfg("robot", joint_names="panda_joint.*"),
-        },
-    )
-
-    reset_robot_gripper_joints = EventTerm(
-        func=mdp.reset_joints_shared_offset,
-        mode="reset",
-        params={
-            "position_range": (-0.03, 0.0),
-            "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint.*"),
+            "terms": {
+                "reset_robot_arm_joints": EventTerm(
+                    func=mdp.reset_joints_by_offset,
+                    mode="reset",
+                    params={
+                        "position_range": (-0.15, 0.15),
+                        "velocity_range": (0.0, 0.0),
+                        "asset_cfg": SceneEntityCfg("robot", joint_names="panda_joint.*"),
+                    },
+                ),
+                "reset_robot_gripper_joints": EventTerm(
+                    func=mdp.reset_joints_shared_offset,
+                    mode="reset",
+                    params={
+                        "position_range": (-0.04, 0.0),
+                        "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint.*"),
+                    },
+                ),
+                "reset_object_position": EventTerm(
+                    func=mdp.reset_root_state_uniform,
+                    mode="reset",
+                    params={
+                        "pose_range": {"x": (-0.15, 0.15), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+                        "velocity_range": {},
+                        "asset_cfg": SceneEntityCfg("object", body_names="Object"),
+                    },
+                ),
+            },
+            "buffer_size_per_group": 32768,
+            "oversample_factor": 2.0,
+            "diversity_feature": mdp.GraspTravelOpeningCfg(
+                asset_name="robot",
+                body_names=["panda_leftfinger", "panda_rightfinger"],
+                object_name="object",
+                command_name="object_pose",
+                gripper_joint_names="panda_finger_joint.*",
+                log_scale=True,
+            ),
+            "valid_criteria": {
+                "object_robot_clearance": mdp.MeshClearanceCfg(
+                    asset_name="robot",
+                    body_names=".*",
+                    object_name="object",
+                    num_object_points=32,
+                    min_clearance=0.01,
+                ),
+                "robot_table_clearance": mdp.SlabClearanceCfg(
+                    asset_name="robot",
+                    body_names=["panda_link[1-7]", "panda_hand", ".*finger"],
+                    object_name="object",
+                    obstacle_slabs=[((-0.15, 1.15), (-0.45, 0.45), 0.0)],
+                    num_object_points=32,
+                    min_clearance=0.0,
+                ),
+            },
+            "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
         },
     )
 
@@ -261,16 +305,6 @@ class EventCfg:
         },
     )
 
-    reset_object_position = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object", body_names="Object"),
-        },
-    )
-
 
 @configclass
 class RewardsCfg:
@@ -279,7 +313,7 @@ class RewardsCfg:
     reaching_object = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.2, "object_cfg": SceneEntityCfg("object", body_names="Object")},
-        weight=5.0,
+        weight=1.0,
     )
 
     lifting_object = RewTerm(
@@ -292,16 +326,16 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    object_goal_tracking_delta = RewTerm(
-        func=mdp.object_goal_distance_delta,
-        params={
-            "minimal_height": 0.0,
-            "command_name": "object_pose",
-            "success_threshold": 0.05,
-            "object_cfg": SceneEntityCfg("object", body_names="Object"),
-        },
-        weight=500.0,
-    )
+    # object_goal_tracking_delta = RewTerm(
+    #     func=mdp.object_goal_distance_delta,
+    #     params={
+    #         "minimal_height": 0.0,
+    #         "command_name": "object_pose",
+    #         "success_threshold": 0.05,
+    #         "object_cfg": SceneEntityCfg("object", body_names="Object"),
+    #     },
+    #     weight=500.0,
+    # )
 
     success = RewTerm(
         func=mdp.object_goal_distance,
@@ -361,7 +395,7 @@ class CurriculumCfg:
     )
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 100000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 1000000}
     )
 
     gravity_adr = CurrTerm(
@@ -473,6 +507,10 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
 
     def play_mode(self):
         super().play_mode()
+        reset_params = self.events.conditional_reset.params
+        reset_params["buffer_size_per_group"] = 64
+        reset_params["oversample_factor"] = 1.0
+        reset_params["diversity_feature"] = None
         if self.curriculum is not None:
             self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
             self.curriculum.adr.params["promotion_only"] = True

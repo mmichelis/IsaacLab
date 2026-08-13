@@ -8,6 +8,11 @@ __all__ = [
     "object_point_cloud_b",
     "ObjectUniformPoseCommandCfg",
     "reset_joints_shared_offset",
+    "GraspTravelDistanceCfg",
+    "GraspTravelOpeningCfg",
+    "MeshClearanceCfg",
+    "SlabClearanceCfg",
+    "SuccessMonitorCfg",
     # rewards
     "object_ee_distance",
     "object_lifting",
@@ -25,11 +30,16 @@ __all__ = [
 
 from isaaclab_tasks.core.lift.mdp import (
     DifficultyScheduler,
+    GraspTravelDistanceCfg,
+    MeshClearanceCfg,
     ObjectUniformPoseCommandCfg,
+    SlabClearanceCfg,
+    SuccessMonitorCfg,
     initial_final_interpolate_fn,
     object_point_cloud_b,
     reset_joints_shared_offset,
 )
+from .events_cfg import GraspTravelOpeningCfg
 from .rewards import (
     object_ee_distance,
     object_fingertip_distance,

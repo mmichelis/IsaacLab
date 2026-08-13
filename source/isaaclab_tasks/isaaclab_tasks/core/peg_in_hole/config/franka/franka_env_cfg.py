@@ -22,7 +22,7 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_MENAGERIE_CFG  # isort: s
 class _JointActionsCfg:
     """Relative joint-position arm targets and a limit-rescaled gripper target."""
 
-    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.05)
+    arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.02)
     gripper_action = mdp.JointPositionToLimitsActionCfg(
         asset_name="robot", joint_names=["panda_finger_joint1"], rescale_to_limits=True
     )
@@ -68,6 +68,7 @@ class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot.init_state.joint_pos["panda_joint2"] = 0.0
         self.rewards.reaching_object.params["robot_cfg"] = SceneEntityCfg(
             "robot", body_names=["panda_leftfinger", "panda_rightfinger"]
         )
