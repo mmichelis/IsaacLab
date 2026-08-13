@@ -361,7 +361,7 @@ class CurriculumCfg:
     )
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 30000}
+        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 100000}
     )
 
     gravity_adr = CurrTerm(
