@@ -60,7 +60,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
             size=(0.02, 0.02, 0.05),
             physics_material=[
                 UsdPhysicsRigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
-                # NewtonMaterialCfg(contact_stiffness=1.0e4, contact_damping=100.0),
+                NewtonMaterialCfg(contact_stiffness=1.0e4, contact_damping=100.0),
             ],
             rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -106,7 +106,12 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.ObjectUniformPoseCommandCfg.Ranges(
-            pos_x=(0.4, 0.6), pos_y=(-0.25, 0.25), pos_z=(0.25, 0.5), roll=(0.0, 0.0), pitch=(0.0, 0.0), yaw=(-0.5, 0.5)
+            pos_x=(0.4, 0.6),
+            pos_y=(-0.25, 0.25),
+            pos_z=(0.025, 0.1),
+            roll=(0.0, 0.0),
+            pitch=(0.0, 0.0),
+            yaw=(-0.5, 0.5),
         ),
         success_vis_asset_name="table",
         success_visualizer_cfg=VisualizationMarkersCfg(
@@ -323,19 +328,19 @@ class RewardsCfg:
             "minimal_height": 0.025,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
-        weight=5.0,
+        weight=10.0,
     )
 
     success = RewTerm(
         func=mdp.object_goal_distance,
         params={
-            "std": 0.3,
+            "std": 0.1,
             "minimal_height": 0.0,
             "command_name": "object_pose",
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
-        weight=5.0,
+        weight=1.0,
     )
 
     success_bonus = RewTerm(
@@ -379,6 +384,23 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
+    adr = CurrTerm(
+        func=mdp.DifficultyScheduler, params={"init_difficulty": 0, "min_difficulty": 0, "max_difficulty": 10}
+    )
+
+    goal_z_adr = CurrTerm(
+        func=mdp.modify_term_cfg,
+        params={
+            "address": "commands.object_pose.ranges.pos_z",
+            "modify_fn": mdp.initial_final_interpolate_fn,
+            "modify_params": {
+                "initial_value": (0.05, 0.1),
+                "final_value": (0.25, 0.5),
+                "difficulty_term_str": "adr",
+            },
+        },
+    )
+
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 1000000}
     )
@@ -391,7 +413,7 @@ class CurriculumCfg:
             "start_gravity_z": -0.0001,
             "end_gravity_z": -9.81,
             "start_step": 0,
-            "end_step": 10000,
+            "end_step": 5000,
         },
     )
 
@@ -495,5 +517,8 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         reset_params["buffer_size_per_group"] = 64
         reset_params["oversample_factor"] = 1.0
         reset_params["diversity_feature"] = None
+        self.commands.object_pose.ranges.pos_z = (0.25, 0.5)
         if self.curriculum is not None:
             self.curriculum.gravity = None
+            self.curriculum.adr = None
+            self.curriculum.goal_z_adr = None
