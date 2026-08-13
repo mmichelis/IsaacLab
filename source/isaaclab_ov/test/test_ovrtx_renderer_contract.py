@@ -425,8 +425,6 @@ def _make_legacy_renderer_with_backend(events: list[str]) -> OVRTXRenderer:
     renderer._object_xform_binding = _RecordingBinding(events, "object")
     renderer._deformable_points_binding = _RecordingBinding(events, "deformable")
     renderer._particle_points_binding = _RecordingBinding(events, "particle")
-    renderer._deformable_particle_offsets = [0]
-    renderer._deformable_particle_counts = [1]
     renderer._particle_visual_offsets = [0]
     renderer._particle_visual_counts = [1]
     renderer._particle_workaround_applied = True
@@ -474,8 +472,6 @@ def _make_ovstage_renderer_with_backend(events: list[str]) -> OVRTXRenderer:
     renderer._particle_points_query = "particle"
     renderer._particle_paths_list = "particle"
     renderer._object_newton_indices = object()
-    renderer._deformable_particle_offsets = [0]
-    renderer._deformable_particle_counts = [1]
     renderer._particle_visual_offsets = [0]
     renderer._particle_visual_counts = [1]
     renderer._env_root_xforms = object()

@@ -111,9 +111,8 @@ class DeformableCfg(PresetCfg):
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=NewtonDeformableBodyMaterialCfg(
                 density=1000.0,
-                k_mu=YOUNGS_MODULUS / (2.0 * (1.0 + POISSONS_RATIO)),
-                k_lambda=(YOUNGS_MODULUS * POISSONS_RATIO / ((1.0 + POISSONS_RATIO) * (1.0 - 2.0 * POISSONS_RATIO))),
-                particle_radius=0.0025,
+                youngs_modulus=YOUNGS_MODULUS,
+                poissons_ratio=POISSONS_RATIO,
             ),
         ),
     )
