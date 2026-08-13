@@ -108,7 +108,7 @@ class CommandsCfg:
         ranges=mdp.ObjectUniformPoseCommandCfg.Ranges(
             pos_x=(0.4, 0.6),
             pos_y=(-0.25, 0.25),
-            pos_z=(0.075, 0.1),
+            pos_z=(0.08, 0.1),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(-0.5, 0.5),
@@ -394,7 +394,7 @@ class CurriculumCfg:
             "address": "commands.object_pose.ranges.pos_z",
             "modify_fn": mdp.initial_final_interpolate_fn,
             "modify_params": {
-                "initial_value": (0.075, 0.1),
+                "initial_value": (0.08, 0.1),
                 "final_value": (0.25, 0.5),
                 "difficulty_term_str": "adr",
             },
