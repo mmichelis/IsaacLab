@@ -24,18 +24,16 @@ __all__ = [
     "object_outside_bounds",
     "joint_vel_out_of_sim_limit",
     # curriculums
-    "DifficultyScheduler",
-    "initial_final_interpolate_fn",
+    "gravity_range_linear",
 ]
 
 from isaaclab_tasks.core.lift.mdp import (
-    DifficultyScheduler,
     GraspTravelDistanceCfg,
     MeshClearanceCfg,
     ObjectUniformPoseCommandCfg,
     SlabClearanceCfg,
     SuccessMonitorCfg,
-    initial_final_interpolate_fn,
+    gravity_range_linear,
     object_point_cloud_b,
     reset_joints_shared_offset,
 )

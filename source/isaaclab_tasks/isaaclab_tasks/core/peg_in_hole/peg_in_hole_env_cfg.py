@@ -233,7 +233,7 @@ class EventCfg:
                     object_name="object",
                     obstacle_slabs=[((-0.15, 1.15), (-0.45, 0.45), 0.0)],
                     num_object_points=32,
-                    min_clearance=0.0,
+                    min_clearance=0.001,
                 ),
             },
             "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
@@ -244,7 +244,7 @@ class EventCfg:
         func=mdp.randomize_physics_scene_gravity,
         mode="reset",
         params={
-            "gravity_distribution_params": ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            "gravity_distribution_params": ([0.0, 0.0, -9.81], [0.0, 0.0, -9.81]),
             "operation": "abs",
         },
     )
@@ -319,7 +319,7 @@ class RewardsCfg:
     lifting_object = RewTerm(
         func=mdp.object_lifting,
         params={
-            "std": 0.1,
+            "std": 0.02,
             "minimal_height": 0.025,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
@@ -390,24 +390,19 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    adr = CurrTerm(
-        func=mdp.DifficultyScheduler, params={"init_difficulty": 0, "min_difficulty": 0, "max_difficulty": 10}
-    )
-
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 1000000}
     )
 
-    gravity_adr = CurrTerm(
-        func=mdp.modify_term_cfg,
+    # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
+    gravity = CurrTerm(
+        func=mdp.gravity_range_linear,
         params={
-            "address": "events.variable_gravity.params.gravity_distribution_params",
-            "modify_fn": mdp.initial_final_interpolate_fn,
-            "modify_params": {
-                "initial_value": ((0.0, 0.0, -0.01), (0.0, 0.0, -0.01)),
-                "final_value": ((0.0, 0.0, -9.81), (0.0, 0.0, -9.81)),
-                "difficulty_term_str": "adr",
-            },
+            "event_name": "variable_gravity",
+            "start_gravity_z": -0.0001,
+            "end_gravity_z": -9.81,
+            "start_step": 0,
+            "end_step": 10000,
         },
     )
 
@@ -512,5 +507,4 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         reset_params["oversample_factor"] = 1.0
         reset_params["diversity_feature"] = None
         if self.curriculum is not None:
-            self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
-            self.curriculum.adr.params["promotion_only"] = True
+            self.curriculum.gravity = None
