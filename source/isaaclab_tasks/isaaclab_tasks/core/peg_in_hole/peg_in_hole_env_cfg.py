@@ -405,15 +405,16 @@ class CurriculumCfg:
         func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 1000000}
     )
 
-    # Since we use 24 steps per env, 10000 steps correspond to 10000/24 = 416.67 learning iterations
-    gravity = CurrTerm(
-        func=mdp.gravity_range_linear,
+    gravity_adr = CurrTerm(
+        func=mdp.modify_term_cfg,
         params={
-            "event_name": "variable_gravity",
-            "start_gravity_z": -0.01,
-            "end_gravity_z": -9.81,
-            "start_step": 0,
-            "end_step": 10000,
+            "address": "events.variable_gravity.params.gravity_distribution_params",
+            "modify_fn": mdp.initial_final_interpolate_fn,
+            "modify_params": {
+                "initial_value": ((0.0, 0.0, -0.98), (0.0, 0.0, -0.98)),
+                "final_value": ((0.0, 0.0, -9.81), (0.0, 0.0, -9.81)),
+                "difficulty_term_str": "adr",
+            },
         },
     )
 
@@ -519,6 +520,5 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         reset_params["diversity_feature"] = None
         self.commands.object_pose.ranges.pos_z = (0.25, 0.5)
         if self.curriculum is not None:
-            self.curriculum.gravity = None
-            self.curriculum.adr = None
-            self.curriculum.goal_z_adr = None
+            self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
+            self.curriculum.adr.params["promotion_only"] = True
