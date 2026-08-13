@@ -13,7 +13,7 @@ class PegInHolePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 50000
     save_interval = 100
-    clip_actions = 5.0
+    clip_actions = 1.0
     experiment_name = "franka_peg_in_hole"
     obs_groups = {
         "actor": ["policy", "proprio", "perception"],

@@ -108,7 +108,7 @@ class CommandsCfg:
         ranges=mdp.ObjectUniformPoseCommandCfg.Ranges(
             pos_x=(0.4, 0.6),
             pos_y=(-0.25, 0.25),
-            pos_z=(0.025, 0.1),
+            pos_z=(0.075, 0.1),
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(-0.5, 0.5),
@@ -191,7 +191,7 @@ class EventCfg:
                     func=mdp.reset_joints_by_offset,
                     mode="reset",
                     params={
-                        "position_range": (-0.15, 0.15),
+                        "position_range": (-0.2, 0.2),
                         "velocity_range": (0.0, 0.0),
                         "asset_cfg": SceneEntityCfg("robot", joint_names="panda_joint.*"),
                     },
@@ -200,7 +200,7 @@ class EventCfg:
                     func=mdp.reset_joints_shared_offset,
                     mode="reset",
                     params={
-                        "position_range": (-0.04, 0.0),
+                        "position_range": (-0.02, 0.0),
                         "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint.*"),
                     },
                 ),
@@ -208,7 +208,7 @@ class EventCfg:
                     func=mdp.reset_root_state_uniform,
                     mode="reset",
                     params={
-                        "pose_range": {"x": (-0.15, 0.15), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+                        "pose_range": {"x": (-0.25, 0.25), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
                         "velocity_range": {},
                         "asset_cfg": SceneEntityCfg("object", body_names="Object"),
                     },
@@ -318,7 +318,7 @@ class RewardsCfg:
     reaching_object = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.2, "object_cfg": SceneEntityCfg("object", body_names="Object")},
-        weight=1.0,
+        weight=5.0,
     )
 
     lifting_object = RewTerm(
@@ -340,7 +340,7 @@ class RewardsCfg:
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
         },
-        weight=1.0,
+        weight=5.0,
     )
 
     success_bonus = RewTerm(
@@ -394,7 +394,7 @@ class CurriculumCfg:
             "address": "commands.object_pose.ranges.pos_z",
             "modify_fn": mdp.initial_final_interpolate_fn,
             "modify_params": {
-                "initial_value": (0.05, 0.1),
+                "initial_value": (0.075, 0.1),
                 "final_value": (0.25, 0.5),
                 "difficulty_term_str": "adr",
             },
@@ -410,10 +410,10 @@ class CurriculumCfg:
         func=mdp.gravity_range_linear,
         params={
             "event_name": "variable_gravity",
-            "start_gravity_z": -0.0001,
+            "start_gravity_z": -0.01,
             "end_gravity_z": -9.81,
             "start_step": 0,
-            "end_step": 5000,
+            "end_step": 10000,
         },
     )
 
