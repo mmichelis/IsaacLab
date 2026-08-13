@@ -326,17 +326,6 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    # object_goal_tracking_delta = RewTerm(
-    #     func=mdp.object_goal_distance_delta,
-    #     params={
-    #         "minimal_height": 0.0,
-    #         "command_name": "object_pose",
-    #         "success_threshold": 0.05,
-    #         "object_cfg": SceneEntityCfg("object", body_names="Object"),
-    #     },
-    #     weight=500.0,
-    # )
-
     success = RewTerm(
         func=mdp.object_goal_distance,
         params={
