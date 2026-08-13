@@ -7,14 +7,13 @@ from __future__ import annotations
 
 import contextlib
 import copy
-import re
 from collections.abc import Callable, Iterator, Sequence
 from typing import TYPE_CHECKING, TypeAlias
 
 import torch
 import warp as wp
 from newton import ModelBuilder
-from newton._src.usd.schemas import SchemaResolverNewton, SchemaResolverPhysx
+from newton.usd import SchemaResolverNewton, SchemaResolverPhysx
 
 from pxr import Usd
 
@@ -133,35 +132,26 @@ def _build_newton_builder_from_mapping(
     _restore_visible_colliders_without_visual_shapes(builder, stage, stage_info["path_shape_map"], load_visual_shapes)
     replace_newton_builder_shape_colors(builder, stage)
 
-    # Deformable prim paths are handled by per_world_builder_hooks, not add_usd.
-    # Resolve the regex prim_path patterns to concrete env_0 paths so add_usd
-    # can skip them via ignore_paths.
-    deformable_patterns = tuple(
-        re.compile(entry.prim_path.replace(".*", "[^/]*")) for entry in NewtonManager._deformable_registry
-    )
-    deformable_ignore_paths = []
-    if deformable_patterns:
-        for source in sources:
-            for child in Usd.PrimRange(stage.GetPrimAtPath(source)):
-                child_path = str(child.GetPath())
-                if any(pattern.fullmatch(child_path) for pattern in deformable_patterns):
-                    deformable_ignore_paths.append(child_path)
-
     source_builders = build_source_builders(
         stage,
         sources,
         lambda: manager_cls.create_builder(up_axis=up_axis),
         schema_resolvers,
-        ignore_paths=deformable_ignore_paths or None,
         load_visual_shapes=load_visual_shapes,
     )
 
     # Inject registered sites into source builders (and global sites into main builder).
     global_sites, source_sites, root_sites = NewtonManager._cl_inject_sites(builder, source_builders)
 
+    destination_path_prefixes = (
+        [destinations[0].format(int(env_id)) for env_id in env_ids.tolist()]
+        if len(sources) == len(destinations) == 1
+        else None
+    )
     replicate_args = (builder, sources, mapping, positions, quaternions, source_builders)
     local_site_map, world_xforms = replicate_builder_mapping(
         *replicate_args,
+        destination_path_prefixes=destination_path_prefixes,
         source_site_indices=source_sites,
         env_root_sites=root_sites,
         per_world_builder_hooks=NewtonManager._per_world_builder_hooks,

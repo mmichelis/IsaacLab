@@ -2067,8 +2067,8 @@ def define_deformable_body_properties(
         raise ValueError(f"Mesh prim path '{vis_mesh_prim.GetPrimPath()}' is not valid.")
 
     # define authors a fresh deformable setup; callers must clear any previous setup before calling this function.
-    # We check the USD namespace to determine which API to use for the deformable body.
-    use_omni_physics_apis = getattr(cfg, "_usd_namespace", None) != "newton"
+    # We check the applied schema to determine which API to use for the deformable body.
+    use_omni_physics_apis = getattr(cfg, "_usd_applied_schema", None) != "PhysicsDeformableBodyAPI"
 
     # create and set simulation/root prim properties based on the type of the deformable mesh (surface vs volume)
     sim_mesh_prim_path = prim_path + "/sim_mesh" if sim_mesh_prim_path is None else sim_mesh_prim_path

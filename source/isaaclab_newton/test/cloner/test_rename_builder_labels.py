@@ -18,13 +18,11 @@ from isaaclab_newton.cloner.newton_clone_utils import (
     replicate_builder_mapping,
 )
 from isaaclab_newton.physics import visualization_builder as visualization_builder_module
-from isaaclab_newton.physics import visualization_deformables as visualization_deformables_module
 from newton.solvers import SolverMuJoCo
 
 from pxr import Usd, UsdGeom
 
 from isaaclab.cloner import ClonePlan
-from isaaclab.scene_data.deformable_discovery import DeformableStageEntry
 
 _VIS_LABEL_SUFFIXES = {
     "body_label": "Body",
@@ -49,6 +47,12 @@ class _FakeVisualizationModelBuilder:
         for attr in _VIS_BUILTIN_LABEL_ATTRS:
             setattr(self, attr, [])
             setattr(self, attr.replace("_label", "_world"), [])
+        self.curve_label = []
+        self.curve_world = []
+        self.surface_label = []
+        self.surface_world = []
+        self.volume_label = []
+        self.volume_world = []
         self.custom_attributes = {
             "mujoco:equality_constraint_label": newton.ModelBuilder.CustomAttribute(
                 name="equality_constraint_label", frequency=_VIS_EQ_FREQ, dtype=str, default="", namespace="mujoco"
@@ -210,6 +214,20 @@ class TestRenameBuilderLabels(unittest.TestCase):
             [f"{_DST.format(int(w))}/Tendon_{int(w)}" for w in tendon_worlds],
         )
 
+    def test_deformable_labels_rewritten_per_world(self):
+        builder = _make_builder(self.worlds)
+        for family in ("curve", "surface", "volume"):
+            getattr(builder, f"{family}_label").extend(f"{_SRC}/{family}_{world}" for world in self.worlds)
+            getattr(builder, f"{family}_world").extend(self.worlds)
+
+        self._rename(builder)
+
+        for family in ("curve", "surface", "volume"):
+            self.assertEqual(
+                getattr(builder, f"{family}_label"),
+                [f"{_DST.format(world)}/{family}_{world}" for world in self.worlds],
+            )
+
     def test_source_root_boundary_cases(self):
         builder = _make_builder(self.worlds)
         builder.body_label.append(_SRC)
@@ -336,15 +354,40 @@ class TestReplicateBuilderMapping(unittest.TestCase):
                 quaternions,
                 {_SRC: source},
                 source_site_indices={id(source): {"ee": [site_idx]}},
+                destination_path_prefixes=[_DST.format(i) for i in range(3)],
             )
 
         replicate.assert_called_once()
+        self.assertEqual(replicate.call_args.kwargs["source_path_prefix"], _SRC)
+        self.assertEqual(replicate.call_args.kwargs["destination_path_prefixes"], [_DST.format(i) for i in range(3)])
         self.assertEqual(
             local_site_map["ee"],
             [[base_shape + world * stride + site_idx] for world in range(3)],
         )
         for world_indices in local_site_map["ee"]:
             self.assertEqual(builder.shape_label[world_indices[0]], "ee")
+
+    def test_deformables_with_per_world_hooks_require_add_builder_path_rebasing(self):
+        source = newton.ModelBuilder()
+        source.surface_label.append(f"{_SRC}/Cloth")
+        source.surface_world.append(-1)
+        builder = newton.ModelBuilder()
+        positions = torch.zeros((2, 3))
+        quaternions = torch.tensor([[0.0, 0.0, 0.0, 1.0]] * 2)
+
+        with self.assertRaisesRegex(NotImplementedError, "add_builder path rebasing"):
+            replicate_builder_mapping(
+                builder,
+                (_SRC,),
+                torch.ones((1, 2), dtype=torch.bool),
+                positions,
+                quaternions,
+                {_SRC: source},
+                destination_path_prefixes=[_DST.format(i) for i in range(2)],
+                per_world_builder_hooks=[lambda *_: None],
+            )
+
+        self.assertEqual(builder.world_count, 0)
 
     def test_env_root_sites_batched_at_correct_world_positions(self):
         source = newton.ModelBuilder()
@@ -399,33 +442,6 @@ class TestReplicateBuilderMapping(unittest.TestCase):
 
 
 class TestVisualizationClonePlan(unittest.TestCase):
-    def test_clone_plan_expands_prototype_deformables_to_selected_environments(self):
-        entry = DeformableStageEntry(
-            root_path="/World/envs/env_0/Deformable",
-            sim_mesh_path="/World/envs/env_0/Deformable/simulation_mesh",
-            vis_mesh_path="/World/envs/env_0/Deformable/visual_mesh",
-            deformable_type="surface",
-            vertex_count=3,
-            vis_vertex_count=3,
-        )
-        clone_plan = ClonePlan(
-            sources=("/World/envs/env_0",),
-            destinations=("/World/envs/env_{}",),
-            clone_mask=torch.ones((1, 4), dtype=torch.bool),
-            env_ids=torch.arange(4),
-        )
-
-        entries = visualization_deformables_module._expand_clone_plan_deformable_entries([entry], clone_plan)
-
-        self.assertEqual(
-            [entry.root_path for entry in entries],
-            [f"/World/envs/env_{env_id}/Deformable" for env_id in range(4)],
-        )
-        self.assertEqual(
-            [entry.vis_mesh_path for entry in entries],
-            [f"/World/envs/env_{env_id}/Deformable/visual_mesh" for env_id in range(4)],
-        )
-
     @staticmethod
     def _define_xform(stage, path, translation=None):
         xform = UsdGeom.Xform.Define(stage, path)
@@ -444,14 +460,10 @@ class TestVisualizationClonePlan(unittest.TestCase):
             mock.patch.object(visualization_builder_module, "SchemaResolverNewton", lambda: "newton"),
             mock.patch.object(visualization_builder_module, "SchemaResolverPhysx", lambda: "physx"),
         ):
-            result, (shadow_entities, registry_groups) = (
-                visualization_builder_module.build_visualization_builder_from_stage_envs(stage, [], None)
-            )
+            result = visualization_builder_module.build_visualization_builder_from_stage_envs(stage, [], None)
 
         self.assertIs(result, builder)
-        self.assertEqual(shadow_entities, [])
-        self.assertEqual(registry_groups, [])
-        builder.add_usd.assert_called_once_with(stage, schema_resolvers=["newton", "physx"], ignore_paths=None)
+        builder.add_usd.assert_called_once_with(stage, schema_resolvers=["newton", "physx"])
 
     def test_visualization_builder_rejects_clone_plan_without_environment_paths(self):
         """A cloned scene must not be cached as an incomplete single-world model."""
@@ -498,7 +510,7 @@ class TestVisualizationClonePlan(unittest.TestCase):
             mock.patch.object(newton_clone_utils_module.solvers.SolverMuJoCo, "register_custom_attributes"),
             mock.patch.object(newton_clone_utils_module.solvers.SolverKamino, "register_custom_attributes"),
         ):
-            builder, _shadow_metadata = visualization_builder_module.build_visualization_builder_from_stage_envs(
+            builder = visualization_builder_module.build_visualization_builder_from_stage_envs(
                 stage, env_paths, clone_plan
             )
 

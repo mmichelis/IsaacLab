@@ -23,7 +23,6 @@ import contextlib
 import logging
 import math
 import os
-import re
 from itertools import compress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, cast
@@ -373,8 +372,7 @@ class OVRTXRenderer(BaseRenderer):
         # _init_fields_legacy instead; the ovstage path drives the same offsets and counts
         # through its stage queries.
         self._object_newton_indices: wp.array | None = None
-        self._deformable_particle_offsets: list[int] = []
-        self._deformable_particle_counts: list[int] = []
+        self._deformable_visual_meshes: list[Any] = []
         self._particle_visual_offsets: list[int] = []
         self._particle_visual_counts: list[int] = []
         self._initialized_scene = False
@@ -702,67 +700,46 @@ class OVRTXRenderer(BaseRenderer):
 
         self._object_newton_indices = wp.array(newton_indices, dtype=wp.int32, device=self._device)
 
+    def _collect_deformable_bindings(self) -> list[str]:
+        """Collect Newton-owned deformable visual meshes."""
+        try:
+            from isaaclab_newton.physics import NewtonManager
+        except ImportError:
+            logger.debug("NewtonManager not available, skipping deformable body bindings")
+            return []
+
+        model = NewtonManager.get_model()
+        if model is None:
+            logger.debug("Newton model not available, skipping deformable body bindings")
+            return []
+
+        self._deformable_visual_meshes = []
+        visual_paths: list[str] = []
+        for mesh in getattr(model, "deformable_visual_meshes", None) or []:
+            path = mesh.graphics_path
+            if path is None:
+                continue
+            if not isinstance(path, str) or not path.startswith("/"):
+                raise RuntimeError(f"Newton deformable visual mesh {mesh.index} has no absolute graphics path.")
+            self._deformable_visual_meshes.append(mesh)
+            visual_paths.append(path)
+
+        return visual_paths
+
     def _setup_deformable_bindings_legacy(self, num_envs: int):
         """Setup OVRTX bindings for Newton deformable bodies.
 
         Args:
             num_envs: Number of environments.
         """
-        try:
-            from isaaclab_newton.physics import NewtonManager
-        except ImportError:
-            logger.debug("NewtonManager not available, skipping deformable body bindings")
+        vis_mesh_prim_paths = self._collect_deformable_bindings()
+        if not vis_mesh_prim_paths:
+            logger.debug("No Newton deformable groups found, skipping deformable body bindings")
             return
-
-        # Early return if the deformable registry is empty.
-        deformable_registry = NewtonManager._deformable_registry
-        if not deformable_registry:
-            logger.debug("Deformable registry is empty, skipping deformable body bindings")
-            return
-
-        # Validate the number of particle offsets for each deformable entry upfront.
-        bad_entries = [entry for entry in deformable_registry if len(entry.particle_offsets) != num_envs]
-        if bad_entries:
-            details = "\n".join(
-                f"- '{entry.prim_path}' has {len(entry.particle_offsets)} particle offsets" for entry in bad_entries
-            )
-            raise RuntimeError(
-                f"OVRTX expects one particle offset per environment ({num_envs}), but the following "
-                f"deformable entries have a mismatched offset count:\n{details}"
-            )
-
-        self._deformable_particle_offsets = []
-        self._deformable_particle_counts = []
-
-        vis_mesh_prim_paths: list[str] = []
-
-        # Each registry entry is one deformable asset registered at spawn time. Its
-        # ``vis_mesh_prim_path`` uses a regex env wildcard (e.g. ``env_.*``) to denote one
-        # homogeneous visual mesh replicated into every environment, not a subset of envs.
-        # During replication, Newton appends one particle block per env in contiguous env order
-        # and records the start index in ``entry.particle_offsets``; ``particles_per_body`` is
-        # the block size. The inner loop therefore emits one OVRTX mesh binding per env,
-        # resolving the env wildcard with ``env_idx`` and pairing it with that env's slice in
-        # the flat ``particle_q`` array.
-        #
-        # This mapping is valid only while deformable registry entries remain homogeneous across
-        # all envs with dense, contiguous env ids. If deformables later support env subsets or
-        # non-contiguous env ids, OVRTX must consume explicit per-instance env metadata instead
-        # of deriving env ids from ``enumerate(entry.particle_offsets)``.
-        for entry in deformable_registry:
-            for idx, particle_offset in enumerate(entry.particle_offsets):
-                self._deformable_particle_offsets.append(particle_offset)
-                self._deformable_particle_counts.append(entry.particles_per_body)
-
-                vis_mesh_prim_paths.append(re.sub(r"(?<=[Ee]nv_)\.\*", str(idx), entry.vis_mesh_prim_path))
 
         prim_count = len(vis_mesh_prim_paths)
-        if prim_count == 0:
-            logger.warning("No deformable visual prim paths collected, skipping deformable body bindings")
-            return
 
-        # World-space particle_q is written directly into mesh points. Reset the xform stack
-        # and pin identity omni:xform so inherited env/asset transforms are not applied twice.
+        # Newton visual points are in world space.
         self._renderer.write_attribute(
             prim_paths=vis_mesh_prim_paths,
             attribute_name="omni:resetXformStack",
@@ -913,29 +890,28 @@ class OVRTXRenderer(BaseRenderer):
         if self._deformable_points_binding is None and self._particle_points_binding is None:
             return
 
-        # If self._deformable_points_binding is not None, then Newton's the current physics backend
         from isaaclab_newton.physics import NewtonManager
 
-        newton_state = NewtonManager.get_state()
-        if newton_state is None:
-            raise RuntimeError("Newton state should not be None")
-
-        # particle_q is the world-space particle positions for all deformable bodies and
-        # particle clouds. A non-None geometry binding means entries were registered, so Newton
-        # must expose particle state; a missing particle_q here is an inconsistent state.
-        particle_q = getattr(newton_state, "particle_q", None)
-        if particle_q is None:
-            raise RuntimeError("Newton state has no particle_q but geometry bindings exist")
-
         if self._deformable_points_binding is not None:
-            self._write_particle_q_slices(
-                self._deformable_points_binding,
-                particle_q,
-                self._deformable_particle_offsets,
-                self._deformable_particle_counts,
+            stream = wp.get_stream(self._device)
+            visuals = NewtonManager.get_deformable_visuals()
+            if visuals is None:
+                raise RuntimeError("Newton deformable visuals are unavailable")
+            visuals.wait(stream)
+            points = [visuals.get_points(mesh) for mesh in self._deformable_visual_meshes]
+            self._deformable_points_binding.write(
+                cast(Any, points),
+                data_access=DataAccess.ASYNC,
+                cuda_stream=stream.cuda_stream,
             )
 
         if self._particle_points_binding is not None:
+            newton_state = NewtonManager.get_state()
+            if newton_state is None:
+                raise RuntimeError("Newton state should not be None")
+            particle_q = getattr(newton_state, "particle_q", None)
+            if particle_q is None:
+                raise RuntimeError("Newton state has no particle_q but direct particle bindings exist")
             if not self._particle_workaround_applied:
                 self._apply_particle_workaround(particle_q)
                 self._particle_workaround_applied = True
@@ -967,13 +943,7 @@ class OVRTXRenderer(BaseRenderer):
             for particle_offset, particle_count in zip(particle_offsets, particle_counts, strict=True)
         ]
 
-        # Array attributes cannot use ``binding.map()`` like rigid-body xforms, and
-        # ``DataAccess.ASYNC`` lets OVRTX read the slices in place (no copy on ingest).
-        # Because the slices alias ``particle_q``, OVRTX must not read them until the
-        # Warp kernels that wrote ``particle_q`` have finished. Passing ``cuda_stream``
-        # hands OVRTX the Warp stream those kernels were enqueued on so it can insert a
-        # GPU-side wait (a cross-stream dependency) before its read, instead of us
-        # forcing a host-side ``wp.synchronize_device()`` that would stall the CPU.
+        # ASYNC keeps the slices zero-copy; cuda_stream orders OVRTX reads after Warp writes.
         cuda_stream = wp.get_stream(self._device).cuda_stream
         binding.write(
             cast(Any, particle_slices),
@@ -1433,8 +1403,7 @@ class OVRTXRenderer(BaseRenderer):
         _safe_unbind(self._particle_points_binding, "particle points")
         self._particle_points_binding = None
 
-        self._deformable_particle_offsets = []
-        self._deformable_particle_counts = []
+        self._deformable_visual_meshes = []
         self._particle_visual_offsets = []
         self._particle_visual_counts = []
         self._particle_workaround_applied = False
@@ -1857,63 +1826,17 @@ class OVRTXRenderer(BaseRenderer):
         Args:
             num_envs: Number of environments.
         """
-        try:
-            from isaaclab_newton.physics import NewtonManager
-        except ImportError:
-            logger.debug("NewtonManager not available, skipping deformable body bindings")
+        vis_mesh_prim_paths = self._collect_deformable_bindings()
+        if not vis_mesh_prim_paths:
+            logger.debug("No Newton deformable groups found, skipping deformable body bindings")
             return
-
-        # Early return if the deformable registry is empty.
-        deformable_registry = NewtonManager._deformable_registry
-        if not deformable_registry:
-            logger.debug("Deformable registry is empty, skipping deformable body bindings")
-            return
-
-        # Validate the number of particle offsets for each deformable entry upfront.
-        bad_entries = [entry for entry in deformable_registry if len(entry.particle_offsets) != num_envs]
-        if bad_entries:
-            details = "\n".join(
-                f"- '{entry.prim_path}' has {len(entry.particle_offsets)} particle offsets" for entry in bad_entries
-            )
-            raise RuntimeError(
-                f"OVRTX expects one particle offset per environment ({num_envs}), but the following "
-                f"deformable entries have a mismatched offset count:\n{details}"
-            )
-
-        self._deformable_particle_offsets = []
-        self._deformable_particle_counts = []
-
-        vis_mesh_prim_paths: list[str] = []
-
-        # Each registry entry is one deformable asset registered at spawn time. Its
-        # ``vis_mesh_prim_path`` uses a regex env wildcard (e.g. ``env_.*``) to denote one
-        # homogeneous visual mesh replicated into every environment, not a subset of envs.
-        # During replication, Newton appends one particle block per env in contiguous env order
-        # and records the start index in ``entry.particle_offsets``; ``particles_per_body`` is
-        # the block size. The inner loop therefore emits one OVRTX mesh binding per env,
-        # resolving the env wildcard with ``env_idx`` and pairing it with that env's slice in
-        # the flat ``particle_q`` array.
-        #
-        # This mapping is valid only while deformable registry entries remain homogeneous across
-        # all envs with dense, contiguous env ids. If deformables later support env subsets or
-        # non-contiguous env ids, OVRTX must consume explicit per-instance env metadata instead
-        # of deriving env ids from ``enumerate(entry.particle_offsets)``.
-        for entry in deformable_registry:
-            for idx, particle_offset in enumerate(entry.particle_offsets):
-                self._deformable_particle_offsets.append(particle_offset)
-                self._deformable_particle_counts.append(entry.particles_per_body)
-
-                vis_mesh_prim_paths.append(re.sub(r"(?<=[Ee]nv_)\.\*", str(idx), entry.vis_mesh_prim_path))
 
         prim_count = len(vis_mesh_prim_paths)
-        if prim_count == 0:
-            logger.warning("No deformable visual prim paths collected, skipping deformable body bindings")
-            return
 
         self._deformable_paths_list = self._stage_paths.create_path_list_from_strings(vis_mesh_prim_paths)
         self._deformable_points_query = self._stage.query_from_path_list(self._deformable_paths_list)
 
-        # particle_q is already in world space, so resetting the xform stack and pinning an identity
+        # Evaluated visual points are in world space, so resetting the xform stack and pinning an identity
         # omni:xform prevents the env-root and asset-root ancestor transforms from being applied on top.
         self._stage.write_attribute(
             self._deformable_points_query,
@@ -1969,7 +1892,7 @@ class OVRTXRenderer(BaseRenderer):
         # mistyped path silently upserts a new row instead of raising, surfacing as invisible
         # particles rather than an error. Same caveat applies to _setup_deformable_bindings_ovstage.
         #
-        # particle_q is already in world space, so resetting the xform stack and pinning an identity
+        # Evaluated visual points are in world space, so resetting the xform stack and pinning an identity
         # omni:xform prevents the env-root and asset-root ancestor transforms from being applied on top.
         self._stage.write_attribute(
             self._particle_points_query,
@@ -2039,41 +1962,38 @@ class OVRTXRenderer(BaseRenderer):
         if self._deformable_points_query is None and self._particle_points_query is None:
             return
 
-        # If either geometry query is not None, then Newton's the current physics backend
         from isaaclab_newton.physics import NewtonManager
 
-        newton_state = NewtonManager.get_state()
-        if newton_state is None:
-            raise RuntimeError("Newton state should not be None")
+        visuals = None
+        if self._deformable_points_query is not None:
+            visuals = NewtonManager.get_deformable_visuals()
+            if visuals is None:
+                raise RuntimeError("Newton deformable visuals are unavailable")
+            visuals.wait()
 
-        # particle_q is the world-space particle positions for all deformable bodies and particle
-        # clouds. A non-None geometry query means entries were registered, so Newton must
-        # expose particle state; a missing particle_q here is an inconsistent state.
-        particle_q = getattr(newton_state, "particle_q", None)
-        if particle_q is None:
-            raise RuntimeError("Newton state has no particle_q but geometry bindings exist")
-
-        # ovstage write_attribute needs one DLPack tensor per prim, not one flat ``particle_q``
-        # plus offsets. Synchronize then copy to CPU numpy once (shared by both queries below):
-        # the ``points`` column is ``point3f[]`` (lanes=3), and ovstage's make_dltensor only
-        # accepts the lanes=3 dtype override on numpy arrays, not DLPack producers. A warp
-        # ``vec3f`` slice exports as ``(N, 3)`` lanes=1, which is rejected as a type mismatch
-        # against the lanes=3 column.
         wp.synchronize_device(self._device)
-        particle_np = particle_q.numpy()
 
         if self._deformable_points_query is not None:
-            self._write_particle_q_slices_ovstage(
+            point_slices = [visuals.get_points(mesh).numpy() for mesh in self._deformable_visual_meshes]
+            self._stage.write_attribute(
                 self._deformable_points_query,
-                particle_np,
-                self._deformable_particle_offsets,
-                self._deformable_particle_counts,
-            )
+                "points",
+                ordinal=self._current_ordinal,
+                tensors=[_points_tensor_from_numpy(points) for points in point_slices],
+                is_array=True,
+                semantic=ovstage.AttributeSemantic.POINT,
+            ).wait()
 
         if self._particle_points_query is not None:
+            newton_state = NewtonManager.get_state()
+            if newton_state is None:
+                raise RuntimeError("Newton state should not be None")
+            particle_q = getattr(newton_state, "particle_q", None)
+            if particle_q is None:
+                raise RuntimeError("Newton state has no particle_q but direct particle bindings exist")
             self._write_particle_q_slices_ovstage(
                 self._particle_points_query,
-                particle_np,
+                particle_q.numpy(),
                 self._particle_visual_offsets,
                 self._particle_visual_counts,
             )
@@ -2212,8 +2132,7 @@ class OVRTXRenderer(BaseRenderer):
         self._particle_paths_list = None
 
         self._object_newton_indices = None
-        self._deformable_particle_offsets = []
-        self._deformable_particle_counts = []
+        self._deformable_visual_meshes = []
         self._particle_visual_offsets = []
         self._particle_visual_counts = []
         self._env_root_xforms = None

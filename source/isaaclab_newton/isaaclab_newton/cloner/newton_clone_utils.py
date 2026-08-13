@@ -191,6 +191,7 @@ def replicate_builder_mapping(
     quaternions: torch.Tensor,
     source_builders: dict[str, ModelBuilder],
     *,
+    destination_path_prefixes: Sequence[str] | None = None,
     source_site_indices: dict[int, dict[str, list[int]]] | None = None,
     env_root_sites: dict[str, wp.transform] | None = None,
     per_world_builder_hooks: Sequence[Callable[[ModelBuilder, int, list[float], list[float]], None]] = (),
@@ -205,6 +206,20 @@ def replicate_builder_mapping(
     xforms_np = np.concatenate((positions_np, quaternions_np), axis=1)
     xform_rows = xforms_np.tolist()
     world_xforms = [wp.transform(*row) for row in xform_rows]
+
+    if per_world_builder_hooks and destination_path_prefixes is not None:
+        active_rows = mapping.any(dim=1).tolist()
+        has_deformables = any(
+            active
+            and any(
+                getattr(source_builders[source], labels) for labels in ("curve_label", "surface_label", "volume_label")
+            )
+            for active, source in zip(active_rows, sources, strict=True)
+        )
+        if has_deformables:
+            raise NotImplementedError(
+                "Per-world builder hooks with deformables require Newton add_builder path rebasing."
+            )
 
     can_batch = (
         len(sources) == 1
@@ -231,7 +246,16 @@ def replicate_builder_mapping(
         stride = source_builder.shape_count
         source_xform_inv = _invert_xform(xforms_np[0])
         xforms = _compose_world_xforms(positions_np, quaternions_np, source_xform_inv)
-        builder.replicate(source_builder, num_worlds, xforms=xforms)
+        if destination_path_prefixes is not None:
+            builder.replicate(
+                source_builder,
+                num_worlds,
+                xforms=xforms,
+                source_path_prefix=sources[0],
+                destination_path_prefixes=destination_path_prefixes,
+            )
+        else:
+            builder.replicate(source_builder, num_worlds, xforms=xforms)
 
         for label, local_indices in site_local_indices.items():
             local_site_map[label] = [
@@ -347,6 +371,9 @@ def rename_builder_labels(
             (builder.shape_label, builder.shape_world, False),
             (builder.articulation_label, builder.articulation_world, False),
             (builder.constraint_mimic_label, builder.constraint_mimic_world, False),
+            (builder.curve_label, builder.curve_world, False),
+            (builder.surface_label, builder.surface_world, False),
+            (builder.volume_label, builder.volume_world, False),
         ):
             _rename_pair(labels, worlds, collect_body_bindings=collect_body_bindings)
 

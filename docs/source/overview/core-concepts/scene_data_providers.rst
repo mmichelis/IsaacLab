@@ -91,13 +91,9 @@ additionally need a Newton ``Model``/``State`` to render against. To satisfy tha
 :class:`~isaaclab_newton.physics.NewtonManager` builds a **shadow Newton model** from the USD
 stage on first access and updates its ``body_q`` from the PhysX backend each render frame.
 When the scene contains PhysX or OVPhysX deformables, the shadow model also allocates
-``particle_q`` render slots for soft/cloth meshes, syncs simulation nodal positions through
-:meth:`SceneDataProvider.get_points` with ``allow_passthrough=False`` into a separate
-sim-sized buffer, and remaps or copies those positions into the render-sized
-``particle_q`` buffer each frame. Volume deformables with mismatched sim and visual vertex
-counts use a barycentric sim-to-visual remap so Newton Warp and OVRTX render the paired
-visual mesh rather than tet simulation topology. The shadow deformable registry exposes
-render-slot offsets and ``particles_per_body`` counts for OVRTX point bindings.
+``particle_q`` simulation state, syncs nodal positions through
+:meth:`SceneDataProvider.get_points` with ``allow_passthrough=False``, and lets Newton
+evaluate the imported deformable visual bindings each frame.
 This is hidden behind :meth:`NewtonManager.get_model` / :meth:`NewtonManager.get_state`, so
 renderers don't need to know which physics backend is active.
 

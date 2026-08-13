@@ -120,13 +120,10 @@ class DeformableCfg(PresetCfg):
             deformable_props=NewtonDeformableBodyPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.95, 0.85, 0.1)),
             physics_material=NewtonSurfaceDeformableBodyMaterialCfg(
-                density=1.0,
-                particle_radius=0.002,
-                tri_ke=5e2,
-                tri_ka=5e2,
-                tri_kd=1e-3,
-                edge_ke=0.5,
-                edge_kd=1e-3,
+                density=250.0,
+                thickness=0.004,
+                stretch_stiffness=1.25e5,
+                bend_stiffness=7.8125e6,
             ),
         ),
     )
