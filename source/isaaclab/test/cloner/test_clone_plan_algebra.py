@@ -538,7 +538,10 @@ def test_cloner_imports_without_kit():
     import ``isaaclab.sim``, so this guards both against an import cycle and against pulling
     pxr in before Kit boots, which corrupts Kit's own USD runtime.
     """
-    probe = "import isaaclab.cloner, sys; print(any(n == 'pxr' or n.startswith('pxr.') for n in sys.modules))"
+    probe = (
+        "import isaaclab.cloner.replicate_session, sys; "
+        "print(any(n == 'pxr' or n.startswith('pxr.') for n in sys.modules))"
+    )
     result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True)
 
     assert result.returncode == 0, result.stderr

@@ -46,7 +46,7 @@ def test_replicate_distinguishes_automatic_and_explicit_usd_contexts(
 
     published = SimpleNamespace(plan=None)
     published.set_clone_plan = lambda plan: setattr(published, "plan", plan)
-    monkeypatch.setattr(replicate_session, "UsdReplicateContext", FakeUsdContext)
+    monkeypatch.setattr("isaaclab.cloner.usd.UsdReplicateContext", FakeUsdContext)
     monkeypatch.setattr(replicate_session, "has_kit", lambda: kit_available)
     monkeypatch.setattr(replicate_session.FactoryBase, "_get_backend", lambda: "newton")
     monkeypatch.setattr(SimulationContext, "instance", lambda: published)
