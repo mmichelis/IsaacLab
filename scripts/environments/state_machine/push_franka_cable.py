@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Close the Franka gripper and shove a cable off the table with differential IK.
+"""Grasp a cable at its center, lift it, and drop it outside the table with differential IK.
 
 .. code-block:: bash
 
@@ -25,12 +25,10 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import resolve_task_config, setup_preset_cli
 
 TASK_NAME = "Isaac-Lift-Cable-Franka"
-TABLE_HEIGHT = 0.0
-TCP_CLEARANCE = 0.002
-START_OFFSET_Y = -0.08
-SHOVE_TARGET_Y = 0.55
+LIFT_HEIGHT = 0.25
+DROP_TARGET_Y = 0.55
 
-parser = argparse.ArgumentParser(description="Shove a cable off a table with a Franka robot.")
+parser = argparse.ArgumentParser(description="Lift a cable and drop it outside a table with a Franka robot.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
 parser.add_argument("--num_steps", type=int, default=1000, help="Number of environment steps to run.")
 add_launcher_args(parser)
@@ -46,21 +44,25 @@ class GripperState:
     CLOSE = wp.constant(-1.0)
 
 
-class ShoveSmState:
+class PickAndDropSmState:
     REST = wp.constant(0)
-    APPROACH_ABOVE_START = wp.constant(1)
-    APPROACH_START = wp.constant(2)
-    CLOSE_GRIPPER = wp.constant(3)
-    SHOVE_CABLE = wp.constant(4)
-    HOLD = wp.constant(5)
+    APPROACH_ABOVE_CABLE = wp.constant(1)
+    APPROACH_CABLE = wp.constant(2)
+    GRASP_CABLE = wp.constant(3)
+    LIFT_CABLE = wp.constant(4)
+    MOVE_OUTSIDE_TABLE = wp.constant(5)
+    RELEASE_CABLE = wp.constant(6)
+    HOLD = wp.constant(7)
 
 
-class ShoveSmWaitTime:
+class PickAndDropSmWaitTime:
     REST = wp.constant(0.2)
-    APPROACH_ABOVE_START = wp.constant(1.0)
-    APPROACH_START = wp.constant(1.0)
-    CLOSE_GRIPPER = wp.constant(0.5)
-    SHOVE_CABLE = wp.constant(2.0)
+    APPROACH_ABOVE_CABLE = wp.constant(1.0)
+    APPROACH_CABLE = wp.constant(1.0)
+    GRASP_CABLE = wp.constant(1.5)
+    LIFT_CABLE = wp.constant(1.5)
+    MOVE_OUTSIDE_TABLE = wp.constant(2.0)
+    RELEASE_CABLE = wp.constant(1.0)
 
 
 @wp.func
@@ -76,8 +78,9 @@ def infer_state_machine(
     sm_state: wp.array(dtype=int),
     sm_wait_time: wp.array(dtype=float),
     ee_pose: wp.array(dtype=wp.transform),
-    start_pose: wp.array(dtype=wp.transform),
-    shove_pose: wp.array(dtype=wp.transform),
+    grasp_pose: wp.array(dtype=wp.transform),
+    lift_pose: wp.array(dtype=wp.transform),
+    drop_pose: wp.array(dtype=wp.transform),
     desired_ee_pose: wp.array(dtype=wp.transform),
     gripper_state: wp.array(dtype=float),
     approach_offset: wp.array(dtype=wp.transform),
@@ -86,52 +89,69 @@ def infer_state_machine(
     tid = wp.tid()
     state = sm_state[tid]
 
-    if state == ShoveSmState.REST:
+    if state == PickAndDropSmState.REST:
         desired_ee_pose[tid] = ee_pose[tid]
         gripper_state[tid] = GripperState.OPEN
-        if sm_wait_time[tid] >= ShoveSmWaitTime.REST:
-            sm_state[tid] = ShoveSmState.APPROACH_ABOVE_START
+        if sm_wait_time[tid] >= PickAndDropSmWaitTime.REST:
+            sm_state[tid] = PickAndDropSmState.APPROACH_ABOVE_CABLE
             sm_wait_time[tid] = 0.0
-    elif state == ShoveSmState.APPROACH_ABOVE_START:
-        desired_ee_pose[tid] = wp.transform_multiply(approach_offset[tid], start_pose[tid])
+    elif state == PickAndDropSmState.APPROACH_ABOVE_CABLE:
+        desired_ee_pose[tid] = wp.transform_multiply(approach_offset[tid], grasp_pose[tid])
         gripper_state[tid] = GripperState.OPEN
         if position_reached(ee_pose[tid], desired_ee_pose[tid], position_threshold):
-            if sm_wait_time[tid] >= ShoveSmWaitTime.APPROACH_ABOVE_START:
-                sm_state[tid] = ShoveSmState.APPROACH_START
+            if sm_wait_time[tid] >= PickAndDropSmWaitTime.APPROACH_ABOVE_CABLE:
+                sm_state[tid] = PickAndDropSmState.APPROACH_CABLE
                 sm_wait_time[tid] = 0.0
-    elif state == ShoveSmState.APPROACH_START:
-        desired_ee_pose[tid] = start_pose[tid]
+    elif state == PickAndDropSmState.APPROACH_CABLE:
+        desired_ee_pose[tid] = grasp_pose[tid]
         gripper_state[tid] = GripperState.OPEN
         if position_reached(ee_pose[tid], desired_ee_pose[tid], position_threshold):
-            if sm_wait_time[tid] >= ShoveSmWaitTime.APPROACH_START:
-                sm_state[tid] = ShoveSmState.CLOSE_GRIPPER
+            if sm_wait_time[tid] >= PickAndDropSmWaitTime.APPROACH_CABLE:
+                sm_state[tid] = PickAndDropSmState.GRASP_CABLE
                 sm_wait_time[tid] = 0.0
-    elif state == ShoveSmState.CLOSE_GRIPPER:
-        desired_ee_pose[tid] = start_pose[tid]
+    elif state == PickAndDropSmState.GRASP_CABLE:
+        desired_ee_pose[tid] = grasp_pose[tid]
         gripper_state[tid] = GripperState.CLOSE
-        if sm_wait_time[tid] >= ShoveSmWaitTime.CLOSE_GRIPPER:
-            sm_state[tid] = ShoveSmState.SHOVE_CABLE
+        if sm_wait_time[tid] >= PickAndDropSmWaitTime.GRASP_CABLE:
+            sm_state[tid] = PickAndDropSmState.LIFT_CABLE
             sm_wait_time[tid] = 0.0
-    elif state == ShoveSmState.SHOVE_CABLE:
-        alpha = wp.min(sm_wait_time[tid] / ShoveSmWaitTime.SHOVE_CABLE, 1.0)
-        start_position = wp.transform_get_translation(start_pose[tid])
-        shove_position = wp.transform_get_translation(shove_pose[tid])
-        shove_orientation = wp.transform_get_rotation(shove_pose[tid])
-        desired_ee_pose[tid] = wp.transform(wp.lerp(start_position, shove_position, alpha), shove_orientation)
+    elif state == PickAndDropSmState.LIFT_CABLE:
+        alpha = wp.min(sm_wait_time[tid] / PickAndDropSmWaitTime.LIFT_CABLE, 1.0)
+        grasp_position = wp.transform_get_translation(grasp_pose[tid])
+        lift_position = wp.transform_get_translation(lift_pose[tid])
+        orientation = wp.transform_get_rotation(lift_pose[tid])
+        desired_ee_pose[tid] = wp.transform(wp.lerp(grasp_position, lift_position, alpha), orientation)
         gripper_state[tid] = GripperState.CLOSE
-        if sm_wait_time[tid] >= ShoveSmWaitTime.SHOVE_CABLE:
+        if sm_wait_time[tid] >= PickAndDropSmWaitTime.LIFT_CABLE:
             if position_reached(ee_pose[tid], desired_ee_pose[tid], position_threshold):
-                sm_state[tid] = ShoveSmState.HOLD
+                sm_state[tid] = PickAndDropSmState.MOVE_OUTSIDE_TABLE
                 sm_wait_time[tid] = 0.0
-    elif state == ShoveSmState.HOLD:
-        desired_ee_pose[tid] = shove_pose[tid]
+    elif state == PickAndDropSmState.MOVE_OUTSIDE_TABLE:
+        alpha = wp.min(sm_wait_time[tid] / PickAndDropSmWaitTime.MOVE_OUTSIDE_TABLE, 1.0)
+        lift_position = wp.transform_get_translation(lift_pose[tid])
+        drop_position = wp.transform_get_translation(drop_pose[tid])
+        orientation = wp.transform_get_rotation(drop_pose[tid])
+        desired_ee_pose[tid] = wp.transform(wp.lerp(lift_position, drop_position, alpha), orientation)
         gripper_state[tid] = GripperState.CLOSE
+        if sm_wait_time[tid] >= PickAndDropSmWaitTime.MOVE_OUTSIDE_TABLE:
+            if position_reached(ee_pose[tid], desired_ee_pose[tid], position_threshold):
+                sm_state[tid] = PickAndDropSmState.RELEASE_CABLE
+                sm_wait_time[tid] = 0.0
+    elif state == PickAndDropSmState.RELEASE_CABLE:
+        desired_ee_pose[tid] = drop_pose[tid]
+        gripper_state[tid] = GripperState.OPEN
+        if sm_wait_time[tid] >= PickAndDropSmWaitTime.RELEASE_CABLE:
+            sm_state[tid] = PickAndDropSmState.HOLD
+            sm_wait_time[tid] = 0.0
+    elif state == PickAndDropSmState.HOLD:
+        desired_ee_pose[tid] = drop_pose[tid]
+        gripper_state[tid] = GripperState.OPEN
 
     sm_wait_time[tid] = sm_wait_time[tid] + dt[tid]
 
 
-class ShoveCableSm:
-    """Task-space state machine for a horizontal cable shove."""
+class PickAndDropCableSm:
+    """Task-space state machine for picking up and dropping a cable."""
 
     def __init__(self, dt: float, num_envs: int, device: torch.device | str, position_threshold: float = 0.005):
         self.num_envs = num_envs
@@ -156,10 +176,12 @@ class ShoveCableSm:
     def reset_idx(self, env_ids: Sequence[int] | None = None) -> None:
         if env_ids is None:
             env_ids = slice(None)
-        self.sm_state[env_ids] = ShoveSmState.REST
+        self.sm_state[env_ids] = PickAndDropSmState.REST
         self.sm_wait_time[env_ids] = 0.0
 
-    def compute(self, ee_pose: torch.Tensor, start_pose: torch.Tensor, shove_pose: torch.Tensor) -> torch.Tensor:
+    def compute(
+        self, ee_pose: torch.Tensor, grasp_pose: torch.Tensor, lift_pose: torch.Tensor, drop_pose: torch.Tensor
+    ) -> torch.Tensor:
         wp.launch(
             kernel=infer_state_machine,
             dim=self.num_envs,
@@ -168,8 +190,9 @@ class ShoveCableSm:
                 self.sm_state_wp,
                 self.sm_wait_time_wp,
                 wp.from_torch(ee_pose.contiguous(), wp.transform),
-                wp.from_torch(start_pose.contiguous(), wp.transform),
-                wp.from_torch(shove_pose.contiguous(), wp.transform),
+                wp.from_torch(grasp_pose.contiguous(), wp.transform),
+                wp.from_torch(lift_pose.contiguous(), wp.transform),
+                wp.from_torch(drop_pose.contiguous(), wp.transform),
                 self.desired_ee_pose_wp,
                 self.gripper_state_wp,
                 self.approach_offset_wp,
@@ -184,7 +207,7 @@ def main() -> None:
     env_cfg, _ = resolve_task_config(TASK_NAME, "")
     env_cfg.sim.device = args_cli.device
     env_cfg.scene.num_envs = args_cli.num_envs
-    env_cfg.episode_length_s = 12.0
+    env_cfg.episode_length_s = 15.0
     for term_name in list(vars(env_cfg.terminations)):
         if term_name != "time_out":
             setattr(env_cfg.terminations, term_name, None)
@@ -205,14 +228,16 @@ def main() -> None:
             env.unwrapped.scene["cable"].data.segment_pose_w.torch[:, segment_index, :3]
             - env.unwrapped.scene.env_origins
         )
-        start_position = cable_position.clone()
-        start_position[:, 1] += START_OFFSET_Y
-        start_position[:, 2] = TABLE_HEIGHT + TCP_CLEARANCE
-        shove_position = start_position.clone()
-        shove_position[:, 1] = SHOVE_TARGET_Y
+        grasp_position = cable_position.clone()
+        lift_position = grasp_position.clone()
+        lift_position[:, 2] = LIFT_HEIGHT
+        drop_position = lift_position.clone()
+        drop_position[:, 1] = DROP_TARGET_Y
         top_down_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
         top_down_orientation[:, 0] = 1.0
-        shove_sm = ShoveCableSm(env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device)
+        pick_and_drop_sm = PickAndDropCableSm(
+            env_cfg.sim.dt * env_cfg.decimation, env.unwrapped.num_envs, env.unwrapped.device
+        )
 
         for _ in range(args_cli.num_steps):
             with torch.inference_mode():
@@ -220,25 +245,26 @@ def main() -> None:
                 dones = terminated | time_outs
                 if dones.any():
                     reset_ids = dones.nonzero(as_tuple=False).squeeze(-1)
-                    shove_sm.reset_idx(reset_ids)
+                    pick_and_drop_sm.reset_idx(reset_ids)
                     cable_position = (
                         env.unwrapped.scene["cable"].data.segment_pose_w.torch[reset_ids, segment_index, :3]
                         - env.unwrapped.scene.env_origins[reset_ids]
                     )
-                    start_position[reset_ids] = cable_position
-                    start_position[reset_ids, 1] += START_OFFSET_Y
-                    start_position[reset_ids, 2] = TABLE_HEIGHT + TCP_CLEARANCE
-                    shove_position[reset_ids] = start_position[reset_ids]
-                    shove_position[reset_ids, 1] = SHOVE_TARGET_Y
+                    grasp_position[reset_ids] = cable_position
+                    lift_position[reset_ids] = grasp_position[reset_ids]
+                    lift_position[reset_ids, 2] = LIFT_HEIGHT
+                    drop_position[reset_ids] = lift_position[reset_ids]
+                    drop_position[reset_ids, 1] = DROP_TARGET_Y
 
                 ee_frame = env.unwrapped.scene["ee_frame"]
                 ee_position = ee_frame.data.target_pos_w.torch[..., 0, :] - env.unwrapped.scene.env_origins
                 ee_orientation = ee_frame.data.target_quat_w.torch[..., 0, :]
 
-                actions = shove_sm.compute(
+                actions = pick_and_drop_sm.compute(
                     torch.cat([ee_position, ee_orientation], dim=-1),
-                    torch.cat([start_position, top_down_orientation], dim=-1),
-                    torch.cat([shove_position, top_down_orientation], dim=-1),
+                    torch.cat([grasp_position, top_down_orientation], dim=-1),
+                    torch.cat([lift_position, top_down_orientation], dim=-1),
+                    torch.cat([drop_position, top_down_orientation], dim=-1),
                 )
 
         env.close()
