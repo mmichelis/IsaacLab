@@ -329,16 +329,27 @@ class RewardsCfg:
         weight=10.0,
     )
 
+    goal_distance = RewTerm(
+        func=mdp.object_goal_distance,
+        params={
+            "std": 0.3,
+            "minimal_height": 0.0,
+            "object_cfg": SceneEntityCfg("object", body_names="Object"),
+            "target_cfg": SceneEntityCfg("target"),
+        },
+        weight=2.0,
+    )
+
     success = RewTerm(
         func=mdp.object_goal_distance,
         params={
-            "std": 0.1,
+            "std": 0.05,
             "minimal_height": 0.0,
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
             "target_cfg": SceneEntityCfg("target"),
         },
-        weight=5.0,
+        weight=10.0,
     )
 
     success_bonus = RewTerm(
