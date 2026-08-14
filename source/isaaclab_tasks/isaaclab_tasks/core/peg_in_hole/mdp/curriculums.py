@@ -32,3 +32,21 @@ def reward_weight_linear(
     reward_cfg.weight = weight
     env.reward_manager.set_term_cfg(term_name, reward_cfg)
     return weight
+
+
+def linear_interpolate(
+    env: ManagerBasedRLEnv,
+    _env_ids: Sequence[int],
+    _value: float,
+    start_value: float,
+    end_value: float,
+    start_step: int,
+    end_step: int,
+) -> float:
+    """Linearly interpolate a scalar value over environment steps."""
+    if end_step <= start_step:
+        raise ValueError("end_step must be greater than start_step.")
+
+    alpha = (env.common_step_counter - start_step) / (end_step - start_step)
+    alpha = min(max(alpha, 0.0), 1.0)
+    return start_value + alpha * (end_value - start_value)

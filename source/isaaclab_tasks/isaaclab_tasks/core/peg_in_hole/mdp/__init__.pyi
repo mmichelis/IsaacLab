@@ -29,6 +29,7 @@ __all__ = [
     "DifficultyScheduler",
     "gravity_range_linear",
     "initial_final_interpolate_fn",
+    "linear_interpolate",
     "reward_weight_linear",
 ]
 
@@ -45,7 +46,7 @@ from isaaclab_tasks.core.lift.mdp import (
     reset_joints_shared_offset,
 )
 
-from .curriculums import reward_weight_linear
+from .curriculums import linear_interpolate, reward_weight_linear
 from .events_cfg import GraspTravelOpeningCfg
 from .observations import asset_pose_b
 from .rewards import (

@@ -411,8 +411,22 @@ class CurriculumCfg:
             "term_name": "action_rate",
             "start_weight": -1e-3,
             "end_weight": -1e-1,
-            "start_step": 30000,
-            "end_step": 40000,
+            "start_step": 50000,
+            "end_step": 60000,
+        },
+    )
+
+    episode_length = CurrTerm(
+        func=mdp.modify_env_param,
+        params={
+            "address": "cfg.episode_length_s",
+            "modify_fn": mdp.linear_interpolate,
+            "modify_params": {
+                "start_value": 2.0,
+                "end_value": 10.0,
+                "start_step": 0,
+                "end_step": 20000,
+            },
         },
     )
 
@@ -513,7 +527,7 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 8.0
+        self.episode_length_s = 2.0
         # simulation settings
         self.sim.dt = 1.0 / 120
         self.sim.render_interval = self.decimation
@@ -528,10 +542,12 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
 
     def play_mode(self):
         super().play_mode()
+        self.episode_length_s = 10.0
         reset_params = self.events.conditional_reset.params
         reset_params["buffer_size_per_group"] = 64
         reset_params["oversample_factor"] = 1.0
         reset_params["diversity_feature"] = None
         if self.curriculum is not None:
+            self.curriculum.episode_length = None
             self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
             self.curriculum.adr.params["promotion_only"] = True
