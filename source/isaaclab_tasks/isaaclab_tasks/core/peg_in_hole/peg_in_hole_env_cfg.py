@@ -243,15 +243,6 @@ class EventCfg:
         },
     )
 
-    variable_gravity = EventTerm(
-        func=mdp.randomize_physics_scene_gravity,
-        mode="reset",
-        params={
-            "gravity_distribution_params": ([0.0, 0.0, -9.81], [0.0, 0.0, -9.81]),
-            "operation": "abs",
-        },
-    )
-
     robot_physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="startup",
@@ -430,23 +421,6 @@ class CurriculumCfg:
         },
     )
 
-    adr = CurrTerm(
-        func=mdp.DifficultyScheduler, params={"init_difficulty": 0, "min_difficulty": 0, "max_difficulty": 10}
-    )
-
-    gravity_adr = CurrTerm(
-        func=mdp.modify_term_cfg,
-        params={
-            "address": "events.variable_gravity.params.gravity_distribution_params",
-            "modify_fn": mdp.initial_final_interpolate_fn,
-            "modify_params": {
-                "initial_value": ((0.0, 0.0, -0.98), (0.0, 0.0, -0.98)),
-                "final_value": ((0.0, 0.0, -9.81), (0.0, 0.0, -9.81)),
-                "difficulty_term_str": "adr",
-            },
-        },
-    )
-
 
 ##
 # Environment configuration
@@ -549,5 +523,3 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         reset_params["diversity_feature"] = None
         if self.curriculum is not None:
             self.curriculum.episode_length = None
-            self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
-            self.curriculum.adr.params["promotion_only"] = True

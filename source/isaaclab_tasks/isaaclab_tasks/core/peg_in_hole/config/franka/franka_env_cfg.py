@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from isaaclab_newton.sim.schemas import MujocoJointCfg
+
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.controllers import DifferentialIKControllerCfg
 from isaaclab.managers import SceneEntityCfg
@@ -68,6 +70,7 @@ class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot.spawn.joint_drive_props = [MujocoJointCfg(actuatorgravcomp=True)]
         self.scene.robot.init_state.joint_pos["panda_joint2"] = 0.0
         self.rewards.reaching_object.params["robot_cfg"] = SceneEntityCfg(
             "robot", body_names=["panda_leftfinger", "panda_rightfinger"]
