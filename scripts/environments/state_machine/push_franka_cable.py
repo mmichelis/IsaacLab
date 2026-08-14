@@ -7,7 +7,7 @@
 
 .. code-block:: bash
 
-    PYTHONPATH="$PWD/source/isaaclab_tasks:$PYTHONPATH" ISAAC_LAB_ENABLE_ISAAC_RTX_PER_ENV_SCENE_PARTITION=1 \
+    ISAAC_LAB_ENABLE_ISAAC_RTX_PER_ENV_SCENE_PARTITION=1 \
         uv run --extra isaacsim --extra video python \
         scripts/environments/state_machine/push_franka_cable.py --viz none
 """
