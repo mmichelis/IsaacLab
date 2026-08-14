@@ -260,7 +260,7 @@ class EventCfg:
             },
             "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
             "uniform_eval_interval_steps": 2400,
-            "uniform_eval_num_episodes": 100,
+            "uniform_eval_num_episodes": 1024,
         },
     )
 
