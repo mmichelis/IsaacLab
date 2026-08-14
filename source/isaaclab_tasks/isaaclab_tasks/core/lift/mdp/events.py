@@ -300,6 +300,14 @@ class conditional_reset(ManagerTermBase):
         self._success_term = None
         # bank row each environment is currently playing; -1 until its first restore
         self._playing_row = torch.full((env.num_envs,), -1, dtype=torch.long, device=env.device)
+        self._uniform_eval_active = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+        self._uniform_eval_pending = torch.empty(0, dtype=torch.long, device=env.device)
+        self._uniform_eval_successes = torch.empty(0, dtype=torch.long, device=env.device)
+        self._uniform_eval_completed = torch.empty(0, dtype=torch.long, device=env.device)
+        self._uniform_eval_cycle = 0
+        self._uniform_eval_in_progress = False
+        self._uniform_eval_rate: float | None = None
+        self._uniform_eval_episodes = 0
 
     def reset(self, env_ids: Sequence[int] | None = None):
         """Log how well the policy does across the bank, once a monitor is tracking it.
@@ -309,7 +317,15 @@ class conditional_reset(ManagerTermBase):
         happen to be ending now.
         """
         if self._monitor is not None:
-            self._env.extras.setdefault("log", {})["Metrics/success_rate"] = self._monitor.get_mean_success_rate()
+            log = self._env.extras.setdefault("log", {})
+            log["Metrics/success_rate"] = self._monitor.get_mean_success_rate()
+            if self._uniform_eval_rate is not None:
+                log["Metrics/uniform_success_rate"] = self._uniform_eval_rate
+                log["Metrics/uniform_success_episodes"] = self._uniform_eval_episodes
+                self._uniform_eval_rate = None
+            else:
+                log.pop("Metrics/uniform_success_rate", None)
+                log.pop("Metrics/uniform_success_episodes", None)
 
     def __call__(
         self,
@@ -323,6 +339,8 @@ class conditional_reset(ManagerTermBase):
         oversample_factor: float = 2.0,
         success_monitor: SuccessMonitorCfg | None = None,
         success_reward_term: str = "success",
+        uniform_eval_interval_steps: int | None = None,
+        uniform_eval_num_episodes: int = 64,
     ):
         """Restore banked criterion-valid states, prefilling the bank on the first reset.
 
@@ -358,6 +376,9 @@ class conditional_reset(ManagerTermBase):
             success_reward_term: Reward term supplying the episode outcome, which must keep a sticky
                 per-environment ``succeeded`` buffer like :class:`success_reward` does. Only read
                 with :paramref:`success_monitor`.
+            uniform_eval_interval_steps: Policy steps between uniform-bank evaluation cohorts.
+                Requires :paramref:`success_monitor`. ``None`` disables evaluation.
+            uniform_eval_num_episodes: Episodes per evaluation cohort, balanced across bank groups.
         """
 
         def roll_once(roll_ids: torch.Tensor) -> torch.Tensor:
@@ -439,6 +460,16 @@ class conditional_reset(ManagerTermBase):
                 self._monitor = success_monitor.class_type(
                     success_monitor, num_groups, buffer_size_per_group, env.device
                 )
+            if uniform_eval_interval_steps is not None:
+                if success_monitor is None:
+                    raise ValueError("Uniform evaluation requires a success monitor.")
+                if uniform_eval_interval_steps <= 0 or uniform_eval_num_episodes <= 0:
+                    raise ValueError("Uniform evaluation interval and episode count must be positive.")
+                if uniform_eval_num_episodes < num_groups:
+                    raise ValueError("Uniform evaluation requires at least one episode per bank group.")
+                self._uniform_eval_pending = torch.zeros(num_groups, dtype=torch.long, device=env.device)
+                self._uniform_eval_successes = torch.zeros(num_groups, dtype=torch.long, device=env.device)
+                self._uniform_eval_completed = torch.zeros(num_groups, dtype=torch.long, device=env.device)
             self._prefilled = True
             # drop the prefill-only terms/criteria so their device memory is freed
             terms.clear()
@@ -455,7 +486,15 @@ class conditional_reset(ManagerTermBase):
         else:
             # credit before drawing: the outcome belongs to the row these environments were playing
             self._credit_episodes(env, env_ids, self._monitor, success_reward_term)
+            self._credit_uniform_evaluation(env_ids)
+            self._schedule_uniform_evaluation(env, uniform_eval_interval_steps, uniform_eval_num_episodes)
             rows = self._monitor.sample_by_target_rate(groups)
+            eval_mask = self._take_uniform_evaluation(groups)
+            if bool(eval_mask.any()):
+                eval_groups = groups[eval_mask]
+                donor = (torch.rand(len(eval_groups), device=env_ids.device) * self._fill[eval_groups]).long()
+                rows[eval_mask] = eval_groups * buffer_size_per_group + donor
+            self._uniform_eval_active[env_ids] = eval_mask
             self._playing_row[env_ids] = rows
         set_reset_state(env, self._buffer[rows], env_ids, self._reset_assets, is_relative=True)
 
@@ -505,6 +544,58 @@ class conditional_reset(ManagerTermBase):
         # an environment that has not been restored yet has no episode to credit
         started = played >= 0
         monitor.success_update(played[started], self._success_term.succeeded[env_ids][started])
+
+    def _schedule_uniform_evaluation(
+        self, env: ManagerBasedRLEnv, interval_steps: int | None, num_episodes: int
+    ) -> None:
+        """Start a balanced uniform-bank evaluation cohort when its interval is due."""
+        if interval_steps is None:
+            return
+        cycle = env.common_step_counter // interval_steps
+        if cycle <= self._uniform_eval_cycle:
+            return
+        self._uniform_eval_cycle = cycle
+        if self._uniform_eval_in_progress:
+            return
+        num_groups = len(self._uniform_eval_pending)
+        self._uniform_eval_pending.fill_(num_episodes // num_groups)
+        self._uniform_eval_pending[: num_episodes % num_groups] += 1
+        self._uniform_eval_successes.zero_()
+        self._uniform_eval_completed.zero_()
+        self._uniform_eval_in_progress = True
+
+    def _take_uniform_evaluation(self, groups: torch.Tensor) -> torch.Tensor:
+        """Assign pending evaluation episodes to environments that are resetting now."""
+        selected = torch.zeros(len(groups), dtype=torch.bool, device=groups.device)
+        if not self._uniform_eval_in_progress:
+            return selected
+        for group in torch.unique(groups).tolist():
+            candidates = torch.nonzero(groups == group).view(-1)
+            count = min(int(self._uniform_eval_pending[group]), len(candidates))
+            order = torch.randperm(len(candidates), device=groups.device)
+            selected[candidates[order[:count]]] = True
+            self._uniform_eval_pending[group] -= count
+        return selected
+
+    def _credit_uniform_evaluation(self, env_ids: torch.Tensor) -> None:
+        """Accumulate completed uniform-bank episodes and publish a complete cohort."""
+        active = self._uniform_eval_active[env_ids]
+        if bool(active.any()):
+            eval_ids = env_ids[active]
+            groups = self._group[eval_ids]
+            success = self._success_term.succeeded[eval_ids].to(dtype=torch.long)
+            self._uniform_eval_successes.index_add_(0, groups, success)
+            self._uniform_eval_completed.index_add_(0, groups, torch.ones_like(groups))
+            self._uniform_eval_active[eval_ids] = False
+        if (
+            self._uniform_eval_in_progress
+            and not bool(self._uniform_eval_pending.any())
+            and not bool(self._uniform_eval_active.any())
+        ):
+            rates = self._uniform_eval_successes / self._uniform_eval_completed.clamp(min=1)
+            self._uniform_eval_rate = float(rates.mean())
+            self._uniform_eval_episodes = int(self._uniform_eval_completed.sum())
+            self._uniform_eval_in_progress = False
 
 
 class grasp_travel_distance(ManagerTermBase):

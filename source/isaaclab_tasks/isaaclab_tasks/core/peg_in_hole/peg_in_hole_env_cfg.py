@@ -259,6 +259,8 @@ class EventCfg:
                 ),
             },
             "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
+            "uniform_eval_interval_steps": 2400,
+            "uniform_eval_num_episodes": 100,
         },
     )
 
@@ -527,5 +529,6 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         reset_params["buffer_size_per_group"] = 64
         reset_params["oversample_factor"] = 1.0
         reset_params["diversity_feature"] = None
+        reset_params["uniform_eval_interval_steps"] = None
         if self.curriculum is not None:
             self.curriculum.episode_length = None
