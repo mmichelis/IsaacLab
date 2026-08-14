@@ -17,6 +17,7 @@ from collections.abc import Sequence
 import gymnasium as gym
 import torch
 import warp as wp
+from isaaclab_newton.sim.schemas import MujocoJointCfg
 
 from isaaclab.app import add_launcher_args, launch_simulation
 from isaaclab.visualizers import VisualizerCfg
@@ -56,9 +57,9 @@ class PickAndDropSmState:
 
 
 class PickAndDropSmWaitTime:
-    REST = wp.constant(0.2)
-    APPROACH_ABOVE_CABLE = wp.constant(1.0)
-    APPROACH_CABLE = wp.constant(1.0)
+    REST = wp.constant(0.0)
+    APPROACH_ABOVE_CABLE = wp.constant(0.5)
+    APPROACH_CABLE = wp.constant(0.5)
     GRASP_CABLE = wp.constant(1.5)
     LIFT_CABLE = wp.constant(1.5)
     MOVE_OUTSIDE_TABLE = wp.constant(2.0)
@@ -153,7 +154,7 @@ def infer_state_machine(
 class PickAndDropCableSm:
     """Task-space state machine for picking up and dropping a cable."""
 
-    def __init__(self, dt: float, num_envs: int, device: torch.device | str, position_threshold: float = 0.005):
+    def __init__(self, dt: float, num_envs: int, device: torch.device | str, position_threshold: float = 0.01):
         self.num_envs = num_envs
         self.device = device
         self.position_threshold = position_threshold
@@ -163,7 +164,7 @@ class PickAndDropCableSm:
         self.desired_ee_pose = torch.zeros((num_envs, 7), device=device)
         self.gripper_state = torch.zeros(num_envs, device=device)
         self.approach_offset = torch.zeros((num_envs, 7), device=device)
-        self.approach_offset[:, 2] = 0.15
+        self.approach_offset[:, 2] = 0.05
         self.approach_offset[:, -1] = 1.0
 
         self.sm_dt_wp = wp.from_torch(self.sm_dt, wp.float32)
@@ -205,6 +206,8 @@ class PickAndDropCableSm:
 
 def main() -> None:
     env_cfg, _ = resolve_task_config(TASK_NAME, "")
+    env_cfg.curriculum.gravity = None
+    env_cfg.scene.robot.spawn.joint_drive_props = [MujocoJointCfg(actuatorgravcomp=True)]
     env_cfg.sim.device = args_cli.device
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.episode_length_s = 30.0
@@ -213,6 +216,7 @@ def main() -> None:
             setattr(env_cfg.terminations, term_name, None)
     env_cfg.actions = type(env_cfg)().actions.ik
     env_cfg.scene.ee_frame.target_frames[0].offset.pos = [0.0, 0.0, 0.107]
+    env_cfg.actions.arm_action.controller.ik_params = {"lambda_val": 0.01}
     env_cfg.viewer.eye = (1.2, 0.8, 0.45)
     env_cfg.viewer.lookat = (0.5, 0.1, 0.0)
     env_cfg.sim.default_visualizer_cfg = VisualizerCfg(eye=env_cfg.viewer.eye, lookat=env_cfg.viewer.lookat)
