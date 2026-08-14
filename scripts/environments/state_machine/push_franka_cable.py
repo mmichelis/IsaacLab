@@ -3,11 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Grasp a cable at its center, lift it, and drop it outside the table with differential IK.
+"""Grasp a cable at its center, lift it, and launch it outside the table with differential IK.
 
 .. code-block:: bash
 
-    uv run --extra isaacsim python scripts/environments/state_machine/push_franka_cable.py --viz kit
+    PYTHONPATH="$PWD/source/isaaclab_tasks:$PYTHONPATH" ISAAC_LAB_ENABLE_ISAAC_RTX_PER_ENV_SCENE_PARTITION=1 \
+        uv run --extra isaacsim --extra video python \
+        scripts/environments/state_machine/push_franka_cable.py --viz none
 """
 
 import argparse
@@ -20,24 +22,29 @@ import warp as wp
 from isaaclab_newton.sim.schemas import MujocoJointCfg
 
 from isaaclab.app import add_launcher_args, launch_simulation
-from isaaclab.visualizers import VisualizerCfg
+from isaaclab.envs.utils.video_recorder_cfg import VideoRecorderCfg
+from isaaclab.utils.math import create_rotation_matrix_from_view, quat_from_matrix
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import resolve_task_config, setup_preset_cli
 
-TASK_NAME = "Isaac-Lift-Cable-Franka"
+TASK_NAME = "Isaac-Lift-Cable-Franka-Camera"
 LIFT_HEIGHT = 0.125
 DROP_TARGET_Y = 0.55
+GRASP_OFFSET_Z = -0.002
+CAMERA_EYE = (2.25, 2.0, 0.3)
+CAMERA_LOOKAT = (0.0, 0.5, -0.2)
 
-parser = argparse.ArgumentParser(description="Lift a cable and drop it outside a table with a Franka robot.")
+parser = argparse.ArgumentParser(description="Lift a cable and launch it outside a table with a Franka robot.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
-parser.add_argument("--num_steps", type=int, default=1000, help="Number of environment steps to run.")
+parser.add_argument("--num_steps", type=int, default=305, help="Number of environment steps to run.")
 add_launcher_args(parser)
-parser.set_defaults(visualizer=["newton"])
 args_cli, hydra_args = setup_preset_cli(parser)
 sys.argv = [sys.argv[0]] + hydra_args
 
 wp.init()
+
+RELEASE_FRACTION = wp.constant(0.6)
 
 
 class GripperState:
@@ -52,18 +59,16 @@ class PickAndDropSmState:
     GRASP_CABLE = wp.constant(3)
     LIFT_CABLE = wp.constant(4)
     MOVE_OUTSIDE_TABLE = wp.constant(5)
-    RELEASE_CABLE = wp.constant(6)
-    HOLD = wp.constant(7)
+    HOLD = wp.constant(6)
 
 
 class PickAndDropSmWaitTime:
     REST = wp.constant(0.0)
     APPROACH_ABOVE_CABLE = wp.constant(0.5)
     APPROACH_CABLE = wp.constant(0.5)
-    GRASP_CABLE = wp.constant(1.5)
+    GRASP_CABLE = wp.constant(0.75)
     LIFT_CABLE = wp.constant(1.5)
     MOVE_OUTSIDE_TABLE = wp.constant(2.0)
-    RELEASE_CABLE = wp.constant(1.0)
 
 
 @wp.func
@@ -133,15 +138,11 @@ def infer_state_machine(
         drop_position = wp.transform_get_translation(drop_pose[tid])
         orientation = wp.transform_get_rotation(drop_pose[tid])
         desired_ee_pose[tid] = wp.transform(wp.lerp(lift_position, drop_position, alpha), orientation)
-        gripper_state[tid] = GripperState.CLOSE
+        if alpha < RELEASE_FRACTION:
+            gripper_state[tid] = GripperState.CLOSE
+        else:
+            gripper_state[tid] = GripperState.OPEN
         if sm_wait_time[tid] >= PickAndDropSmWaitTime.MOVE_OUTSIDE_TABLE:
-            if position_reached(ee_pose[tid], desired_ee_pose[tid], position_threshold):
-                sm_state[tid] = PickAndDropSmState.RELEASE_CABLE
-                sm_wait_time[tid] = 0.0
-    elif state == PickAndDropSmState.RELEASE_CABLE:
-        desired_ee_pose[tid] = drop_pose[tid]
-        gripper_state[tid] = GripperState.OPEN
-        if sm_wait_time[tid] >= PickAndDropSmWaitTime.RELEASE_CABLE:
             sm_state[tid] = PickAndDropSmState.HOLD
             sm_wait_time[tid] = 0.0
     elif state == PickAndDropSmState.HOLD:
@@ -152,7 +153,7 @@ def infer_state_machine(
 
 
 class PickAndDropCableSm:
-    """Task-space state machine for picking up and dropping a cable."""
+    """Task-space state machine for picking up and launching a cable."""
 
     def __init__(self, dt: float, num_envs: int, device: torch.device | str, position_threshold: float = 0.01):
         self.num_envs = num_envs
@@ -207,19 +208,38 @@ class PickAndDropCableSm:
 def main() -> None:
     env_cfg, _ = resolve_task_config(TASK_NAME, "")
     env_cfg.curriculum.gravity = None
+    env_cfg.events.variable_gravity = None
+    env_cfg.sim.gravity = (0.0, 0.0, -0.4)
+    env_cfg.scene.cable.spawn.physics_material.thickness = 0.015
+    env_cfg.sim.physics.num_substeps *= 2
     env_cfg.scene.robot.spawn.joint_drive_props = [MujocoJointCfg(actuatorgravcomp=True)]
     env_cfg.sim.device = args_cli.device
     env_cfg.scene.num_envs = args_cli.num_envs
-    env_cfg.episode_length_s = 30.0
+    env_cfg.episode_length_s = 15.0
     for term_name in list(vars(env_cfg.terminations)):
         if term_name != "time_out":
             setattr(env_cfg.terminations, term_name, None)
     env_cfg.actions = type(env_cfg)().actions.ik
     env_cfg.scene.ee_frame.target_frames[0].offset.pos = [0.0, 0.0, 0.107]
     env_cfg.actions.arm_action.controller.ik_params = {"lambda_val": 0.01}
-    env_cfg.viewer.eye = (1.2, 0.8, 0.45)
-    env_cfg.viewer.lookat = (0.5, 0.1, 0.0)
-    env_cfg.sim.default_visualizer_cfg = VisualizerCfg(eye=env_cfg.viewer.eye, lookat=env_cfg.viewer.lookat)
+    env_cfg.scene.base_camera.width = 1600
+    env_cfg.scene.base_camera.height = 1600
+    env_cfg.scene.base_camera.spawn.clipping_range = (0.01, 10.0)
+    camera_rotation = create_rotation_matrix_from_view(
+        torch.tensor([CAMERA_EYE]), torch.tensor([CAMERA_LOOKAT]), up_axis="Z"
+    )
+    env_cfg.scene.base_camera.offset.pos = CAMERA_EYE
+    env_cfg.scene.base_camera.offset.rot = tuple(quat_from_matrix(camera_rotation)[0].tolist())
+    env_cfg.video_recorders = [
+        VideoRecorderCfg(
+            source="sensor:base_camera:rgb",
+            output_dir="videos/push_franka_cable",
+            output_filename_prefix="per_env_camera_partition_10s",
+            video_length=300,
+            fps=30,
+            step_offset=5,
+        )
+    ]
 
     with launch_simulation(env_cfg, args_cli):
         env = gym.make(TASK_NAME, cfg=env_cfg)
@@ -233,9 +253,11 @@ def main() -> None:
             - env.unwrapped.scene.env_origins
         )
         grasp_position = cable_position.clone()
+        grasp_position[:, 2] += GRASP_OFFSET_Z
         lift_position = grasp_position.clone()
         lift_position[:, 2] = LIFT_HEIGHT
         drop_position = lift_position.clone()
+        drop_position[:, 0] = 0.0
         drop_position[:, 1] = DROP_TARGET_Y
         top_down_orientation = torch.zeros((env.unwrapped.num_envs, 4), device=env.unwrapped.device)
         top_down_orientation[:, 0] = 1.0
@@ -255,9 +277,11 @@ def main() -> None:
                         - env.unwrapped.scene.env_origins[reset_ids]
                     )
                     grasp_position[reset_ids] = cable_position
+                    grasp_position[reset_ids, 2] += GRASP_OFFSET_Z
                     lift_position[reset_ids] = grasp_position[reset_ids]
                     lift_position[reset_ids, 2] = LIFT_HEIGHT
                     drop_position[reset_ids] = lift_position[reset_ids]
+                    drop_position[reset_ids, 0] = 0.0
                     drop_position[reset_ids, 1] = DROP_TARGET_Y
 
                 ee_frame = env.unwrapped.scene["ee_frame"]
