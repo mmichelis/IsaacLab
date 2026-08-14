@@ -187,12 +187,17 @@ class EventCfg:
                     },
                 ),
                 "reset_robot_arm_joints": EventTerm(
-                    func=mdp.reset_joints_by_offset,
+                    func=mdp.reset_joints_within_limits_range,
                     mode="reset",
                     params={
-                        "position_range": (-0.2, 0.2),
-                        "velocity_range": (0.0, 0.0),
-                        "asset_cfg": SceneEntityCfg("robot", joint_names="panda_joint.*"),
+                        "position_range": {
+                            "panda_joint[1357]": (-0.2, 0.2),
+                            "panda_joint[24]": (-0.2, 0.5),
+                            "panda_joint6": (-0.3, 0.2),
+                        },
+                        "velocity_range": {"panda_joint.*": (0.0, 0.0)},
+                        "use_default_offset": True,
+                        "asset_cfg": SceneEntityCfg("robot"),
                     },
                 ),
                 "reset_robot_gripper_joints": EventTerm(
@@ -210,6 +215,20 @@ class EventCfg:
                         "pose_range": {"x": (-0.2, 0.2), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
                         "velocity_range": {},
                         "asset_cfg": SceneEntityCfg("object", body_names="Object"),
+                    },
+                ),
+                "reset_object_and_target_in_gripper": EventTerm(
+                    func=mdp.reset_object_and_target_in_gripper,
+                    mode="reset",
+                    params={
+                        "probability": 0.25,
+                        "hand_offset": (0.0, 0.0, 0.105),
+                        "gripper_position_range": (-0.028, -0.028),
+                        "robot_cfg": SceneEntityCfg(
+                            "robot", body_names="panda_hand", joint_names="panda_finger_joint.*"
+                        ),
+                        "object_cfg": SceneEntityCfg("object"),
+                        "target_cfg": SceneEntityCfg("target"),
                     },
                 ),
             },
@@ -239,7 +258,7 @@ class EventCfg:
                     min_clearance=0.001,
                 ),
             },
-            # "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
+            "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
         },
     )
 
@@ -403,7 +422,7 @@ class CurriculumCfg:
                 "start_value": 2.0,
                 "end_value": 8.0,
                 "start_step": 0,
-                "end_step": 20000,
+                "end_step": 10000,
             },
         },
     )
