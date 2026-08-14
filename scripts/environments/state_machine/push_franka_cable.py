@@ -25,7 +25,7 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import resolve_task_config, setup_preset_cli
 
 TASK_NAME = "Isaac-Lift-Cable-Franka"
-LIFT_HEIGHT = 0.25
+LIFT_HEIGHT = 0.125
 DROP_TARGET_Y = 0.55
 
 parser = argparse.ArgumentParser(description="Lift a cable and drop it outside a table with a Franka robot.")
@@ -207,7 +207,7 @@ def main() -> None:
     env_cfg, _ = resolve_task_config(TASK_NAME, "")
     env_cfg.sim.device = args_cli.device
     env_cfg.scene.num_envs = args_cli.num_envs
-    env_cfg.episode_length_s = 15.0
+    env_cfg.episode_length_s = 30.0
     for term_name in list(vars(env_cfg.terminations)):
         if term_name != "time_out":
             setattr(env_cfg.terminations, term_name, None)
