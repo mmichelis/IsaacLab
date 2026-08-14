@@ -11,12 +11,16 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from isaaclab.assets import AssetBaseCfg
 from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
-from isaaclab.utils.math import combine_frame_transforms, quat_apply
+from isaaclab.utils.math import combine_frame_transforms, quat_apply, transform_points
+
+from isaaclab_tasks.core.lift.mdp.utils import sample_object_point_cloud, symmetric_point_cloud_distance
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
+    from isaaclab.markers import VisualizationMarkersCfg
 
 
 def object_ee_distance(
@@ -62,8 +66,6 @@ class object_fingertip_distance(ManagerTermBase):
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        from isaaclab_tasks.core.lift.mdp.utils import sample_object_point_cloud
-
         object_cfg: SceneEntityCfg = cfg.params.get("object_cfg", SceneEntityCfg("object"))
         num_points = 32
         obj: RigidObject = env.scene[object_cfg.name]
@@ -90,13 +92,62 @@ class object_fingertip_distance(ManagerTermBase):
         return (1.0 - torch.tanh(nearest / std)).mean(dim=1)
 
 
-class object_goal_distance(ManagerTermBase):
-    """Reward the agent for tracking the object-to-goal pose using a tanh kernel.
+class _object_goal_distance(ManagerTermBase):
+    """Shared command or target distance term."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        target_cfg: SceneEntityCfg | None = cfg.params.get("target_cfg")
+        if target_cfg is None:
+            return
+        object_cfg: SceneEntityCfg = cfg.params.get("object_cfg", SceneEntityCfg("object"))
+        num_points: int = cfg.params.get("num_points", 32)
+        obj: RigidObject = env.scene[object_cfg.name]
+        target: RigidObject = env.scene[target_cfg.name]
+        self._object_points_local = sample_object_point_cloud(
+            env.num_envs, num_points, obj.cfg.prim_path, device=env.device
+        )
+        self._target_points_local = sample_object_point_cloud(
+            env.num_envs, num_points, target.cfg.prim_path, device=env.device
+        )
+
+    def _goal_metrics(
+        self,
+        env: ManagerBasedRLEnv,
+        object_cfg: SceneEntityCfg,
+        command_name: str | None = None,
+        robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        target_cfg: SceneEntityCfg | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        obj: RigidObject = env.scene[object_cfg.name]
+        object_pos_w = _object_position_w(obj, object_cfg)
+        if (target_cfg is None) == (command_name is None):
+            raise ValueError("Exactly one of command_name or target_cfg must be provided.")
+        if target_cfg is None:
+            robot: RigidObject = env.scene[robot_cfg.name]
+            command = env.command_manager.get_command(command_name)
+            goal_pos_w, _ = combine_frame_transforms(
+                robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
+            )
+            return torch.linalg.norm(goal_pos_w - object_pos_w, dim=1), object_pos_w
+
+        target: RigidObject = env.scene[target_cfg.name]
+        object_points_w = transform_points(
+            self._object_points_local, obj.data.root_pos_w.torch, obj.data.root_quat_w.torch
+        )
+        target_points_w = transform_points(
+            self._target_points_local, target.data.root_pos_w.torch, target.data.root_quat_w.torch
+        )
+        distance = symmetric_point_cloud_distance(object_points_w, target_points_w)
+        return distance, object_pos_w
+
+
+class object_goal_distance(_object_goal_distance):
+    """Reward object-to-goal alignment using a tanh kernel.
 
     If ``success_threshold`` is provided in the term params, this also tracks per-episode
-    success (sticky binary: object ever within ``success_threshold`` of the commanded goal
-    while lifted above ``minimal_height``) and logs the mean across environments under
-    ``Metrics/success_rate`` on reset.
+    success (sticky binary: object ever within ``success_threshold`` of the goal while lifted
+    above ``minimal_height``) and logs the mean under ``Metrics/success_rate`` on reset.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
@@ -117,19 +168,14 @@ class object_goal_distance(ManagerTermBase):
         env: ManagerBasedRLEnv,
         std: float,
         minimal_height: float,
-        command_name: str,
+        command_name: str | None = None,
         robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
         object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
         success_threshold: float | None = None,
+        target_cfg: SceneEntityCfg | None = None,
+        num_points: int = 32,
     ) -> torch.Tensor:
-        robot: RigidObject = env.scene[robot_cfg.name]
-        obj: RigidObject = env.scene[object_cfg.name]
-        command = env.command_manager.get_command(command_name)
-        des_pos_w, _ = combine_frame_transforms(
-            robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
-        )
-        object_pos_w = _object_position_w(obj, object_cfg)
-        distance = torch.linalg.norm(des_pos_w - object_pos_w, dim=1)
+        distance, object_pos_w = self._goal_metrics(env, object_cfg, command_name, robot_cfg, target_cfg)
         is_lifted = object_pos_w[:, 2] > minimal_height
         if success_threshold is not None:
             self.succeeded |= is_lifted & (distance < success_threshold)
@@ -196,6 +242,48 @@ class object_goal_distance_delta(ManagerTermBase):
         delta = self._prev_distance - distance
         self._prev_distance = distance
         return is_lifted.float() * delta
+
+
+class object_target_point_cloud_reached(_object_goal_distance):
+    """Per-step success bonus for aligning the object and target point clouds."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._success_visualizer = None
+        self._success_vis_pos_w = None
+        asset_name = cfg.params.get("success_vis_asset_name")
+        visualizer_cfg = cfg.params.get("success_visualizer_cfg")
+        if (asset_name is None) != (visualizer_cfg is None):
+            raise ValueError("Success visualization requires both asset name and visualizer configuration.")
+        if asset_name is not None:
+            asset = env.scene[asset_name]
+            if not isinstance(asset, AssetBaseCfg):
+                raise TypeError("Success visualization currently requires a static scene asset.")
+            offset = torch.tensor(asset.init_state.pos, device=env.device)
+            self._success_vis_pos_w = env.scene.env_origins + offset
+            from isaaclab.markers import VisualizationMarkers
+
+            self._success_visualizer = VisualizationMarkers(visualizer_cfg)
+            self._success_visualizer.set_visibility(True)
+            self._success_visualizer.visualize(self._success_vis_pos_w)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        minimal_height: float,
+        success_threshold: float,
+        object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+        target_cfg: SceneEntityCfg = SceneEntityCfg("target"),
+        num_points: int = 32,
+        success_vis_asset_name: str | None = None,
+        success_visualizer_cfg: VisualizationMarkersCfg | None = None,
+    ) -> torch.Tensor:
+        distance, object_pos_w = self._goal_metrics(env, object_cfg, target_cfg=target_cfg)
+        is_lifted = object_pos_w[:, 2] > minimal_height
+        reached = is_lifted & (distance < success_threshold)
+        if self._success_visualizer is not None:
+            self._success_visualizer.visualize(self._success_vis_pos_w, marker_indices=reached.int())
+        return reached.float()
 
 
 def object_goal_reached(

@@ -37,7 +37,6 @@ TABLE_SPAWN_CFG = sim_utils.CuboidCfg(
     size=(1.3, 0.9, 1.05),
     collision_props=sim_utils.CollisionPropertiesCfg(),
     rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-    # trick: we let visualizer's color to show the table with success coloring
     visible=False,
 )
 
@@ -52,7 +51,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 
     # robots: will be populated by agent env cfg
     robot: ArticulationCfg = MISSING
-    # target object
+    # task object
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.03]),
@@ -68,9 +67,24 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    # static table collider with its top surface at z = 0. Kept invisible: the success
-    # visualizer renders the visible table, colored by whether the goal is reached
-    # (see CommandsCfg).
+    # visual target
+    target: RigidObjectCfg = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Target",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.0]),
+        spawn=sim_utils.CuboidCfg(
+            size=(0.02, 0.02, 0.05),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                rigid_body_enabled=True,
+                kinematic_enabled=True,
+                disable_gravity=True,
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.1),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), opacity=0.35),
+        ),
+    )
+
+    # static table collider with its top surface at z = 0
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0.0, -0.525]),
@@ -97,38 +111,6 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
 
 
 @configclass
-class CommandsCfg:
-    """Command terms for the MDP."""
-
-    object_pose = mdp.ObjectUniformPoseCommandCfg(
-        asset_name="robot",
-        object_name="object",
-        resampling_time_range=(5.0, 5.0),
-        debug_vis=True,
-        ranges=mdp.ObjectUniformPoseCommandCfg.Ranges(
-            pos_x=(0.4, 0.6),
-            pos_y=(-0.25, 0.25),
-            pos_z=(0.08, 0.1),
-            roll=(0.0, 0.0),
-            pitch=(0.0, 0.0),
-            yaw=(-0.5, 0.5),
-        ),
-        success_vis_asset_name="table",
-        success_visualizer_cfg=VisualizationMarkersCfg(
-            prim_path="/Visuals/SuccessMarkers",
-            markers={
-                "failure": TABLE_SPAWN_CFG.replace(
-                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.5, 0.5)), visible=True
-                ),
-                "success": TABLE_SPAWN_CFG.replace(
-                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.8, 0.5)), visible=True
-                ),
-            },
-        ),
-    )
-
-
-@configclass
 class ActionsCfg:
     pass
 
@@ -141,7 +123,10 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        target_object_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "object_pose"})
+        target_object_pose = ObsTerm(
+            func=mdp.asset_pose_b,
+            params={"asset_cfg": SceneEntityCfg("target"), "reference_cfg": SceneEntityCfg("robot")},
+        )
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -187,6 +172,20 @@ class EventCfg:
         mode="reset",
         params={
             "terms": {
+                "reset_target_position": EventTerm(
+                    func=mdp.reset_root_state_uniform,
+                    mode="reset",
+                    params={
+                        "pose_range": {
+                            "x": (-0.1, 0.1),
+                            "y": (-0.25, 0.25),
+                            "z": (0.08, 0.5),
+                            "yaw": (-0.5, 0.5),
+                        },
+                        "velocity_range": {},
+                        "asset_cfg": SceneEntityCfg("target"),
+                    },
+                ),
                 "reset_robot_arm_joints": EventTerm(
                     func=mdp.reset_joints_by_offset,
                     mode="reset",
@@ -200,7 +199,7 @@ class EventCfg:
                     func=mdp.reset_joints_shared_offset,
                     mode="reset",
                     params={
-                        "position_range": (-0.02, 0.0),
+                        "position_range": (-0.01, 0.0),
                         "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint.*"),
                     },
                 ),
@@ -216,12 +215,11 @@ class EventCfg:
             },
             "buffer_size_per_group": 32768,
             "oversample_factor": 2.0,
-            "diversity_feature": mdp.GraspTravelOpeningCfg(
+            "diversity_feature": mdp.GraspTravelDistanceCfg(
                 asset_name="robot",
-                body_names=["panda_leftfinger", "panda_rightfinger"],
+                body_names="panda_hand",
                 object_name="object",
-                command_name="object_pose",
-                gripper_joint_names="panda_finger_joint.*",
+                target_name="target",
                 log_scale=True,
             ),
             "valid_criteria": {
@@ -336,20 +334,32 @@ class RewardsCfg:
         params={
             "std": 0.1,
             "minimal_height": 0.0,
-            "command_name": "object_pose",
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
+            "target_cfg": SceneEntityCfg("target"),
         },
         weight=5.0,
     )
 
     success_bonus = RewTerm(
-        func=mdp.object_goal_reached,
+        func=mdp.object_target_point_cloud_reached,
         params={
             "minimal_height": 0.0,
-            "command_name": "object_pose",
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
+            "target_cfg": SceneEntityCfg("target"),
+            "success_vis_asset_name": "table",
+            "success_visualizer_cfg": VisualizationMarkersCfg(
+                prim_path="/Visuals/SuccessMarkers",
+                markers={
+                    "failure": TABLE_SPAWN_CFG.replace(
+                        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.5, 0.5)), visible=True
+                    ),
+                    "success": TABLE_SPAWN_CFG.replace(
+                        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.8, 0.5)), visible=True
+                    ),
+                },
+            ),
         },
         weight=10.0,
     )
@@ -384,25 +394,12 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    adr = CurrTerm(
-        func=mdp.DifficultyScheduler, params={"init_difficulty": 0, "min_difficulty": 0, "max_difficulty": 10}
-    )
-
-    goal_z_adr = CurrTerm(
-        func=mdp.modify_term_cfg,
-        params={
-            "address": "commands.object_pose.ranges.pos_z",
-            "modify_fn": mdp.initial_final_interpolate_fn,
-            "modify_params": {
-                "initial_value": (0.08, 0.1),
-                "final_value": (0.25, 0.5),
-                "difficulty_term_str": "adr",
-            },
-        },
-    )
-
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-2, "num_steps": 1000000}
+    )
+
+    adr = CurrTerm(
+        func=mdp.DifficultyScheduler, params={"init_difficulty": 0, "min_difficulty": 0, "max_difficulty": 10}
     )
 
     gravity_adr = CurrTerm(
@@ -451,7 +448,7 @@ class PegInHolePhysicsCfg(PresetCfg):
                 CouplerEntryCfg(
                     name="rigid",
                     solver_cfg=MJWarpSolverCfg(cone="elliptic", ls_iterations=20, integrator="implicitfast"),
-                    bodies=[r"/World/envs/env_.*/Robot", r"/World/envs/env_.*/Table"],
+                    bodies=[r"/World/envs/env_.*/Robot", r"/World/envs/env_.*/Target", r"/World/envs/env_.*/Table"],
                 ),
                 CouplerEntryCfg(
                     name="object",
@@ -488,7 +485,6 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
-    commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
@@ -499,7 +495,7 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 5.0
+        self.episode_length_s = 8.0
         # simulation settings
         self.sim.dt = 1.0 / 120
         self.sim.render_interval = self.decimation
@@ -518,7 +514,6 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         reset_params["buffer_size_per_group"] = 64
         reset_params["oversample_factor"] = 1.0
         reset_params["diversity_feature"] = None
-        self.commands.object_pose.ranges.pos_z = (0.25, 0.5)
         if self.curriculum is not None:
             self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
             self.curriculum.adr.params["promotion_only"] = True

@@ -17,7 +17,7 @@ from tqdm import tqdm
 import isaaclab.sim as sim_utils
 from isaaclab import cloner
 from isaaclab.managers import EventTermCfg, ManagerTermBase, ManagerTermBaseCfg, SceneEntityCfg
-from isaaclab.utils.math import quat_apply, random_orientation, sample_uniform
+from isaaclab.utils.math import quat_apply, random_orientation, sample_uniform, transform_points
 
 from .utils import (
     collect_body_collision_meshes,
@@ -26,6 +26,7 @@ from .utils import (
     get_reset_state,
     sample_object_point_cloud,
     set_reset_state,
+    symmetric_point_cloud_distance,
 )
 
 if TYPE_CHECKING:
@@ -507,23 +508,10 @@ class conditional_reset(ManagerTermBase):
 
 
 class grasp_travel_distance(ManagerTermBase):
-    """How far the hand has to close on the object, and how far the object then has to travel.
+    """Describe reset states by hand-to-object and object-to-goal distances.
 
-    Two-axis spread descriptor for :class:`conditional_reset`, measuring the distance from the
-    object to whichever measured robot body is farthest from it and the distance from the object to
-    the middle of the goal region. Together they are what makes one reset state a different learning
-    problem from another: a start with the object already between the fingertips and next to the
-    goal asks for a different policy than one with the hand an arm's length away and the goal across
-    the workspace. Spreading over both keeps the easy and hard corners that rejection sampling alone
-    would leave rare, rather than spreading over one axis and letting the other fall where it may.
-
-    The goal is redrawn from :attr:`GraspTravelDistanceCfg.command_name`'s ranges on every reset and
-    is not stored with a banked state, so the second axis measures the middle of that range: the
-    distance the object has to travel up to the per-episode spread of the goal itself.
-
-    Configured with :class:`GraspTravelDistanceCfg`; called as ``(env, env_ids) -> Tensor`` of shape
-    [len(env_ids), 2], columns ``[0]`` hand-to-object and ``[1]`` object-to-goal, in metres or in
-    log-metres depending on :attr:`GraspTravelDistanceCfg.log_scale`.
+    Target mode uses symmetric point-cloud distance. Command mode uses the center of the
+    configured position range. The output has shape ``(len(env_ids), 2)`` in [m].
     """
 
     # distances below this are treated as this far apart, keeping the logarithm finite
@@ -536,6 +524,20 @@ class grasp_travel_distance(ManagerTermBase):
         self._robot: Articulation = env.scene[cfg.asset_name]
         self._object = env.scene[cfg.object_name]
         self._body_ids = self._robot.find_bodies(cfg.body_names)[0]
+        if (cfg.target_name is None) == (cfg.command_name is None):
+            raise ValueError("grasp_travel_distance requires exactly one of 'target_name' or 'command_name'.")
+        self._target = env.scene[cfg.target_name] if cfg.target_name is not None else None
+        if self._target is not None:
+            if cfg.num_points <= 0:
+                raise ValueError("grasp_travel_distance requires num_points to be positive.")
+            self._object_points_local = sample_object_point_cloud(
+                env.num_envs, cfg.num_points, self._object.cfg.prim_path, device=env.device
+            )
+            self._target_points_local = sample_object_point_cloud(
+                env.num_envs, cfg.num_points, self._target.cfg.prim_path, device=env.device
+            )
+            self._goal_center_b = None
+            return
         # taken from the config, not the command manager: descriptors are built when physics starts
         # playing, before any manager exists. Kept in the robot frame, where commands are sampled.
         command_cfg = getattr(env.cfg.commands, cfg.command_name, None)
@@ -552,10 +554,23 @@ class grasp_travel_distance(ManagerTermBase):
         object_pos = self._object.data.root_pos_w.torch[env_ids]
         body_pos = self._robot.data.body_pos_w.torch[env_ids][:, self._body_ids]
         grasp = torch.linalg.norm(body_pos - object_pos[:, None, :], dim=-1).amax(dim=-1, keepdim=True)
-        goal_pos = self._robot.data.root_pos_w.torch[env_ids] + quat_apply(
-            self._robot.data.root_quat_w.torch[env_ids], self._goal_center_b.expand(len(env_ids), 3)
-        )
-        travel = torch.linalg.norm(goal_pos - object_pos, dim=-1, keepdim=True)
+        if self._target is None:
+            goal_pos = self._robot.data.root_pos_w.torch[env_ids] + quat_apply(
+                self._robot.data.root_quat_w.torch[env_ids], self._goal_center_b.expand(len(env_ids), 3)
+            )
+            travel = torch.linalg.norm(goal_pos - object_pos, dim=-1, keepdim=True)
+        else:
+            object_points_w = transform_points(
+                self._object_points_local[env_ids],
+                object_pos,
+                self._object.data.root_quat_w.torch[env_ids],
+            )
+            target_points_w = transform_points(
+                self._target_points_local[env_ids],
+                self._target.data.root_pos_w.torch[env_ids],
+                self._target.data.root_quat_w.torch[env_ids],
+            )
+            travel = symmetric_point_cloud_distance(object_points_w, target_points_w).unsqueeze(-1)
         feature = torch.cat([grasp, travel], dim=-1)
         return feature.clamp_min(self.MIN_DISTANCE).log() if self.cfg.log_scale else feature
 

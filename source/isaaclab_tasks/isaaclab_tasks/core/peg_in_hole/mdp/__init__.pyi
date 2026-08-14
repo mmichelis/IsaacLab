@@ -5,6 +5,7 @@
 
 __all__ = [
     # observations
+    "asset_pose_b",
     "object_point_cloud_b",
     "ObjectUniformPoseCommandCfg",
     "reset_joints_shared_offset",
@@ -20,6 +21,7 @@ __all__ = [
     "object_goal_distance",
     "object_goal_distance_delta",
     "object_goal_reached",
+    "object_target_point_cloud_reached",
     # terminations
     "object_outside_bounds",
     "joint_vel_out_of_sim_limit",
@@ -41,14 +43,18 @@ from isaaclab_tasks.core.lift.mdp import (
     object_point_cloud_b,
     reset_joints_shared_offset,
 )
+
 from .events_cfg import GraspTravelOpeningCfg
+from .observations import asset_pose_b
 from .rewards import (
     object_ee_distance,
     object_fingertip_distance,
     object_goal_distance,
     object_goal_distance_delta,
     object_goal_reached,
+    object_target_point_cloud_reached,
     object_lifting,
 )
 from .terminations import joint_vel_out_of_sim_limit, object_outside_bounds
+
 from isaaclab.envs.mdp import *

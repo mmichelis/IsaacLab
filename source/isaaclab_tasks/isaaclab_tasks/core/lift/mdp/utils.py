@@ -31,6 +31,20 @@ def clear_pointcloud_caches():
     _FINAL_SAMPLE_CACHE.clear()
 
 
+def symmetric_point_cloud_distance(points_a: torch.Tensor, points_b: torch.Tensor) -> torch.Tensor:
+    """Compute symmetric mean nearest-neighbor distance between point clouds.
+
+    Args:
+        points_a: First point cloud [m], shape ``(N, P, 3)``.
+        points_b: Second point cloud [m], shape ``(N, Q, 3)``.
+
+    Returns:
+        Point-cloud distance [m], shape ``(N,)``.
+    """
+    pairwise = torch.cdist(points_a, points_b)
+    return 0.5 * (pairwise.amin(dim=2).mean(dim=1) + pairwise.amin(dim=1).mean(dim=1))
+
+
 def sample_object_point_cloud(num_envs: int, num_points: int, prim_path: str, device: str = "cpu") -> torch.Tensor:
     """
     Samples point clouds for each environment instance by collecting points
