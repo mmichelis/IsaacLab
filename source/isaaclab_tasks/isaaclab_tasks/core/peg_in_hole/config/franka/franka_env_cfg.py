@@ -8,6 +8,7 @@ from isaaclab_newton.sim.schemas import MujocoJointCfg
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.controllers import DifferentialIKControllerCfg
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_tasks.core.peg_in_hole import mdp
@@ -18,6 +19,9 @@ from isaaclab_tasks.utils import PresetCfg
 # Pre-defined configs
 ##
 from isaaclab_assets.robots.franka import FRANKA_PANDA_MENAGERIE_CFG  # isort: skip
+
+LEFT_FINGER_CONTACT_SENSOR = "panda_leftfinger_object_s"
+RIGHT_FINGER_CONTACT_SENSOR = "panda_rightfinger_object_s"
 
 
 @configclass
@@ -72,9 +76,35 @@ class FrankaPegInHoleEnvCfg(PegInHoleEnvCfg):
         self.scene.robot = FRANKA_PANDA_MENAGERIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive_props = [MujocoJointCfg(actuatorgravcomp=True)]
         self.scene.robot.init_state.joint_pos["panda_joint2"] = 0.0
+        self.scene.robot.spawn.activate_contact_sensors = True
+        for finger_name, sensor_name in (
+            ("panda_leftfinger", LEFT_FINGER_CONTACT_SENSOR),
+            ("panda_rightfinger", RIGHT_FINGER_CONTACT_SENSOR),
+        ):
+            setattr(
+                self.scene,
+                sensor_name,
+                ContactSensorCfg(
+                    prim_path=(
+                        "{ENV_REGEX_NS}/Robot/Geometry/panda_link0/panda_link1/panda_link2/"
+                        "panda_link3/panda_link4/panda_link5/panda_link6/panda_link7/"
+                        f"panda_hand/{finger_name}"
+                    ),
+                    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+                ),
+            )
+
         self.rewards.reaching_object.params["robot_cfg"] = SceneEntityCfg(
             "robot", body_names=["panda_leftfinger", "panda_rightfinger"]
         )
+        for term in (self.rewards.goal_distance, self.rewards.success, self.rewards.success_bonus):
+            term.params.update(
+                {
+                    "contact_threshold": 0.01,
+                    "thumb_name": LEFT_FINGER_CONTACT_SENSOR,
+                    "finger_names": [RIGHT_FINGER_CONTACT_SENSOR],
+                }
+            )
 
         self.scene.robot.actuators = {
             # inspired by libfranka's joint_impedance_control.cpp

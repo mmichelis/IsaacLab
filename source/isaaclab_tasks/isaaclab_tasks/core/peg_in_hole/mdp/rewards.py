@@ -15,6 +15,7 @@ from isaaclab.assets import AssetBaseCfg
 from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
 from isaaclab.utils.math import combine_frame_transforms, quat_apply, transform_points
 
+from isaaclab_tasks.core.lift.mdp.rewards import contacts
 from isaaclab_tasks.core.lift.mdp.utils import sample_object_point_cloud, symmetric_point_cloud_distance
 
 if TYPE_CHECKING:
@@ -111,6 +112,19 @@ class _object_goal_distance(ManagerTermBase):
             env.num_envs, num_points, target.cfg.prim_path, device=env.device
         )
 
+    def _object_grasped(
+        self,
+        env: ManagerBasedRLEnv,
+        contact_threshold: float,
+        thumb_name: str | None,
+        finger_names: list[str] | None,
+    ) -> torch.Tensor:
+        if thumb_name is None and finger_names is None:
+            return torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+        if thumb_name is None or finger_names is None:
+            raise ValueError("Grasp gating requires both thumb_name and finger_names.")
+        return contacts(env, contact_threshold, thumb_name, finger_names)
+
     def _goal_metrics(
         self,
         env: ManagerBasedRLEnv,
@@ -118,7 +132,7 @@ class _object_goal_distance(ManagerTermBase):
         command_name: str | None = None,
         robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
         target_cfg: SceneEntityCfg | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         obj: RigidObject = env.scene[object_cfg.name]
         object_pos_w = _object_position_w(obj, object_cfg)
         if (target_cfg is None) == (command_name is None):
@@ -129,7 +143,7 @@ class _object_goal_distance(ManagerTermBase):
             goal_pos_w, _ = combine_frame_transforms(
                 robot.data.root_pos_w.torch, robot.data.root_quat_w.torch, command[:, :3]
             )
-            return torch.linalg.norm(goal_pos_w - object_pos_w, dim=1), object_pos_w
+            return torch.linalg.norm(goal_pos_w - object_pos_w, dim=1)
 
         target: RigidObject = env.scene[target_cfg.name]
         object_points_w = transform_points(
@@ -139,15 +153,15 @@ class _object_goal_distance(ManagerTermBase):
             self._target_points_local, target.data.root_pos_w.torch, target.data.root_quat_w.torch
         )
         distance = symmetric_point_cloud_distance(object_points_w, target_points_w)
-        return distance, object_pos_w
+        return distance
 
 
 class object_goal_distance(_object_goal_distance):
     """Reward object-to-goal alignment using a tanh kernel.
 
-    If ``success_threshold`` is provided in the term params, this also tracks per-episode
-    success (sticky binary: object ever within ``success_threshold`` of the goal while lifted
-    above ``minimal_height``) and logs the mean under ``Metrics/success_rate`` on reset.
+    If ``success_threshold`` is provided, this also tracks sticky per-episode success.
+    Contact sensor names additionally require bilateral object contact.
+    ``minimal_height`` is accepted for compatibility and ignored.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
@@ -167,19 +181,22 @@ class object_goal_distance(_object_goal_distance):
         self,
         env: ManagerBasedRLEnv,
         std: float,
-        minimal_height: float,
+        minimal_height: float | None = None,
         command_name: str | None = None,
         robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
         object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
         success_threshold: float | None = None,
         target_cfg: SceneEntityCfg | None = None,
         num_points: int = 32,
+        contact_threshold: float = 0.01,
+        thumb_name: str | None = None,
+        finger_names: list[str] | None = None,
     ) -> torch.Tensor:
-        distance, object_pos_w = self._goal_metrics(env, object_cfg, command_name, robot_cfg, target_cfg)
-        is_lifted = object_pos_w[:, 2] > minimal_height
+        distance = self._goal_metrics(env, object_cfg, command_name, robot_cfg, target_cfg)
+        grasped = self._object_grasped(env, contact_threshold, thumb_name, finger_names)
         if success_threshold is not None:
-            self.succeeded |= is_lifted & (distance < success_threshold)
-        return is_lifted.float() * (1 - torch.tanh(distance / std))
+            self.succeeded |= grasped & (distance < success_threshold)
+        return grasped.float() * (1 - torch.tanh(distance / std))
 
 
 class object_goal_distance_delta(ManagerTermBase):
@@ -270,17 +287,20 @@ class object_target_point_cloud_reached(_object_goal_distance):
     def __call__(
         self,
         env: ManagerBasedRLEnv,
-        minimal_height: float,
-        success_threshold: float,
+        minimal_height: float | None = None,
+        success_threshold: float = 0.05,
         object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
         target_cfg: SceneEntityCfg = SceneEntityCfg("target"),
         num_points: int = 32,
         success_vis_asset_name: str | None = None,
         success_visualizer_cfg: VisualizationMarkersCfg | None = None,
+        contact_threshold: float = 0.01,
+        thumb_name: str | None = None,
+        finger_names: list[str] | None = None,
     ) -> torch.Tensor:
-        distance, object_pos_w = self._goal_metrics(env, object_cfg, target_cfg=target_cfg)
-        is_lifted = object_pos_w[:, 2] > minimal_height
-        reached = is_lifted & (distance < success_threshold)
+        distance = self._goal_metrics(env, object_cfg, target_cfg=target_cfg)
+        grasped = self._object_grasped(env, contact_threshold, thumb_name, finger_names)
+        reached = grasped & (distance < success_threshold)
         if self._success_visualizer is not None:
             self._success_visualizer.visualize(self._success_vis_pos_w, marker_indices=reached.int())
         return reached.float()

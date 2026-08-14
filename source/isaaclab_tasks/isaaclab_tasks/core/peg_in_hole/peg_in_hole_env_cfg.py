@@ -179,7 +179,7 @@ class EventCfg:
                         "pose_range": {
                             "x": (-0.1, 0.1),
                             "y": (-0.25, 0.25),
-                            "z": (0.08, 0.5),
+                            "z": (0.05, 0.5),
                             "yaw": (-0.5, 0.5),
                         },
                         "velocity_range": {},
@@ -199,7 +199,7 @@ class EventCfg:
                     func=mdp.reset_joints_shared_offset,
                     mode="reset",
                     params={
-                        "position_range": (-0.01, 0.0),
+                        "position_range": (-0.02, 0.0),
                         "asset_cfg": SceneEntityCfg("robot", joint_names="panda_finger_joint.*"),
                     },
                 ),
@@ -207,7 +207,7 @@ class EventCfg:
                     func=mdp.reset_root_state_uniform,
                     mode="reset",
                     params={
-                        "pose_range": {"x": (-0.25, 0.25), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+                        "pose_range": {"x": (-0.2, 0.2), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
                         "velocity_range": {},
                         "asset_cfg": SceneEntityCfg("object", body_names="Object"),
                     },
@@ -228,7 +228,7 @@ class EventCfg:
                     body_names=".*",
                     object_name="object",
                     num_object_points=32,
-                    min_clearance=0.01,
+                    min_clearance=0.001,
                 ),
                 "robot_table_clearance": mdp.SlabClearanceCfg(
                     asset_name="robot",
@@ -239,7 +239,7 @@ class EventCfg:
                     min_clearance=0.001,
                 ),
             },
-            "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
+            # "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
         },
     )
 
@@ -310,21 +310,10 @@ class RewardsCfg:
         weight=5.0,
     )
 
-    lifting_object = RewTerm(
-        func=mdp.object_lifting,
-        params={
-            "std": 0.02,
-            "minimal_height": 0.025,
-            "object_cfg": SceneEntityCfg("object", body_names="Object"),
-        },
-        weight=10.0,
-    )
-
     goal_distance = RewTerm(
         func=mdp.object_goal_distance,
         params={
             "std": 0.3,
-            "minimal_height": 0.0,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
             "target_cfg": SceneEntityCfg("target"),
         },
@@ -335,7 +324,6 @@ class RewardsCfg:
         func=mdp.object_goal_distance,
         params={
             "std": 0.05,
-            "minimal_height": 0.0,
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
             "target_cfg": SceneEntityCfg("target"),
@@ -346,7 +334,6 @@ class RewardsCfg:
     success_bonus = RewTerm(
         func=mdp.object_target_point_cloud_reached,
         params={
-            "minimal_height": 0.0,
             "success_threshold": 0.05,
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
             "target_cfg": SceneEntityCfg("target"),
@@ -414,7 +401,7 @@ class CurriculumCfg:
             "modify_fn": mdp.linear_interpolate,
             "modify_params": {
                 "start_value": 2.0,
-                "end_value": 10.0,
+                "end_value": 8.0,
                 "start_step": 0,
                 "end_step": 20000,
             },
@@ -516,7 +503,7 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
 
     def play_mode(self):
         super().play_mode()
-        self.episode_length_s = 10.0
+        self.episode_length_s = 8.0
         reset_params = self.events.conditional_reset.params
         reset_params["buffer_size_per_group"] = 64
         reset_params["oversample_factor"] = 1.0
