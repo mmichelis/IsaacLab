@@ -223,6 +223,7 @@ class EventCfg:
                     params={
                         "probability": 0.25,
                         "hand_offset": (0.0, 0.0, 0.105),
+                        "object_bottom_height_range": (0.001, 0.01),
                         "gripper_position_range": (-0.028, -0.028),
                         "robot_cfg": SceneEntityCfg(
                             "robot", body_names="panda_hand", joint_names="panda_finger_joint.*"
@@ -328,7 +329,7 @@ class RewardsCfg:
     reaching_object = RewTerm(
         func=mdp.object_ee_distance,
         params={"std": 0.2, "object_cfg": SceneEntityCfg("object", body_names="Object")},
-        weight=5.0,
+        weight=1.0,
     )
 
     goal_distance = RewTerm(
@@ -338,7 +339,7 @@ class RewardsCfg:
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
             "target_cfg": SceneEntityCfg("target"),
         },
-        weight=2.0,
+        weight=1.0,
     )
 
     success = RewTerm(
@@ -349,7 +350,7 @@ class RewardsCfg:
             "object_cfg": SceneEntityCfg("object", body_names="Object"),
             "target_cfg": SceneEntityCfg("target"),
         },
-        weight=10.0,
+        weight=1.0,
     )
 
     success_bonus = RewTerm(
@@ -371,7 +372,7 @@ class RewardsCfg:
                 },
             ),
         },
-        weight=10.0,
+        weight=1.0,
     )
 
     # action penalty
