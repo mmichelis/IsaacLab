@@ -80,6 +80,9 @@ class VBDSolverCfg(NewtonModelSolverCfg):
     only integrates the cloth particles.
     """
 
+    rigid_compliant_alm: bool = True
+    """Whether to use compliant ALM for rigid contacts, joints, drives, and limits."""
+
     particle_enable_self_contact: bool = False
     """Whether to enable VBD deformable's self-contact."""
 

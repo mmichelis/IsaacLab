@@ -104,7 +104,7 @@ dependencies = [
     "pycollada>=0.9",
     "resolve-robotics-uri-py>=0.4.0",
     "open3d>=0.19.0 ; python_version < '3.13' and (sys_platform != 'linux' or platform_machine != 'aarch64')",
-    # Loose bound co-resolves with isaacsim's ==0.2.0; the override below forces >=0.4.1.
+    # Loose bound co-resolves with isaacsim's ==0.2.0; the override below forces >=0.5.0.
     "newton-usd-schemas>=0.2.0",
     "PyOpenGL-accelerate>=3.1.0",
     # ----- newton interactive viewer GUI (in base, no extra required) -----
@@ -214,7 +214,7 @@ torchaudio = "2.11.0"
 ovphysx = "0.5.9"
 ovrtx = ">=0.4.0,<0.5.0"
 ovstage = "0.1.0.346039"
-newton = "release-1.5"
+newton = "c29a20583d3658d21b1f218dcc20a8d9a1e3a118"
 warp = "1.16.0"
 
 [tool.ruff]
@@ -397,9 +397,9 @@ override-dependencies = [
     "numpy>=2",
     "mujoco~=3.11.0",
     "mujoco-warp~=3.11.0",
-    "newton[sim] @ git+https://github.com/newton-physics/newton.git@release-1.5",
+    "newton[sim] @ git+https://github.com/newton-physics/newton.git@c29a20583d3658d21b1f218dcc20a8d9a1e3a118",
     # Force the Newton-matched schemas over isaacsim's ==0.2.0 pin.
-    "newton-usd-schemas>=0.4.1",
+    "newton-usd-schemas>=0.5.0",
     "torch==2.11.0",
     "torchvision==0.26.0",
     "torchaudio==2.11.0",

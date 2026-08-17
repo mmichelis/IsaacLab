@@ -12,6 +12,7 @@ import warp as wp
 from isaaclab_newton.cloner.replicate import NewtonReplicateContext
 from isaaclab_newton.physics import NewtonManager
 from isaaclab_newton.sim.spawners.materials import NewtonDeformableMaterialCfg
+from newton.solvers import SolverVBD
 
 from isaaclab_contrib.deformable import DeformableObject, VBDSolverCfg
 from isaaclab_contrib.deformable.deformable_object import (
@@ -83,6 +84,15 @@ def test_deformable_package_exports_public_symbols():
     """Test that deformable symbols are exported from the package root."""
     assert DeformableObject.__name__ == "DeformableObject"
     assert VBDSolverCfg.__name__ == "VBDSolverCfg"
+
+
+def test_vbd_solver_enables_compliant_alm_by_default():
+    """VBD forwards the compliant ALM default and explicit overrides."""
+    default_kwargs = NewtonVBDManager._filter_solver_kwargs(SolverVBD, VBDSolverCfg())
+    override_kwargs = NewtonVBDManager._filter_solver_kwargs(SolverVBD, VBDSolverCfg(rigid_compliant_alm=False))
+
+    assert default_kwargs["rigid_compliant_alm"] is True
+    assert override_kwargs["rigid_compliant_alm"] is False
 
 
 @pytest.mark.parametrize("external_rigid_solver", [False, True])
