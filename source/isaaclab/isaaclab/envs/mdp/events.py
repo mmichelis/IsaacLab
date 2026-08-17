@@ -2401,7 +2401,9 @@ class reset_joints_within_limits_range(ManagerTermBase):
             )
             # clip the joint positions to the joint limits
             joint_pos_limits = self._asset.data.soft_joint_pos_limits.torch[0, self._pos_joint_ids]
-            joint_pos = joint_pos.clamp(joint_pos_limits[:, 0], joint_pos_limits[:, 1])
+            joint_pos[:, self._pos_joint_ids] = joint_pos[:, self._pos_joint_ids].clamp(
+                joint_pos_limits[:, 0], joint_pos_limits[:, 1]
+            )
 
         # sample random joint velocities for each joint
         if len(self._vel_joint_ids) > 0:
@@ -2411,7 +2413,9 @@ class reset_joints_within_limits_range(ManagerTermBase):
             )
             # clip the joint velocities to the joint limits
             joint_vel_limits = self._asset.data.soft_joint_vel_limits.torch[0, self._vel_joint_ids]
-            joint_vel = joint_vel.clamp(-joint_vel_limits, joint_vel_limits)
+            joint_vel[:, self._vel_joint_ids] = joint_vel[:, self._vel_joint_ids].clamp(
+                -joint_vel_limits, joint_vel_limits
+            )
 
         # set into the physics simulation
         self._asset.write_joint_position_to_sim_index(position=joint_pos, env_ids=env_ids)

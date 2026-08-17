@@ -246,6 +246,7 @@ for the lift-cube environment:
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+-----------------------------------------+
     | |lift-cube|             | |lift-cube-link|             | Pick a cube and bring it to a sampled target position with the Franka robot |                                         |
     +-------------------------+------------------------------+-----------------------------------------------------------------------------+-----------------------------------------+
+    +-------------------------+------------------------------+-----------------------------------------------------------------------------+-----------------------------------------+
     | |lift-soft-franka|      | |lift-soft-franka-link|      | Pick a deformable soft body and bring it to a sampled target position with  | **physics=** ``isaacsim_physx``,        |
     |                         |                              | the Franka robot                                                            | ``newton_mjwarp_vbd_proxy``             |
     |                         |                              |                                                                             | **presets=** ``ik``, ``joint``          |
@@ -1192,6 +1193,11 @@ including disabling runtime perturbations used for training.
       - Manager Based
       - **rl_games** (PPO), **rsl_rl** (PPO), **skrl** (PPO)
       -
+    * - Isaac-Peg-In-Hole-Franka
+      - Manager Based
+      - **rsl_rl** (PPO)
+      - | **physics=** ``isaacsim_physx``, ``newton_mjwarp``, ``newton_mjwarp_vbd_proxy``
+          | **presets=** ``ik``, ``joint``
     * - Isaac-Pendulum-Direct
       - Direct
       - **rl_games** (PPO), **skrl** (PPO, IPPO, MAPPO)

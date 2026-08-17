@@ -71,8 +71,14 @@ class GraspTravelDistanceCfg(ManagerTermBaseCfg):
     object_name: str = MISSING
     """Rigid object the distance is measured to."""
 
-    command_name: str = MISSING
-    """Name of the pose command term whose sampling range locates the goal region."""
+    command_name: str | None = None
+    """Pose command whose sampling range locates the goal region."""
+
+    target_name: str | None = None
+    """Rigid target asset whose surface locates the goal."""
+
+    num_points: int = 32
+    """Surface points sampled from each object when using a target asset."""
 
     log_scale: bool = False
     """Whether to report the logarithm of the distances rather than the distances themselves.
