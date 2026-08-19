@@ -10,6 +10,7 @@ __all__ = [
     "object_point_cloud_b",
     "ObjectUniformPoseCommandCfg",
     "reset_hole_from_target",
+    "reset_target_depth",
     "rigid_object_box_clearance",
     "rigid_objects_above_plane",
     "reset_object_and_target_in_gripper",
@@ -57,6 +58,7 @@ from .curriculums import linear_interpolate, reward_weight_linear
 from .events import (
     reset_hole_from_target,
     reset_object_and_target_in_gripper,
+    reset_target_depth,
     rigid_object_box_clearance,
     rigid_objects_above_plane,
 )

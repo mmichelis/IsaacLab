@@ -15,6 +15,36 @@ from isaaclab_tasks.core.lift.mdp.events import grasp_travel_distance, reset_joi
 from .events_cfg import GraspTravelOpeningCfg
 
 
+def reset_target_depth(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    depth_range: tuple[float, float],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("target"),
+) -> None:
+    """Offset a restored target anchor by a uniform target-local depth.
+
+    The target anchor must be restored before this event on every reset.
+
+    Args:
+        env: The environment.
+        env_ids: Environments to reset.
+        depth_range: Target-local z offset range [m].
+        asset_cfg: Target asset to reset.
+    """
+    lower, upper = depth_range
+    if lower > upper:
+        raise ValueError("depth_range lower bound must not exceed upper bound.")
+
+    target = env.scene[asset_cfg.name]
+    pose = target.data.root_link_pose_w.torch[env_ids].clone()
+    offset = torch.zeros(len(env_ids), 3, device=env.device, dtype=pose.dtype)
+    offset[:, 2] = sample_uniform(lower, upper, (len(env_ids),), device=env.device)
+    pose[:, :3] += quat_apply(pose[:, 3:7], offset)
+    velocity = torch.zeros(len(env_ids), 6, device=env.device, dtype=pose.dtype)
+    target.write_root_pose_to_sim_index(root_pose=pose, env_ids=env_ids)
+    target.write_root_velocity_to_sim_index(root_velocity=velocity, env_ids=env_ids)
+
+
 def reset_hole_from_target(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,

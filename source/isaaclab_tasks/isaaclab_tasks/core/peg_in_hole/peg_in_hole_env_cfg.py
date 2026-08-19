@@ -42,11 +42,11 @@ TABLE_SPAWN_CFG = sim_utils.CuboidCfg(
 
 
 _HOLE_PARTS = {
-    "hole_left": ((0.01, 0.05, 0.035), (-0.02, 0.0, -0.0125)),
-    "hole_right": ((0.01, 0.05, 0.035), (0.02, 0.0, -0.0125)),
-    "hole_front": ((0.03, 0.01, 0.035), (0.0, -0.02, -0.0125)),
-    "hole_back": ((0.03, 0.01, 0.035), (0.0, 0.02, -0.0125)),
-    "hole_bottom": ((0.05, 0.05, 0.005), (0.0, 0.0, -0.0325)),
+    "hole_left": ((0.0075, 0.05, 0.055), (-0.02125, 0.0, -0.0225)),
+    "hole_right": ((0.0075, 0.05, 0.055), (0.02125, 0.0, -0.0225)),
+    "hole_front": ((0.035, 0.0075, 0.055), (0.0, -0.02125, -0.0225)),
+    "hole_back": ((0.035, 0.0075, 0.055), (0.0, 0.02125, -0.0225)),
+    "hole_bottom": ((0.05, 0.05, 0.005), (0.0, 0.0, -0.0525)),
 }
 _HOLE_PART_NAMES = tuple(_HOLE_PARTS)
 _HOLE_DEFAULT_ANCHOR = (0.5, 0.0, 0.7)
@@ -83,9 +83,9 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # task object
     object: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.03]),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.04]),
         spawn=sim_utils.CuboidCfg(
-            size=(0.02, 0.02, 0.05),
+            size=(0.02, 0.02, 0.07),
             physics_material=[
                 UsdPhysicsRigidBodyMaterialCfg(static_friction=1.0, dynamic_friction=1.0),
                 NewtonMaterialCfg(contact_stiffness=1.0e4, contact_damping=100.0),
@@ -101,7 +101,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Target",
         init_state=RigidObjectCfg.InitialStateCfg(pos=[0.5, 0.0, 0.0]),
         spawn=sim_utils.CuboidCfg(
-            size=(0.02, 0.02, 0.05),
+            size=(0.02, 0.02, 0.07),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True,
                 kinematic_enabled=True,
@@ -226,7 +226,7 @@ class EventCfg:
                         "pose_range": {
                             "x": (-0.1, 0.1),
                             "y": (-0.25, 0.25),
-                            "z": (0.05, 0.5),
+                            "z": (0.05, 0.06),
                             "yaw": (-0.5, 0.5),
                         },
                         "velocity_range": {},
@@ -269,7 +269,7 @@ class EventCfg:
                     mode="reset",
                     params={
                         "part_offsets": {name: offset for name, (_, offset) in _HOLE_PARTS.items()},
-                        "depth_range": (0.04, 0.06),
+                        "depth_range": (0.0, 0.0),
                         "target_cfg": SceneEntityCfg("target"),
                     },
                 ),
@@ -329,6 +329,15 @@ class EventCfg:
             "success_monitor": mdp.SuccessMonitorCfg(target_success_rate=0.5),
             "uniform_eval_interval_steps": 2400,
             "uniform_eval_num_episodes": 1024,
+        },
+    )
+
+    reset_target_depth = EventTerm(
+        func=mdp.reset_target_depth,
+        mode="reset",
+        params={
+            "depth_range": (0.05, 0.07),
+            "asset_cfg": SceneEntityCfg("target"),
         },
     )
 
@@ -472,6 +481,54 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
+    adr = CurrTerm(
+        func=mdp.DifficultyScheduler,
+        params={
+            "init_difficulty": 0,
+            "min_difficulty": 0,
+            "max_difficulty": 10,
+        },
+    )
+
+    target_depth_adr = CurrTerm(
+        func=mdp.modify_term_cfg,
+        params={
+            "address": "events.reset_target_depth.params.depth_range",
+            "modify_fn": mdp.initial_final_interpolate_fn,
+            "modify_params": {
+                "initial_value": (0.05, 0.07),
+                "final_value": (-0.01, -0.01),
+                "difficulty_term_str": "adr",
+            },
+        },
+    )
+
+    success_threshold_adr = CurrTerm(
+        func=mdp.modify_term_cfg,
+        params={
+            "address": "rewards.success.params.success_threshold",
+            "modify_fn": mdp.initial_final_interpolate_fn,
+            "modify_params": {
+                "initial_value": 0.05,
+                "final_value": 0.005,
+                "difficulty_term_str": "adr",
+            },
+        },
+    )
+
+    success_bonus_threshold_adr = CurrTerm(
+        func=mdp.modify_term_cfg,
+        params={
+            "address": "rewards.success_bonus.params.success_threshold",
+            "modify_fn": mdp.initial_final_interpolate_fn,
+            "modify_params": {
+                "initial_value": 0.05,
+                "final_value": 0.005,
+                "difficulty_term_str": "adr",
+            },
+        },
+    )
+
     action_rate = CurrTerm(
         func=mdp.reward_weight_linear,
         params={
@@ -608,4 +665,6 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         reset_params["diversity_feature"] = None
         reset_params["uniform_eval_interval_steps"] = None
         if self.curriculum is not None:
+            self.curriculum.adr.params["init_difficulty"] = self.curriculum.adr.params["max_difficulty"]
+            self.curriculum.adr.params["promotion_only"] = True
             self.curriculum.episode_length = None

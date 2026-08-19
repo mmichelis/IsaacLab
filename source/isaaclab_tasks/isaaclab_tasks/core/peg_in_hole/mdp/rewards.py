@@ -104,13 +104,10 @@ class _object_goal_distance(ManagerTermBase):
         object_cfg: SceneEntityCfg = cfg.params.get("object_cfg", SceneEntityCfg("object"))
         num_points: int = cfg.params.get("num_points", 32)
         obj: RigidObject = env.scene[object_cfg.name]
-        target: RigidObject = env.scene[target_cfg.name]
         self._object_points_local = sample_object_point_cloud(
             env.num_envs, num_points, obj.cfg.prim_path, device=env.device
         )
-        self._target_points_local = sample_object_point_cloud(
-            env.num_envs, num_points, target.cfg.prim_path, device=env.device
-        )
+        self._target_points_local = self._object_points_local
 
     def _object_grasped(
         self,
