@@ -45,7 +45,9 @@ def symmetric_point_cloud_distance(points_a: torch.Tensor, points_b: torch.Tenso
     return 0.5 * (pairwise.amin(dim=2).mean(dim=1) + pairwise.amin(dim=1).mean(dim=1))
 
 
-def sample_object_point_cloud(num_envs: int, num_points: int, prim_path: str, device: str = "cpu") -> torch.Tensor:
+def sample_object_point_cloud(
+    num_envs: int, num_points: int, prim_path: str, device: str = "cpu", per_env: bool = False
+) -> torch.Tensor:
     """
     Samples point clouds for each environment instance by collecting points
     from all matching USD prims under `prim_path`, then downsamples to
@@ -54,6 +56,13 @@ def sample_object_point_cloud(num_envs: int, num_points: int, prim_path: str, de
     Caching is in-memory within this module:
       - per-prim raw samples:   _PRIM_SAMPLE_CACHE[(prim_hash, num_points)]
       - final downsampled env:  _FINAL_SAMPLE_CACHE[env_hash]
+
+    Args:
+        num_envs: Number of environment point clouds.
+        num_points: Number of points per environment.
+        prim_path: Path expression for the sampled assets.
+        device: Device for the returned points.
+        per_env: Whether to sample independent surface points for each environment.
 
     Returns:
         torch.Tensor: Shape (num_envs, num_points, 3) on `device`.
@@ -128,6 +137,44 @@ def sample_object_point_cloud(num_envs: int, num_points: int, prim_path: str, de
         else:
             base_scale = torch.tensor(scale_val, dtype=torch.float32, device=device)
 
+        if per_env:
+            env_count = len(env_ids)
+            all_samples = []
+            for prim in prims:
+                prim_type = prim.GetTypeName()
+                if prim_type == "Mesh":
+                    mesh = UsdGeom.Mesh(prim)
+                    verts = np.asarray(mesh.GetPointsAttr().Get(), dtype=np.float32)
+                    faces = _triangulate_faces(prim)
+                    mesh_tm = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+                else:
+                    mesh_tm = create_primitive_mesh(prim)
+
+                samples_np, _ = sample_surface(mesh_tm, env_count * num_points * 2, face_weight=mesh_tm.area_faces)
+                candidates = torch.from_numpy(samples_np.astype(np.float32)).to(device)
+                candidates = candidates.view(env_count, num_points * 2, 3)
+                indices = _batched_farthest_point_sampling(candidates, num_points)
+                local_points = torch.gather(candidates, 1, indices.unsqueeze(-1).expand(-1, -1, 3))
+
+                rel = xform_cache.GetLocalToWorldTransform(prim) * world_root.GetInverse()
+                mat_np = np.array([[rel[r][c] for c in range(4)] for r in range(4)], dtype=np.float32)
+                mat_t = torch.from_numpy(mat_np).to(device)
+                ones = torch.ones((env_count, num_points, 1), device=device)
+                root_h = torch.cat((local_points, ones), dim=-1) @ mat_t
+                samples = root_h[..., :3]
+                if prim_type == "Cone":
+                    samples[..., 2] -= UsdGeom.Cone(prim).GetHeightAttr().Get() / 2
+                all_samples.append(samples)
+
+            if len(all_samples) == 1:
+                samples_final = all_samples[0]
+            else:
+                combined = torch.cat(all_samples, dim=1)
+                indices = _batched_farthest_point_sampling(combined, num_points)
+                samples_final = torch.gather(combined, 1, indices.unsqueeze(-1).expand(-1, -1, 3))
+            points[list(env_ids)] = samples_final * base_scale.view(1, 1, 3)
+            continue
+
         # env-level cache key (includes num_points)
         env_key = "_".join(sorted(prim_hashes)) + f"_{num_points}"
         env_hash = hashlib.sha256(env_key.encode()).hexdigest()
@@ -198,6 +245,25 @@ def sample_object_point_cloud(num_envs: int, num_points: int, prim_path: str, de
             points[env_id] = scaled_samples
 
     return points
+
+
+def _batched_farthest_point_sampling(points: torch.Tensor, n_samples: int) -> torch.Tensor:
+    """Select farthest-point subsets from batched point clouds."""
+    batch_size, num_points, _ = points.shape
+    if n_samples >= num_points:
+        return torch.arange(num_points, device=points.device).expand(batch_size, -1)
+
+    batch_indices = torch.arange(batch_size, device=points.device)
+    sampled_indices = torch.empty((batch_size, n_samples), dtype=torch.long, device=points.device)
+    min_distances = torch.full((batch_size, num_points), float("inf"), device=points.device)
+    farthest = torch.randint(num_points, (batch_size,), device=points.device)
+    for index in range(n_samples):
+        sampled_indices[:, index] = farthest
+        sampled_points = points[batch_indices, farthest].unsqueeze(1)
+        distances = torch.sum((points - sampled_points) ** 2, dim=-1)
+        min_distances = torch.minimum(min_distances, distances)
+        farthest = torch.argmax(min_distances, dim=1)
+    return sampled_indices
 
 
 def _triangulate_faces(prim) -> np.ndarray:

@@ -7,11 +7,93 @@ import torch
 
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.utils.math import matrix_from_quat, quat_apply
+from isaaclab.utils.math import matrix_from_quat, quat_apply, sample_uniform
 
+from isaaclab_tasks.contrib.franka_pour.geometry import oriented_boxes_overlap
 from isaaclab_tasks.core.lift.mdp.events import grasp_travel_distance, reset_joints_shared_offset
 
 from .events_cfg import GraspTravelOpeningCfg
+
+
+def reset_hole_from_target(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    part_offsets: dict[str, tuple[float, float, float]],
+    depth_range: tuple[float, float],
+    target_cfg: SceneEntityCfg = SceneEntityCfg("target"),
+) -> None:
+    """Place the hole behind the target along its local z-axis.
+
+    Args:
+        env: The environment.
+        env_ids: Environments to reset.
+        part_offsets: Part offsets at the fully inserted target pose [m].
+        depth_range: Target-to-hole pose offset range [m].
+        target_cfg: Target asset defining the hole frame.
+    """
+    lower, upper = depth_range
+    if lower > upper:
+        raise ValueError("depth_range lower bound must not exceed upper bound.")
+
+    target = env.scene[target_cfg.name]
+    target_pose = target.data.root_link_pose_w.torch[env_ids]
+    depth = sample_uniform(lower, upper, (len(env_ids),), device=env.device)
+    velocity = torch.zeros(len(env_ids), 6, device=env.device, dtype=target_pose.dtype)
+    for name, offset in part_offsets.items():
+        local_offset = torch.tensor(offset, device=env.device, dtype=target_pose.dtype).expand(len(env_ids), 3).clone()
+        local_offset[:, 2] -= depth
+        pose = target_pose.clone()
+        pose[:, :3] += quat_apply(target_pose[:, 3:7], local_offset)
+        part = env.scene[name]
+        part.write_root_pose_to_sim_index(root_pose=pose, env_ids=env_ids)
+        part.write_root_velocity_to_sim_index(root_velocity=velocity, env_ids=env_ids)
+
+
+def rigid_object_box_clearance(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    object_name: str,
+    obstacle_names: list[str],
+    min_clearance: float,
+) -> torch.Tensor:
+    """Return whether a cuboid rigid object clears every cuboid obstacle."""
+    obj = env.scene[object_name]
+    object_pose = obj.data.root_link_pose_w.torch[env_ids]
+    object_half = torch.as_tensor(obj.cfg.spawn.size, device=env.device, dtype=object_pose.dtype) / 2
+    valid = torch.ones(len(env_ids), dtype=torch.bool, device=env.device)
+    for name in obstacle_names:
+        obstacle = env.scene[name]
+        obstacle_pose = obstacle.data.root_link_pose_w.torch[env_ids]
+        obstacle_half = torch.as_tensor(obstacle.cfg.spawn.size, device=env.device, dtype=object_pose.dtype) / 2
+        valid &= ~oriented_boxes_overlap(
+            object_pose[:, :3],
+            object_pose[:, 3:7],
+            object_half,
+            obstacle_pose[:, :3],
+            obstacle_pose[:, 3:7],
+            obstacle_half,
+            min_clearance,
+        )
+    return valid
+
+
+def rigid_objects_above_plane(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    object_names: list[str],
+    height: float,
+    min_clearance: float,
+) -> torch.Tensor:
+    """Return whether oriented cuboids clear a horizontal plane."""
+    valid = torch.ones(len(env_ids), dtype=torch.bool, device=env.device)
+    origin_z = env.scene.env_origins[env_ids, 2]
+    for name in object_names:
+        obj = env.scene[name]
+        pose = obj.data.root_link_pose_w.torch[env_ids]
+        half = torch.as_tensor(obj.cfg.spawn.size, device=env.device, dtype=pose.dtype) / 2
+        vertical_radius = (matrix_from_quat(pose[:, 3:7]).abs()[:, 2] * half).sum(-1)
+        valid &= pose[:, 2] - origin_z - vertical_radius >= height + min_clearance
+    return valid
 
 
 def reset_object_and_target_in_gripper(

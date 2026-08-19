@@ -15,10 +15,10 @@ from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ManagerTermBaseCfg, SceneEntityCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.physics import PhysxAutoCfg
@@ -42,17 +42,20 @@ TABLE_SPAWN_CFG = sim_utils.CuboidCfg(
 
 
 _HOLE_PARTS = {
-    "hole_left": ((0.01, 0.05, 0.035), (0.48, 0.0, 0.6875)),
-    "hole_right": ((0.01, 0.05, 0.035), (0.52, 0.0, 0.6875)),
-    "hole_front": ((0.03, 0.01, 0.035), (0.5, -0.02, 0.6875)),
-    "hole_back": ((0.03, 0.01, 0.035), (0.5, 0.02, 0.6875)),
-    "hole_bottom": ((0.05, 0.05, 0.005), (0.5, 0.0, 0.6675)),
+    "hole_left": ((0.01, 0.05, 0.035), (-0.02, 0.0, -0.0125)),
+    "hole_right": ((0.01, 0.05, 0.035), (0.02, 0.0, -0.0125)),
+    "hole_front": ((0.03, 0.01, 0.035), (0.0, -0.02, -0.0125)),
+    "hole_back": ((0.03, 0.01, 0.035), (0.0, 0.02, -0.0125)),
+    "hole_bottom": ((0.05, 0.05, 0.005), (0.0, 0.0, -0.0325)),
 }
+_HOLE_PART_NAMES = tuple(_HOLE_PARTS)
+_HOLE_DEFAULT_ANCHOR = (0.5, 0.0, 0.7)
 
 
 def _hole_part_cfg(name: str) -> RigidObjectCfg:
     """Create a fixed hole part."""
-    size, position = _HOLE_PARTS[name]
+    size, offset = _HOLE_PARTS[name]
+    position = tuple(anchor + delta for anchor, delta in zip(_HOLE_DEFAULT_ANCHOR, offset, strict=True))
     return RigidObjectCfg(
         prim_path=f"{{ENV_REGEX_NS}}/{name.title().replace('_', '')}",
         init_state=RigidObjectCfg.InitialStateCfg(pos=position),
@@ -184,6 +187,18 @@ class ObservationsCfg:
             params={"num_points": 32, "flatten": True},
         )
 
+        hole_structure_point_cloud = ObsTerm(
+            func=mdp.hole_structure_point_cloud_b,
+            params={
+                "part_cfgs": [SceneEntityCfg(name) for name in _HOLE_PART_NAMES],
+                "reference_cfg": SceneEntityCfg("robot"),
+                "num_points": 64,
+                "flatten": True,
+                "per_env": True,
+                "visualize": True,
+            },
+        )
+
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_dim = 0
@@ -249,18 +264,12 @@ class EventCfg:
                         "asset_cfg": SceneEntityCfg("object", body_names="Object"),
                     },
                 ),
-                "reset_object_and_target_in_gripper": EventTerm(
-                    func=mdp.reset_object_and_target_in_gripper,
+                "reset_hole_from_target": EventTerm(
+                    func=mdp.reset_hole_from_target,
                     mode="reset",
                     params={
-                        "probability": 0.25,
-                        "hand_offset": (0.0, 0.0, 0.105),
-                        "object_bottom_height_range": (0.001, 0.01),
-                        "gripper_position_range": (-0.028, -0.028),
-                        "robot_cfg": SceneEntityCfg(
-                            "robot", body_names="panda_hand", joint_names="panda_finger_joint.*"
-                        ),
-                        "object_cfg": SceneEntityCfg("object"),
+                        "part_offsets": {name: offset for name, (_, offset) in _HOLE_PARTS.items()},
+                        "depth_range": (0.04, 0.06),
                         "target_cfg": SceneEntityCfg("target"),
                     },
                 ),
@@ -281,6 +290,32 @@ class EventCfg:
                     object_name="object",
                     num_object_points=32,
                     min_clearance=0.001,
+                ),
+                **{
+                    f"robot_{name}_clearance": mdp.MeshClearanceCfg(
+                        asset_name="robot",
+                        body_names=".*",
+                        object_name=name,
+                        num_object_points=32,
+                        min_clearance=0.001,
+                    )
+                    for name in _HOLE_PART_NAMES
+                },
+                "object_hole_clearance": ManagerTermBaseCfg(
+                    func=mdp.rigid_object_box_clearance,
+                    params={
+                        "object_name": "object",
+                        "obstacle_names": list(_HOLE_PART_NAMES),
+                        "min_clearance": 0.001,
+                    },
+                ),
+                "hole_table_clearance": ManagerTermBaseCfg(
+                    func=mdp.rigid_objects_above_plane,
+                    params={
+                        "object_names": list(_HOLE_PART_NAMES),
+                        "height": 0.0,
+                        "min_clearance": 0.001,
+                    },
                 ),
                 "robot_table_clearance": mdp.SlabClearanceCfg(
                     asset_name="robot",
@@ -484,6 +519,7 @@ class PegInHolePhysicsCfg(PresetCfg):
             cone="pyramidal",
             integrator="implicitfast",
             use_mujoco_contacts=False,
+            nconmax=200,
         ),
         num_substeps=2,
         collision_decimation=1,
@@ -494,7 +530,9 @@ class PegInHolePhysicsCfg(PresetCfg):
             entries=[
                 CouplerEntryCfg(
                     name="rigid",
-                    solver_cfg=MJWarpSolverCfg(cone="elliptic", ls_iterations=20, integrator="implicitfast"),
+                    solver_cfg=MJWarpSolverCfg(
+                        cone="elliptic", ls_iterations=20, integrator="implicitfast", nconmax=200
+                    ),
                     bodies=[
                         r"/World/envs/env_.*/Robot",
                         r"/World/envs/env_.*/Target",

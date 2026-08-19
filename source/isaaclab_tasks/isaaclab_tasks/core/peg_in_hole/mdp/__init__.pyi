@@ -6,8 +6,12 @@
 __all__ = [
     # observations
     "asset_pose_b",
+    "hole_structure_point_cloud_b",
     "object_point_cloud_b",
     "ObjectUniformPoseCommandCfg",
+    "reset_hole_from_target",
+    "rigid_object_box_clearance",
+    "rigid_objects_above_plane",
     "reset_object_and_target_in_gripper",
     "reset_joints_shared_offset",
     "GraspTravelDistanceCfg",
@@ -50,9 +54,14 @@ from isaaclab_tasks.core.lift.mdp import (
 )
 
 from .curriculums import linear_interpolate, reward_weight_linear
-from .events import reset_object_and_target_in_gripper
+from .events import (
+    reset_hole_from_target,
+    reset_object_and_target_in_gripper,
+    rigid_object_box_clearance,
+    rigid_objects_above_plane,
+)
 from .events_cfg import GraspTravelOpeningCfg
-from .observations import asset_pose_b
+from .observations import asset_pose_b, hole_structure_point_cloud_b
 from .rewards import (
     object_ee_distance,
     object_fingertip_distance,
