@@ -158,9 +158,13 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        target_object_pose = ObsTerm(
-            func=mdp.asset_pose_b,
-            params={"asset_cfg": SceneEntityCfg("target"), "reference_cfg": SceneEntityCfg("robot")},
+        target_corners = ObsTerm(
+            func=mdp.cuboid_corners_b,
+            params={
+                "asset_cfg": SceneEntityCfg("target"),
+                "reference_cfg": SceneEntityCfg("robot"),
+                "flatten": True,
+            },
         )
 
         def __post_init__(self):
@@ -182,19 +186,21 @@ class ObservationsCfg:
     class PerceptionObsCfg(ObsGroup):
         """Observations for perception group."""
 
-        object_point_cloud = ObsTerm(
-            func=mdp.object_point_cloud_b,
-            params={"num_points": 32, "flatten": True},
+        object_corners = ObsTerm(
+            func=mdp.cuboid_corners_b,
+            params={
+                "asset_cfg": SceneEntityCfg("object"),
+                "reference_cfg": SceneEntityCfg("robot"),
+                "flatten": True,
+            },
         )
 
-        hole_structure_point_cloud = ObsTerm(
-            func=mdp.hole_structure_point_cloud_b,
+        hole_structure_corners = ObsTerm(
+            func=mdp.hole_structure_corners_b,
             params={
                 "part_cfgs": [SceneEntityCfg(name) for name in _HOLE_PART_NAMES],
                 "reference_cfg": SceneEntityCfg("robot"),
-                "num_points": 64,
                 "flatten": True,
-                "per_env": True,
                 "visualize": True,
             },
         )

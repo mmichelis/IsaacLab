@@ -14,6 +14,8 @@ import torch
 import isaaclab.utils.math as math_utils
 from isaaclab.managers import ManagerTermBase, ObservationTermCfg, SceneEntityCfg
 
+from isaaclab_tasks.core.utils import cuboid_corner_offsets
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -31,19 +33,6 @@ CUBE_HALF_SIZE: tuple[float, float, float] = (0.03, 0.03, 0.03)
 
 
 # -- cube keypoint helpers, shared by the camera and state observation terms
-def _cube_corner_offsets(
-    size: tuple[float, float, float], num_keypoints: int, device: torch.device | str
-) -> torch.Tensor:
-    """Corner offsets [m] from the cube center; corner index bits select the +/- half side per axis."""
-    signs = torch.tensor(
-        [[1 - 2 * ((corner >> axis) & 1) for axis in range(3)] for corner in range(num_keypoints)],
-        dtype=torch.float32,
-        device=device,
-    )
-    half_size = torch.tensor(size, dtype=torch.float32, device=device) / 2.0
-    return signs * half_size
-
-
 def compute_cube_keypoints(
     pose: torch.Tensor,
     num_keypoints: int = 8,
@@ -66,7 +55,7 @@ def compute_cube_keypoints(
     # are pose-independent, so they are built once and all num_keypoints corners are rotated
     # by the pose in a single batched quat_apply — mathematically identical, no Python loop.
     num_envs = pose.shape[0]
-    corners = _cube_corner_offsets(size, num_keypoints, pose.device)
+    corners = cuboid_corner_offsets(size, pose.device)[:num_keypoints]
     # Broadcast each env's quaternion across its corners and rotate every offset at once.
     rotated = math_utils.quat_apply(
         pose[:, None, 3:7].expand(num_envs, num_keypoints, 4), corners.expand(num_envs, num_keypoints, 3)
@@ -96,7 +85,7 @@ def cube_keypoints_from_quat(
     """
     num_envs = quat.shape[0]
     size = (2.0 * half_size[0], 2.0 * half_size[1], 2.0 * half_size[2])
-    corners = _cube_corner_offsets(size, num_keypoints, quat.device)
+    corners = cuboid_corner_offsets(size, quat.device)[:num_keypoints]
     rotated = math_utils.quat_apply(
         quat[:, None, :].expand(num_envs, num_keypoints, 4), corners.expand(num_envs, num_keypoints, 3)
     )

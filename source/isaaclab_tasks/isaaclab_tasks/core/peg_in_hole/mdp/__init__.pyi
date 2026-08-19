@@ -6,6 +6,8 @@
 __all__ = [
     # observations
     "asset_pose_b",
+    "cuboid_corners_b",
+    "hole_structure_corners_b",
     "hole_structure_point_cloud_b",
     "object_point_cloud_b",
     "ObjectUniformPoseCommandCfg",
@@ -63,7 +65,7 @@ from .events import (
     rigid_objects_above_plane,
 )
 from .events_cfg import GraspTravelOpeningCfg
-from .observations import asset_pose_b, hole_structure_point_cloud_b
+from .observations import asset_pose_b, cuboid_corners_b, hole_structure_corners_b, hole_structure_point_cloud_b
 from .rewards import (
     object_ee_distance,
     object_fingertip_distance,

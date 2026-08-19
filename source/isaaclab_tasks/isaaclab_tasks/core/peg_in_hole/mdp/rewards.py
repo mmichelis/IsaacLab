@@ -13,10 +13,12 @@ import torch
 
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
+from isaaclab.sim import CuboidCfg
 from isaaclab.utils.math import combine_frame_transforms, quat_apply, transform_points
 
 from isaaclab_tasks.core.lift.mdp.rewards import contacts
-from isaaclab_tasks.core.lift.mdp.utils import sample_object_point_cloud, symmetric_point_cloud_distance
+from isaaclab_tasks.core.lift.mdp.utils import sample_object_point_cloud
+from isaaclab_tasks.core.utils import cuboid_corner_offsets
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
@@ -102,12 +104,12 @@ class _object_goal_distance(ManagerTermBase):
         if target_cfg is None:
             return
         object_cfg: SceneEntityCfg = cfg.params.get("object_cfg", SceneEntityCfg("object"))
-        num_points: int = cfg.params.get("num_points", 32)
         obj: RigidObject = env.scene[object_cfg.name]
-        self._object_points_local = sample_object_point_cloud(
-            env.num_envs, num_points, obj.cfg.prim_path, device=env.device
-        )
-        self._target_points_local = self._object_points_local
+        target: RigidObject = env.scene[target_cfg.name]
+        if not isinstance(obj.cfg.spawn, CuboidCfg) or not isinstance(target.cfg.spawn, CuboidCfg):
+            raise TypeError("Target-based object goal rewards require cuboid object and target assets.")
+        self._object_points_local = cuboid_corner_offsets(obj.cfg.spawn.size, env.device).unsqueeze(0)
+        self._target_points_local = cuboid_corner_offsets(target.cfg.spawn.size, env.device).unsqueeze(0)
 
     def _object_grasped(
         self,
@@ -149,8 +151,7 @@ class _object_goal_distance(ManagerTermBase):
         target_points_w = transform_points(
             self._target_points_local, target.data.root_pos_w.torch, target.data.root_quat_w.torch
         )
-        distance = symmetric_point_cloud_distance(object_points_w, target_points_w)
-        return distance
+        return torch.linalg.vector_norm(object_points_w - target_points_w, dim=-1).mean(dim=-1)
 
 
 class object_goal_distance(_object_goal_distance):
@@ -259,7 +260,7 @@ class object_goal_distance_delta(ManagerTermBase):
 
 
 class object_target_point_cloud_reached(_object_goal_distance):
-    """Per-step success bonus for aligning the object and target point clouds."""
+    """Per-step success bonus for aligning corresponding object and target corners."""
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)

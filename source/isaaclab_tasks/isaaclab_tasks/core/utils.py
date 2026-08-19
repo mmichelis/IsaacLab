@@ -5,6 +5,7 @@
 
 """Shared utilities for core learning tasks."""
 
+import math
 from collections.abc import Sequence
 
 import numpy as np
@@ -12,6 +13,34 @@ import torch
 
 import isaaclab.utils.math as math_utils
 from isaaclab.utils.math import quat_from_angle_axis, quat_mul
+
+
+def cuboid_corner_offsets(
+    size: tuple[float, float, float],
+    device: torch.device | str,
+) -> torch.Tensor:
+    """Return ordered cuboid-corner offsets from its center.
+
+    Args:
+        size: Cuboid side lengths [m] along x, y, and z.
+        device: Device on which to create the offsets.
+
+    Returns:
+        Corner offsets [m], shape ``(8, 3)``. Corner index bits select the negative
+        x, y, and z half-extent, respectively.
+
+    Raises:
+        ValueError: If a side length is non-finite or non-positive.
+    """
+    if any(not math.isfinite(value) or value <= 0.0 for value in size):
+        raise ValueError(f"Expected finite positive cuboid side lengths, got {size}.")
+    signs = torch.tensor(
+        [[1 - 2 * ((corner >> axis) & 1) for axis in range(3)] for corner in range(8)],
+        dtype=torch.float32,
+        device=device,
+    )
+    half_size = torch.tensor(size, dtype=torch.float32, device=device) / 2.0
+    return signs * half_size
 
 
 class EpisodeErrorRecorder:
