@@ -40,6 +40,32 @@ TABLE_SPAWN_CFG = sim_utils.CuboidCfg(
     visible=False,
 )
 
+
+_HOLE_PARTS = {
+    "hole_left": ((0.01, 0.05, 0.035), (0.48, 0.0, 0.6875)),
+    "hole_right": ((0.01, 0.05, 0.035), (0.52, 0.0, 0.6875)),
+    "hole_front": ((0.03, 0.01, 0.035), (0.5, -0.02, 0.6875)),
+    "hole_back": ((0.03, 0.01, 0.035), (0.5, 0.02, 0.6875)),
+    "hole_bottom": ((0.05, 0.05, 0.005), (0.5, 0.0, 0.6675)),
+}
+
+
+def _hole_part_cfg(name: str) -> RigidObjectCfg:
+    """Create a fixed hole part."""
+    size, position = _HOLE_PARTS[name]
+    return RigidObjectCfg(
+        prim_path=f"{{ENV_REGEX_NS}}/{name.title().replace('_', '')}",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=position),
+        spawn=sim_utils.CuboidCfg(
+            size=size,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.1),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.15, 0.25, 0.65)),
+        ),
+    )
+
+
 ##
 # Scene definition
 ##
@@ -83,6 +109,12 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), opacity=0.35),
         ),
     )
+
+    hole_left = _hole_part_cfg("hole_left")
+    hole_right = _hole_part_cfg("hole_right")
+    hole_front = _hole_part_cfg("hole_front")
+    hole_back = _hole_part_cfg("hole_back")
+    hole_bottom = _hole_part_cfg("hole_bottom")
 
     # static table collider with its top surface at z = 0
     table = AssetBaseCfg(
@@ -463,7 +495,12 @@ class PegInHolePhysicsCfg(PresetCfg):
                 CouplerEntryCfg(
                     name="rigid",
                     solver_cfg=MJWarpSolverCfg(cone="elliptic", ls_iterations=20, integrator="implicitfast"),
-                    bodies=[r"/World/envs/env_.*/Robot", r"/World/envs/env_.*/Target", r"/World/envs/env_.*/Table"],
+                    bodies=[
+                        r"/World/envs/env_.*/Robot",
+                        r"/World/envs/env_.*/Target",
+                        r"/World/envs/env_.*/Hole(Left|Right|Front|Back|Bottom)",
+                        r"/World/envs/env_.*/Table",
+                    ],
                 ),
                 CouplerEntryCfg(
                     name="object",
@@ -479,6 +516,7 @@ class PegInHolePhysicsCfg(PresetCfg):
                     bodies=[
                         r"/World/envs/env_.*/Robot/panda_hand",
                         r"/World/envs/env_.*/Robot/panda_(left|right)finger",
+                        r"/World/envs/env_.*/Hole(Left|Right|Front|Back|Bottom)",
                         r"/World/envs/env_.*/Table",
                     ],
                 )

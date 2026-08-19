@@ -13,7 +13,6 @@ class PegInHolePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 50000
     save_interval = 100
-    clip_actions = 1.0
     experiment_name = "franka_peg_in_hole"
     obs_groups = {
         "actor": ["policy", "proprio", "perception"],
@@ -23,7 +22,7 @@ class PegInHolePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         hidden_dims=[256, 128, 64],
         activation="elu",
         obs_normalization=True,
-        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=1.0),
+        distribution_cfg=RslRlMLPModelCfg.DistributionCfg(class_name="BetaDistribution")
     )
     critic = RslRlMLPModelCfg(
         hidden_dims=[256, 128, 64],

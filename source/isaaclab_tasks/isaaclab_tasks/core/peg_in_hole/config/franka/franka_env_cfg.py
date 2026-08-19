@@ -29,8 +29,11 @@ class _JointActionsCfg:
     """Relative joint-position arm targets and a limit-rescaled gripper target."""
 
     arm_action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=["panda_joint.*"], scale=0.05)
-    gripper_action = mdp.JointPositionToLimitsActionCfg(
-        asset_name="robot", joint_names=["panda_finger_joint1"], rescale_to_limits=True
+    gripper_action = mdp.BinaryJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["panda_finger_joint1"],
+        open_command_expr={"panda_finger_joint1": 0.04},
+        close_command_expr={"panda_finger_joint1": 0.0},
     )
 
 
@@ -54,7 +57,7 @@ class _IkActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger_joint1"],
         open_command_expr={"panda_finger_joint1": 0.04},
-        close_command_expr={"panda_finger_joint1": 0.015},
+        close_command_expr={"panda_finger_joint1": 0.0},
     )
 
 
