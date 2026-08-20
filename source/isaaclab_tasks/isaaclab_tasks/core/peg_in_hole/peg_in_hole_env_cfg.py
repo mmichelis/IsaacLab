@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import math
 from dataclasses import MISSING
 
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
@@ -25,6 +26,7 @@ from isaaclab.physics import PhysxAutoCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg
 from isaaclab.sim.spawners.materials import UsdPhysicsRigidBodyMaterialCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_contrib.coupling import CouplerEntryCfg, CouplerProxyCfg, CouplerProxyMappingCfg
@@ -41,20 +43,55 @@ TABLE_SPAWN_CFG = sim_utils.CuboidCfg(
 )
 
 
-_HOLE_PARTS = {
-    "hole_left": ((0.0075, 0.05, 0.055), (-0.02125, 0.0, -0.0225)),
-    "hole_right": ((0.0075, 0.05, 0.055), (0.02125, 0.0, -0.0225)),
-    "hole_front": ((0.035, 0.0075, 0.055), (0.0, -0.02125, -0.0225)),
-    "hole_back": ((0.035, 0.0075, 0.055), (0.0, 0.02125, -0.0225)),
-    "hole_bottom": ((0.05, 0.05, 0.005), (0.0, 0.0, -0.0525)),
-}
-_HOLE_PART_NAMES = tuple(_HOLE_PARTS)
+_HOLE_PART_NAMES = ("hole_left", "hole_right", "hole_front", "hole_back", "hole_bottom")
 _HOLE_DEFAULT_ANCHOR = (0.5, 0.0, 0.7)
+_HOLE_BOTTOM_THICKNESS = 0.005
+_HOLE_TOP_OFFSET = 0.005
+
+
+@configclass
+class HoleStructureCfg:
+    """Dimensions of the hole structure [m]."""
+
+    width: float = 0.05
+    height: float = 0.05
+    depth: float = 0.06
+    opening_width: float = 0.03
+    opening_height: float = 0.03
+
+
+def _hole_parts(cfg: HoleStructureCfg) -> dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]]:
+    """Return hole-part sizes and target-relative offsets [m]."""
+    values = (cfg.width, cfg.height, cfg.depth, cfg.opening_width, cfg.opening_height)
+    if not all(math.isfinite(value) and value > 0.0 for value in values):
+        raise ValueError(f"Hole dimensions must be finite and positive, got {values}.")
+    if cfg.opening_width >= cfg.width or cfg.opening_height >= cfg.height:
+        raise ValueError("Hole opening dimensions must be smaller than the structure dimensions.")
+    if cfg.depth <= _HOLE_BOTTOM_THICKNESS:
+        raise ValueError(f"Hole depth must exceed the {_HOLE_BOTTOM_THICKNESS} m bottom thickness.")
+
+    side_width = 0.5 * (cfg.width - cfg.opening_width)
+    end_height = 0.5 * (cfg.height - cfg.opening_height)
+    wall_depth = cfg.depth - _HOLE_BOTTOM_THICKNESS
+    wall_z = _HOLE_TOP_OFFSET - 0.5 * wall_depth
+    bottom_z = _HOLE_TOP_OFFSET - wall_depth - 0.5 * _HOLE_BOTTOM_THICKNESS
+    side_x = 0.5 * (cfg.opening_width + side_width)
+    end_y = 0.5 * (cfg.opening_height + end_height)
+    return {
+        "hole_left": ((side_width, cfg.height, wall_depth), (-side_x, 0.0, wall_z)),
+        "hole_right": ((side_width, cfg.height, wall_depth), (side_x, 0.0, wall_z)),
+        "hole_front": ((cfg.opening_width, end_height, wall_depth), (0.0, -end_y, wall_z)),
+        "hole_back": ((cfg.opening_width, end_height, wall_depth), (0.0, end_y, wall_z)),
+        "hole_bottom": ((cfg.width, cfg.height, _HOLE_BOTTOM_THICKNESS), (0.0, 0.0, bottom_z)),
+    }
+
+
+_DEFAULT_HOLE_PARTS = _hole_parts(HoleStructureCfg())
 
 
 def _hole_part_cfg(name: str) -> RigidObjectCfg:
     """Create a fixed hole part."""
-    size, offset = _HOLE_PARTS[name]
+    size, offset = _DEFAULT_HOLE_PARTS[name]
     position = tuple(anchor + delta for anchor, delta in zip(_HOLE_DEFAULT_ANCHOR, offset, strict=True))
     return RigidObjectCfg(
         prim_path=f"{{ENV_REGEX_NS}}/{name.title().replace('_', '')}",
@@ -110,6 +147,7 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.1),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0), opacity=0.35),
+            visible=False,
         ),
     )
 
@@ -134,9 +172,12 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     )
 
     # lights
-    light = AssetBaseCfg(
-        prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+    sky_light = AssetBaseCfg(
+        prim_path="/World/skyLight",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=750.0,
+            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+        ),
     )
 
 
@@ -274,7 +315,7 @@ class EventCfg:
                     func=mdp.reset_hole_from_target,
                     mode="reset",
                     params={
-                        "part_offsets": {name: offset for name, (_, offset) in _HOLE_PARTS.items()},
+                        "part_offsets": {name: offset for name, (_, offset) in _DEFAULT_HOLE_PARTS.items()},
                         "depth_range": (0.0, 0.0),
                         "target_cfg": SceneEntityCfg("target"),
                     },
@@ -503,7 +544,7 @@ class CurriculumCfg:
             "modify_fn": mdp.initial_final_interpolate_fn,
             "modify_params": {
                 "initial_value": (0.05, 0.07),
-                "final_value": (-0.01, -0.01),
+                "final_value": (-0.015, -0.015),
                 "difficulty_term_str": "adr",
             },
         },
@@ -644,9 +685,12 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
+    hole_structure: HoleStructureCfg = HoleStructureCfg()
 
     def __post_init__(self):
         """Post initialization."""
+        self._sync_hole_structure()
+
         # general settings
         self.decimation = 4
         self.episode_length_s = 2.0
@@ -661,6 +705,23 @@ class PegInHoleEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = eye
         self.viewer.lookat = lookat
         self.sim.visualizer_cfgs = [NewtonVisualizerCfg(eye=eye, lookat=lookat, window_width=1920, window_height=1080)]
+
+    def validate_config(self):
+        """Synchronize derived hole geometry before environment creation."""
+        self._sync_hole_structure()
+
+    def _sync_hole_structure(self):
+        hole_parts = _hole_parts(self.hole_structure)
+        for name, (size, offset) in hole_parts.items():
+            part_cfg = getattr(self.scene, name)
+            part_cfg.spawn.size = size
+            part_cfg.init_state.pos = tuple(
+                anchor + delta for anchor, delta in zip(_HOLE_DEFAULT_ANCHOR, offset, strict=True)
+            )
+        reset_terms = self.events.conditional_reset.params["terms"]
+        reset_terms["reset_hole_from_target"].params["part_offsets"] = {
+            name: offset for name, (_, offset) in hole_parts.items()
+        }
 
     def play_mode(self):
         super().play_mode()

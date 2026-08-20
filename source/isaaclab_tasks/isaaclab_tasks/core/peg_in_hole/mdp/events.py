@@ -3,16 +3,22 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import torch
 
-from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import matrix_from_quat, quat_apply, sample_uniform
 
 from isaaclab_tasks.contrib.franka_pour.geometry import oriented_boxes_overlap
 from isaaclab_tasks.core.lift.mdp.events import grasp_travel_distance, reset_joints_shared_offset
 
-from .events_cfg import GraspTravelOpeningCfg
+if TYPE_CHECKING:
+    from isaaclab.envs import ManagerBasedEnv
+
+    from .events_cfg import GraspTravelOpeningCfg
 
 
 def reset_target_depth(
