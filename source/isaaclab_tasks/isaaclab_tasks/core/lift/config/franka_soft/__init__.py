@@ -46,6 +46,18 @@ gym.register(
 
 
 gym.register(
+    id="Isaac-Shape-Cable-Franka",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.franka_cable_shape_env_cfg:FrankaCableShapeEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaCableShapePPORunnerCfg",
+        "default_agent": "rsl_rl",
+    },
+)
+
+
+gym.register(
     id="Isaac-Lift-Cable-Franka-Camera",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

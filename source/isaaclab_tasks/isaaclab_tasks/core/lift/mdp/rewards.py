@@ -521,6 +521,35 @@ def _cable_segment_goal_metrics(
     return torch.linalg.norm(desired_pos_w - segment_pos_w, dim=1)
 
 
+def _cable_shape_goal_distances(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    robot_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Compute ordered cable segment distances to the shape command [m]."""
+    robot: Articulation = env.scene[robot_cfg.name]
+    asset: CableObject = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    expected_width = 3 * asset.num_segments
+    if command.ndim != 2 or command.shape[1] != expected_width:
+        raise ValueError(
+            f"Expected command '{command_name}' to have shape (num_envs, {expected_width}),"
+            f" received {tuple(command.shape)}."
+        )
+
+    root_pos_w = robot.data.root_pos_w.torch.unsqueeze(1).expand(-1, asset.num_segments, -1)
+    root_quat_w = robot.data.root_quat_w.torch.unsqueeze(1).expand(-1, asset.num_segments, -1)
+    desired_pos_w, _ = combine_frame_transforms(
+        root_pos_w.reshape(-1, 3),
+        root_quat_w.reshape(-1, 4),
+        command.reshape(-1, 3),
+    )
+    desired_pos_w = desired_pos_w.reshape(env.num_envs, asset.num_segments, 3)
+    segment_pos_w = asset.data.segment_pose_w.torch[..., :3]
+    return torch.linalg.norm(desired_pos_w - segment_pos_w, dim=2)
+
+
 class CableSegmentGoalDistance(ManagerTermBase):
     """Reward cable segment goal tracking and log episode success."""
 
@@ -560,3 +589,42 @@ def cable_segment_goal_reached(
     """Reward a cable segment for reaching the goal."""
     distance = _cable_segment_goal_metrics(env, command_name, segment_index, robot_cfg, asset_cfg)
     return (distance < success_threshold).float()
+
+
+class CableShapeGoalDistance(ManagerTermBase):
+    """Reward ordered cable shape tracking and log episode success."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        self._env.extras.setdefault("log", {})["Metrics/success_rate"] = self._succeeded[env_ids].float().mean().item()
+        self._succeeded[env_ids] = False
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        std: float,
+        command_name: str,
+        success_threshold: float,
+        robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
+    ) -> torch.Tensor:
+        distances = _cable_shape_goal_distances(env, command_name, robot_cfg, asset_cfg)
+        self._succeeded |= distances.max(dim=1).values < success_threshold
+        return 1.0 - torch.tanh(distances.mean(dim=1) / std)
+
+
+def cable_shape_goal_reached(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    success_threshold: float,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
+) -> torch.Tensor:
+    """Reward when every ordered cable segment reaches its shape target."""
+    distances = _cable_shape_goal_distances(env, command_name, robot_cfg, asset_cfg)
+    return (distances.max(dim=1).values < success_threshold).float()

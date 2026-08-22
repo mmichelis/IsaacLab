@@ -28,10 +28,13 @@ __all__ = [
     "reset_deformable_over_support",
     "gravity_range_linear",
     "DeformableUniformPoseCommandCfg",
+    "CableShapeCommandCfg",
     "cable_lifting",
+    "cable_shape_goal_reached",
     "cable_segment_goal_reached",
     "cable_ee_distance",
     "CableSegmentGoalDistance",
+    "CableShapeGoalDistance",
     "ObjectUniformPoseCommandCfg",
     "DifficultyScheduler",
     "initial_final_interpolate_fn",
@@ -62,7 +65,12 @@ __all__ = [
 
 from isaaclab.envs.mdp import *
 
-from .commands import CableUniformPoseCommandCfg, DeformableUniformPoseCommandCfg, ObjectUniformPoseCommandCfg
+from .commands import (
+    CableShapeCommandCfg,
+    CableUniformPoseCommandCfg,
+    DeformableUniformPoseCommandCfg,
+    ObjectUniformPoseCommandCfg,
+)
 from .curriculums import DifficultyScheduler, gravity_range_linear, initial_final_interpolate_fn
 from .events import (
     SuccessMonitor,
@@ -88,10 +96,12 @@ from .observations import (
 )
 from .rewards import (
     CableSegmentGoalDistance,
+    CableShapeGoalDistance,
     DeformableComGoalDistance,
     cable_ee_distance,
-    cable_segment_goal_reached,
     cable_lifting,
+    cable_segment_goal_reached,
+    cable_shape_goal_reached,
     contact_count,
     contacts,
     deformable_com_ee_distance,
