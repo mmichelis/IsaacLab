@@ -127,6 +127,54 @@ def deformable_outside_bounds(
     return ((nodal_pos < lower) | (nodal_pos > upper)).flatten(1).any(dim=1)
 
 
+def _deformable_vertices_in_bounds(
+    nodal_pos: torch.Tensor,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
+) -> torch.Tensor:
+    """Return the per-vertex inclusive AABB mask for environment-frame positions."""
+    lower = nodal_pos.new_tensor([x_bounds[0], y_bounds[0], z_bounds[0]])
+    upper = nodal_pos.new_tensor([x_bounds[1], y_bounds[1], z_bounds[1]])
+    return ((nodal_pos >= lower) & (nodal_pos <= upper)).all(dim=-1)
+
+
+def deformable_vertices_in_bounds(
+    env: ManagerBasedRLEnv,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
+    success_threshold: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+) -> torch.Tensor:
+    """Return whether at least ``success_threshold`` of deformable vertices are inside an AABB.
+
+    Args:
+        env: The environment instance.
+        x_bounds: Inclusive x-position range in the environment frame [m].
+        y_bounds: Inclusive y-position range in the environment frame [m].
+        z_bounds: Inclusive z-position range in the environment frame [m].
+        success_threshold: Minimum fraction of vertices inside the bounds.
+        asset_cfg: The deformable object entity.
+    """
+    asset: DeformableObject = env.scene[asset_cfg.name]
+    nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
+    fraction = _deformable_vertices_in_bounds(nodal_pos, x_bounds, y_bounds, z_bounds).float().mean(dim=1)
+    return fraction >= success_threshold
+
+
+def deformable_touches_ground(
+    env: ManagerBasedRLEnv,
+    ground_height: float,
+    tolerance: float = 0.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+) -> torch.Tensor:
+    """Return whether any deformable vertex touches the ground within ``tolerance`` [m]."""
+    asset: DeformableObject = env.scene[asset_cfg.name]
+    nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
+    return (nodal_pos[..., 2] <= ground_height + tolerance).any(dim=1)
+
+
 def cable_outside_bounds(
     env: ManagerBasedRLEnv,
     x_bounds: tuple[float, float],

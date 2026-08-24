@@ -33,6 +33,16 @@ gym.register(
     },
 )
 
+gym.register(
+    id="Isaac-Place-Cloth-Bin-Franka",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.franka_cloth_bin_env_cfg:FrankaClothBinEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:FrankaClothBinPPORunnerCfg",
+        "default_agent": "rsl_rl",
+    },
+)
 
 gym.register(
     id="Isaac-Lift-Cable-Franka",

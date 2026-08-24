@@ -15,6 +15,8 @@ from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
 from isaaclab.utils import math as math_utils
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error
 
+from .terminations import _deformable_vertices_in_bounds
+
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, CableObject, DeformableObject, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
@@ -382,6 +384,21 @@ def deformable_lifting(
     return torch.tanh(height / std)
 
 
+def deformable_vertices_in_bounds_event(
+    env: ManagerBasedRLEnv,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
+    success_threshold: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+) -> torch.Tensor:
+    """Return a unit-integral event when enough deformable vertices are inside the bounds."""
+    asset: DeformableObject = env.scene[asset_cfg.name]
+    nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
+    vertex_fraction = _deformable_vertices_in_bounds(nodal_pos, x_bounds, y_bounds, z_bounds).float().mean(dim=1)
+    return (vertex_fraction >= success_threshold).float() / env.step_dt
+
+
 def deformable_ee_distance(
     env: ManagerBasedRLEnv,
     std: float,
@@ -410,6 +427,102 @@ def deformable_com_ee_distance(
     ee_w = ee_frame.data.target_pos_w.torch[..., 0, :]
     distance = torch.linalg.norm(com_w - ee_w, dim=1)
     return 1.0 - torch.tanh(distance / std)
+
+
+def deformable_vertex_distance_to_bounds(
+    env: ManagerBasedRLEnv,
+    std: float,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+) -> torch.Tensor:
+    """Reward mean vertex proximity to environment-frame AABB bounds [m].
+
+    The tanh kernel uses ``std`` [m].
+    """
+    mean_distance = _deformable_mean_vertex_distance_to_bounds(env, x_bounds, y_bounds, z_bounds, asset_cfg)
+    return 1.0 - torch.tanh(mean_distance / std)
+
+
+class DeformableVertexDistanceToBoundsProgress(ManagerTermBase):
+    """Reward signed deformable vertex progress toward environment-frame AABB bounds."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._previous_distance = _deformable_mean_vertex_distance_to_bounds(env, **cfg.params)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        selected = slice(None) if env_ids is None else env_ids
+        distance = _deformable_mean_vertex_distance_to_bounds(self._env, **self.cfg.params)
+        self._previous_distance[selected] = distance[selected]
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        x_bounds: tuple[float, float],
+        y_bounds: tuple[float, float],
+        z_bounds: tuple[float, float],
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    ) -> torch.Tensor:
+        """Return signed mean-distance progress [m/s]."""
+        distance = _deformable_mean_vertex_distance_to_bounds(env, x_bounds, y_bounds, z_bounds, asset_cfg)
+        progress = self._previous_distance - distance
+        self._previous_distance.copy_(distance)
+        log = env.extras.setdefault("log", {})
+        log["Metrics/deformable_mean_vertex_distance_to_bounds"] = distance.mean().item()
+        log["Metrics/deformable_vertex_distance_progress"] = progress.mean().item()
+        return progress / env.step_dt
+
+
+class DeformableVertexFractionInBounds(ManagerTermBase):
+    """Reward deformable vertex occupancy inside an AABB and log episode success."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        self._env.extras.setdefault("log", {})["Metrics/success_rate"] = self._succeeded[env_ids].float().mean().item()
+        self._succeeded[env_ids] = False
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        x_bounds: tuple[float, float],
+        y_bounds: tuple[float, float],
+        z_bounds: tuple[float, float],
+        success_threshold: float,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    ) -> torch.Tensor:
+        """Return the fraction of vertices inside the inclusive environment-frame bounds."""
+        asset: DeformableObject = env.scene[asset_cfg.name]
+        nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
+        vertex_count = _deformable_vertices_in_bounds(nodal_pos, x_bounds, y_bounds, z_bounds).sum(dim=1)
+        vertex_fraction = vertex_count.float() / nodal_pos.shape[1]
+        self._succeeded |= vertex_fraction >= success_threshold
+        log = env.extras.setdefault("log", {})
+        log["Metrics/deformable_vertices_in_bounds"] = vertex_count.float().mean().item()
+        log["Metrics/deformable_vertex_fraction_in_bounds"] = vertex_fraction.mean().item()
+        return vertex_fraction
+
+
+def _deformable_mean_vertex_distance_to_bounds(
+    env: ManagerBasedRLEnv,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
+    asset_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Return mean vertex distance to environment-frame AABB bounds [m]."""
+    asset: DeformableObject = env.scene[asset_cfg.name]
+    nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
+    lower = nodal_pos.new_tensor([x_bounds[0], y_bounds[0], z_bounds[0]])
+    upper = nodal_pos.new_tensor([x_bounds[1], y_bounds[1], z_bounds[1]])
+    closest = torch.maximum(torch.minimum(nodal_pos, upper), lower)
+    return torch.linalg.norm(nodal_pos - closest, dim=2).mean(dim=1)
 
 
 def _deformable_com_goal_metrics(

@@ -58,6 +58,12 @@ class FrankaClothPPORunnerCfg(FrankaDeformablePPORunnerCfg):
 
 
 @configclass
+class FrankaClothBinPPORunnerCfg(FrankaClothPPORunnerCfg):
+    experiment_name = "place_cloth_bin"
+    algorithm = ALGO_CFG.replace(learning_rate=1.0e-3, entropy_coef=1.0e-3)
+
+
+@configclass
 class FrankaCablePPORunnerCfg(FrankaDeformablePPORunnerCfg):
     experiment_name = "lift_cable"
 
