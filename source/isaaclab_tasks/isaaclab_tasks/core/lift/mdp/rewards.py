@@ -524,11 +524,10 @@ def _cable_segment_goal_metrics(
 def _cable_shape_goal_distances(
     env: ManagerBasedRLEnv,
     command_name: str,
-    robot_cfg: SceneEntityCfg,
+    robot_cfg: SceneEntityCfg | None,
     asset_cfg: SceneEntityCfg,
 ) -> torch.Tensor:
     """Compute ordered cable segment distances to the shape command [m]."""
-    robot: Articulation = env.scene[robot_cfg.name]
     asset: CableObject = env.scene[asset_cfg.name]
     command = env.command_manager.get_command(command_name)
     expected_width = 3 * asset.num_segments
@@ -538,14 +537,18 @@ def _cable_shape_goal_distances(
             f" received {tuple(command.shape)}."
         )
 
-    root_pos_w = robot.data.root_pos_w.torch.unsqueeze(1).expand(-1, asset.num_segments, -1)
-    root_quat_w = robot.data.root_quat_w.torch.unsqueeze(1).expand(-1, asset.num_segments, -1)
-    desired_pos_w, _ = combine_frame_transforms(
-        root_pos_w.reshape(-1, 3),
-        root_quat_w.reshape(-1, 4),
-        command.reshape(-1, 3),
-    )
-    desired_pos_w = desired_pos_w.reshape(env.num_envs, asset.num_segments, 3)
+    if robot_cfg is None:
+        desired_pos_w = command.reshape(env.num_envs, asset.num_segments, 3) + env.scene.env_origins.unsqueeze(1)
+    else:
+        robot: Articulation = env.scene[robot_cfg.name]
+        root_pos_w = robot.data.root_pos_w.torch.unsqueeze(1).expand(-1, asset.num_segments, -1)
+        root_quat_w = robot.data.root_quat_w.torch.unsqueeze(1).expand(-1, asset.num_segments, -1)
+        desired_pos_w, _ = combine_frame_transforms(
+            root_pos_w.reshape(-1, 3),
+            root_quat_w.reshape(-1, 4),
+            command.reshape(-1, 3),
+        )
+        desired_pos_w = desired_pos_w.reshape(env.num_envs, asset.num_segments, 3)
     segment_pos_w = asset.data.segment_pose_w.torch[..., :3]
     return torch.linalg.norm(desired_pos_w - segment_pos_w, dim=2)
 
@@ -610,7 +613,7 @@ class CableShapeGoalDistance(ManagerTermBase):
         std: float,
         command_name: str,
         success_threshold: float,
-        robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        robot_cfg: SceneEntityCfg | None = SceneEntityCfg("robot"),
         asset_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
     ) -> torch.Tensor:
         distances = _cable_shape_goal_distances(env, command_name, robot_cfg, asset_cfg)
@@ -622,7 +625,7 @@ def cable_shape_goal_reached(
     env: ManagerBasedRLEnv,
     command_name: str,
     success_threshold: float,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    robot_cfg: SceneEntityCfg | None = SceneEntityCfg("robot"),
     asset_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
 ) -> torch.Tensor:
     """Reward when every ordered cable segment reaches its shape target."""

@@ -22,8 +22,8 @@ class CableShapeCommandCfg(CommandTermCfg):
 
     class_type: type["CableShapeCommand"] | str = "{DIR}.cable_shape_commands:CableShapeCommand"
 
-    asset_name: str = MISSING
-    """Name of the asset whose root frame defines the command."""
+    asset_name: str | None = MISSING
+    """Name of the asset whose root frame defines the command. None uses the environment frame."""
 
     object_name: str = MISSING
     """Name of the cable asset."""

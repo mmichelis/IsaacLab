@@ -30,7 +30,7 @@ class CableShapeCommand(CommandTerm):
     def __init__(self, cfg: CableShapeCommandCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
 
-        self.robot: Articulation = env.scene[cfg.asset_name]
+        self.robot: Articulation | None = env.scene[cfg.asset_name] if cfg.asset_name is not None else None
         self.cable: CableObject = env.scene[cfg.object_name]
         self.success_vis_asset: AssetBaseCfg = env.scene[cfg.success_vis_asset_name]
         self.num_segments = self.cable.num_segments
@@ -150,7 +150,12 @@ class CableShapeCommand(CommandTerm):
         pass
 
     def _current_cable_positions_b(self, env_ids: Sequence[int]) -> torch.Tensor:
-        """Return cable segment positions in the robot root frame [m]."""
+        """Return cable segment positions in the command frame [m]."""
+        if self.robot is None:
+            return (
+                self.cable.data.segment_pose_w.torch[env_ids, :, :3]
+                - self._env.scene.env_origins[env_ids].unsqueeze(1)
+            )
         root_pos_w = self.robot.data.root_pos_w.torch[env_ids].unsqueeze(1)
         root_quat_w = self.robot.data.root_quat_w.torch[env_ids].unsqueeze(1)
         segment_pos_w = self.cable.data.segment_pose_w.torch[env_ids, :, :3]
@@ -158,6 +163,9 @@ class CableShapeCommand(CommandTerm):
         return quat_apply_inverse(root_quat_w, segment_pos_w - root_pos_w)
 
     def _update_target_positions_w(self) -> None:
+        if self.robot is None:
+            self.target_positions_w[:] = self.target_positions_b + self._env.scene.env_origins.unsqueeze(1)
+            return
         root_pos_w = self.robot.data.root_pos_w.torch.unsqueeze(1).expand(-1, self.num_segments, -1)
         root_quat_w = self.robot.data.root_quat_w.torch.unsqueeze(1).expand(-1, self.num_segments, -1)
         target_positions_w, _ = combine_frame_transforms(
@@ -181,7 +189,7 @@ class CableShapeCommand(CommandTerm):
             self.current_visualizer.set_visibility(False)
 
     def _debug_vis_callback(self, event) -> None:
-        if not self.robot.is_initialized or not self.cable.is_initialized:
+        if (self.robot is not None and not self.robot.is_initialized) or not self.cable.is_initialized:
             return
         self._update_target_positions_w()
         self.target_visualizer.visualize(self.target_positions_w.reshape(-1, 3), environment_ids=self._marker_env_ids)
