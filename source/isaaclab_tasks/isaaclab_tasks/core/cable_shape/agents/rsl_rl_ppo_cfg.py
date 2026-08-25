@@ -13,4 +13,4 @@ class CableShapeForcePPORunnerCfg(FrankaCableShapePPORunnerCfg):
     """PPO configuration for direct cable force control."""
 
     experiment_name = "shape_cable_direct_force"
-    max_iterations = 500
+    max_iterations = 5000

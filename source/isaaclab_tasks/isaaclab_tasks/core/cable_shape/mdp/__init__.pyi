@@ -7,6 +7,7 @@ __all__ = [
     "CableForceAction",
     "CableForceActionCfg",
     "ForceControlledCableObject",
+    "cable_segment_position_error_in_env_frame",
     "cable_segment_positions_in_env_frame",
     "cable_segment_velocities",
 ]
@@ -14,6 +15,7 @@ __all__ = [
 from isaaclab_tasks.core.cable_shape.mdp.actions import CableForceAction, ForceControlledCableObject
 from isaaclab_tasks.core.cable_shape.mdp.actions_cfg import CableForceActionCfg
 from isaaclab_tasks.core.cable_shape.mdp.observations import (
+    cable_segment_position_error_in_env_frame,
     cable_segment_positions_in_env_frame,
     cable_segment_velocities,
 )

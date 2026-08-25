@@ -33,7 +33,7 @@ from isaaclab_tasks.core.lift import mdp as lift_mdp
 from . import mdp
 
 _CABLE_SEGMENT_COUNT = 12
-_CABLE_SHAPE_SUCCESS_THRESHOLD = 0.03
+_CABLE_SHAPE_SUCCESS_THRESHOLD = 0.0075
 
 _TABLE_SPAWN_CFG = sim_utils.CuboidCfg(
     size=(1.3, 0.9, 1.05),
@@ -50,13 +50,13 @@ class CableShapeForceSceneCfg(InteractiveSceneCfg):
         class_type=mdp.ForceControlledCableObject,
         prim_path="{ENV_REGEX_NS}/Cable",
         spawn=sim_utils.CableCfg(
-            positions=[(0.03 * index, 0.0, 0.0) for index in range(_CABLE_SEGMENT_COUNT + 1)],
+            positions=[(0.04 * index, 0.0, 0.0) for index in range(_CABLE_SEGMENT_COUNT + 1)],
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.85)),
             physics_material=sim_utils.CableMaterialCfg(
                 thickness=0.01,
                 density=1000.0,
-                stretch_stiffness=1.0e6,
-                bend_stiffness=1.0e5,
+                stretch_stiffness=1.0e5,
+                bend_stiffness=1.0e0,
             ),
             collision_props=[sim_utils.UsdPhysicsCollisionCfg(collision_enabled=True)],
         ),
@@ -90,7 +90,7 @@ class CableShapeForceSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """World-frame force actions for every cable segment."""
 
-    cable_force = mdp.CableForceActionCfg(asset_name="cable")
+    cable_force = mdp.CableForceActionCfg(asset_name="cable", scale=0.025)
 
 
 @configclass
@@ -105,9 +105,9 @@ class CommandsCfg:
             pos_y=(-0.1, 0.1),
             heading=(-math.pi, math.pi),
         ),
-        segment_length=0.03,
+        segment_length=0.04,
         target_z=0.011,
-        max_turn_angle=math.pi / 4,
+        max_turn_angle=math.pi / 3,
         target_xy_bounds=((0.0, 1.0), (-0.5, 0.5)),
         max_sampling_attempts=512,
         success_vis_asset_name="table",
@@ -143,6 +143,10 @@ class ObservationsCfg:
             params={"asset_cfg": SceneEntityCfg("cable")},
         )
         target_shape = ObsTerm(func=lift_mdp.generated_commands, params={"command_name": "cable_shape"})
+        cable_segment_position_errors = ObsTerm(
+            func=mdp.cable_segment_position_error_in_env_frame,
+            params={"command_name": "cable_shape", "asset_cfg": SceneEntityCfg("cable")},
+        )
         actions = ObsTerm(func=lift_mdp.last_action)
 
         def __post_init__(self) -> None:
@@ -168,6 +172,18 @@ class RewardsCfg:
         weight=5.0,
     )
 
+    cable_shape_tracking_fine = RewTerm(
+        func=lift_mdp.CableShapeGoalDistance,
+        params={
+            "std": 0.01,
+            "command_name": "cable_shape",
+            "success_threshold": _CABLE_SHAPE_SUCCESS_THRESHOLD,
+            "robot_cfg": None,
+            "asset_cfg": SceneEntityCfg("cable"),
+        },
+        weight=5.0,
+    )
+
     success_bonus = RewTerm(
         func=lift_mdp.cable_shape_goal_reached,
         params={
@@ -176,7 +192,7 @@ class RewardsCfg:
             "robot_cfg": None,
             "asset_cfg": SceneEntityCfg("cable"),
         },
-        weight=20.0,
+        weight=10.0,
     )
 
     action_rate = RewTerm(func=lift_mdp.action_rate_l2, weight=-1e-3)
@@ -229,7 +245,7 @@ class CableShapeForceEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self) -> None:
         self.decimation = 4
-        self.episode_length_s = 5.0
+        self.episode_length_s = 3.0
         self.sim.dt = 1.0 / 120.0
         self.sim.render_interval = self.decimation
         self.sim.physics = NewtonCfg(
@@ -237,4 +253,4 @@ class CableShapeForceEnvCfg(ManagerBasedRLEnvCfg):
             default_shape_cfg=NewtonShapeCfg(ke=2.5e3, kd=100.0, mu=10.0),
             num_substeps=4,
         )
-        self.sim.default_visualizer_cfg = VisualizerCfg(eye=(0.75, 0.25, 0.65), lookat=(0.5, 0.0, 0.0))
+        self.sim.default_visualizer_cfg = VisualizerCfg(eye=(0.75, 0.25, 0.65), lookat=(0.5, 0.0, 0.5))

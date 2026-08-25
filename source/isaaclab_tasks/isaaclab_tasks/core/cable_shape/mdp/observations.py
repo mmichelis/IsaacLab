@@ -31,3 +31,15 @@ def cable_segment_velocities(
     """Flattened world-frame cable segment velocities [m/s, rad/s]."""
     asset: CableObject = env.scene[asset_cfg.name]
     return asset.data.segment_velocity_w.torch.flatten(1)
+
+
+def cable_segment_position_error_in_env_frame(
+    env: ManagerBasedEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("cable"),
+) -> torch.Tensor:
+    """Flattened target-minus-current cable segment positions [m]."""
+    asset: CableObject = env.scene[asset_cfg.name]
+    target = env.command_manager.get_command(command_name).reshape(env.num_envs, asset.num_segments, 3)
+    current = asset.data.segment_pose_w.torch[..., :3] - env.scene.env_origins.unsqueeze(1)
+    return (target - current).flatten(1)
