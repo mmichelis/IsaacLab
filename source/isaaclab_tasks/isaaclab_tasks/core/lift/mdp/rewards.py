@@ -384,6 +384,44 @@ def deformable_lifting(
     return torch.tanh(height / std)
 
 
+def deformable_table_sliding(
+    env: ManagerBasedRLEnv,
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    z_bounds: tuple[float, float],
+    speed_threshold: float,
+    max_speed: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+) -> torch.Tensor:
+    """Penalize horizontal deformable motion near the table surface.
+
+    Args:
+        env: The environment instance.
+        x_bounds: Table bounds along x [m].
+        y_bounds: Table bounds along y [m].
+        z_bounds: Table surface bounds along z [m].
+        speed_threshold: Unpenalized horizontal speed [m/s].
+        max_speed: Maximum penalized horizontal speed [m/s].
+        asset_cfg: Deformable asset configuration.
+    """
+    asset: DeformableObject = env.scene[asset_cfg.name]
+    nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
+    speed_xy = torch.linalg.vector_norm(asset.data.nodal_vel_w.torch[..., :2], dim=-1)
+    on_table = (
+        (nodal_pos[..., 0] >= x_bounds[0])
+        & (nodal_pos[..., 0] <= x_bounds[1])
+        & (nodal_pos[..., 1] >= y_bounds[0])
+        & (nodal_pos[..., 1] <= y_bounds[1])
+        & (nodal_pos[..., 2] >= z_bounds[0])
+        & (nodal_pos[..., 2] <= z_bounds[1])
+    )
+    sliding_speed = on_table * (speed_xy - speed_threshold).clamp(min=0.0, max=max_speed)
+    log = env.extras.setdefault("log", {})
+    log["Metrics/deformable_table_contact_fraction"] = on_table.float().mean().item()
+    log["Metrics/deformable_table_sliding_speed"] = sliding_speed.mean().item()
+    return sliding_speed.mean(dim=1)
+
+
 def deformable_vertices_in_bounds_event(
     env: ManagerBasedRLEnv,
     x_bounds: tuple[float, float],

@@ -36,6 +36,9 @@ _TABLE_BODY_PATTERN = r"/World/envs/env_[^/]+/Table"
 _BIN_X_BOUNDS = (0.24, 0.76)
 _BIN_Y_BOUNDS = (-0.80, -0.49)
 _BIN_Z_BOUNDS = (-0.26, -0.01)
+_TABLE_X_BOUNDS = (-0.15, 1.15)
+_TABLE_Y_BOUNDS = (-0.45, 0.45)
+_TABLE_Z_BOUNDS = (-0.006, 0.006)
 _INSERTION_X_BOUNDS = _BIN_X_BOUNDS
 _INSERTION_Y_BOUNDS = (-0.72, -0.57)
 _INSERTION_Z_BOUNDS = (-0.26, 0.08)
@@ -175,6 +178,19 @@ class FrankaClothBinRewardsCfg(FrankaClothRewardsCfg):
             "asset_cfg": SceneEntityCfg("deformable"),
         },
         weight=20.0,
+    )
+
+    deformable_table_sliding = RewTerm(
+        func=mdp.deformable_table_sliding,
+        params={
+            "x_bounds": _TABLE_X_BOUNDS,
+            "y_bounds": _TABLE_Y_BOUNDS,
+            "z_bounds": _TABLE_Z_BOUNDS,
+            "speed_threshold": 0.02,
+            "max_speed": 0.5,
+            "asset_cfg": SceneEntityCfg("deformable"),
+        },
+        weight=-2.0,
     )
 
 
