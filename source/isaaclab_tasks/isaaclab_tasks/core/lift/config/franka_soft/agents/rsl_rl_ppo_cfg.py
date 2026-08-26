@@ -64,6 +64,12 @@ class FrankaClothBinPPORunnerCfg(FrankaClothPPORunnerCfg):
 
 
 @configclass
+class FrankaTShirtBinPPORunnerCfg(FrankaClothBinPPORunnerCfg):
+    experiment_name = "place_tshirt_bin"
+    max_iterations = 50000
+
+
+@configclass
 class FrankaCablePPORunnerCfg(FrankaDeformablePPORunnerCfg):
     experiment_name = "lift_cable"
 

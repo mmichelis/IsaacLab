@@ -30,6 +30,7 @@ __all__ = [
     "deformable_vertex_distance_to_bounds",
     "reset_cable_state_uniform",
     "DeformableComGoalDistance",
+    "DeformableAreaFractionInBounds",
     "DeformableVertexDistanceToBoundsProgress",
     "DeformableVertexFractionInBounds",
     "reset_deformable_over_support",
@@ -95,6 +96,7 @@ from .observations import (
 )
 from .rewards import (
     CableSegmentGoalDistance,
+    DeformableAreaFractionInBounds,
     DeformableComGoalDistance,
     DeformableVertexDistanceToBoundsProgress,
     DeformableVertexFractionInBounds,

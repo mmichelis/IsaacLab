@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import torch
 
@@ -20,6 +20,7 @@ from .terminations import _deformable_vertices_in_bounds
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, CableObject, DeformableObject, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
+    from isaaclab.managers import ManagerTermBaseCfg
     from isaaclab.sensors import ContactSensor, FrameTransformer
 
 
@@ -545,6 +546,87 @@ class DeformableVertexFractionInBounds(ManagerTermBase):
         log["Metrics/deformable_vertices_in_bounds"] = vertex_count.float().mean().item()
         log["Metrics/deformable_vertex_fraction_in_bounds"] = vertex_fraction.mean().item()
         return vertex_fraction
+
+
+class DeformableAreaFractionInBounds(ManagerTermBase):
+    """Measure lumped reference-area-weighted vertex occupancy inside an AABB."""
+
+    def __init__(self, cfg: ManagerTermBaseCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._output: Literal["fraction", "event", "success"] = cfg.params.get("output", "fraction")
+        if self._output not in ("fraction", "event", "success"):
+            raise ValueError(f"Unsupported area occupancy output: {self._output!r}.")
+        asset_cfg: SceneEntityCfg = cfg.params.get("asset_cfg", SceneEntityCfg("deformable"))
+        asset: DeformableObject = env.scene[asset_cfg.name]
+        triangle_indices = _load_surface_triangle_indices(cfg.params["mesh_path"], env.device)
+        rest_pos = asset.data.default_nodal_state_w.torch[0, :, :3]
+        if triangle_indices.numel() == 0 or triangle_indices.max().item() >= rest_pos.shape[0]:
+            raise ValueError("Surface mesh topology does not match the deformable nodal state.")
+        triangle_pos = rest_pos[triangle_indices]
+        triangle_area = 0.5 * torch.linalg.vector_norm(
+            torch.linalg.cross(triangle_pos[:, 1] - triangle_pos[:, 0], triangle_pos[:, 2] - triangle_pos[:, 0], dim=1),
+            dim=1,
+        )
+        self._area_weights = torch.zeros(rest_pos.shape[0], device=env.device)
+        self._area_weights.scatter_add_(0, triangle_indices.flatten(), triangle_area.repeat_interleave(3) / 3.0)
+        total_area = self._area_weights.sum()
+        if total_area <= 0.0:
+            raise ValueError("Surface mesh has zero reference area.")
+        self._area_weights /= total_area
+        self._succeeded = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        if self._output == "fraction":
+            self._env.extras.setdefault("log", {})["Metrics/success_rate"] = (
+                self._succeeded[env_ids].float().mean().item()
+            )
+        self._succeeded[env_ids] = False
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        x_bounds: tuple[float, float],
+        y_bounds: tuple[float, float],
+        z_bounds: tuple[float, float],
+        success_threshold: float,
+        mesh_path: str,
+        output: Literal["fraction", "event", "success"] = "fraction",
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("deformable"),
+    ) -> torch.Tensor:
+        """Return area fraction, unit-integral success event, or success state."""
+        del mesh_path, output
+        asset: DeformableObject = env.scene[asset_cfg.name]
+        nodal_pos = asset.data.nodal_pos_w.torch - env.scene.env_origins.unsqueeze(1)
+        in_bounds = _deformable_vertices_in_bounds(nodal_pos, x_bounds, y_bounds, z_bounds)
+        area_fraction = (in_bounds * self._area_weights).sum(dim=1)
+        succeeded = area_fraction >= success_threshold
+        self._succeeded |= succeeded
+        if self._output == "event":
+            return succeeded.float() / env.step_dt
+        if self._output == "success":
+            return succeeded
+        env.extras.setdefault("log", {})["Metrics/deformable_area_fraction_in_bounds"] = area_fraction.mean().item()
+        return area_fraction
+
+
+def _load_surface_triangle_indices(mesh_path: str, device: str) -> torch.Tensor:
+    """Load triangular surface topology from a USD mesh."""
+    from pxr import Usd, UsdGeom
+
+    stage = Usd.Stage.Open(mesh_path)
+    if stage is None:
+        raise ValueError(f"Failed to open surface mesh USD: {mesh_path}.")
+    mesh_prims = [prim for prim in stage.Traverse() if prim.IsA(UsdGeom.Mesh)]
+    if len(mesh_prims) != 1:
+        raise ValueError(f"Expected one surface mesh in {mesh_path}, found {len(mesh_prims)}.")
+    mesh = UsdGeom.Mesh(mesh_prims[0])
+    face_counts = mesh.GetFaceVertexCountsAttr().Get()
+    if face_counts is None or any(count != 3 for count in face_counts):
+        raise ValueError("Area occupancy requires a triangular surface mesh.")
+    face_indices = mesh.GetFaceVertexIndicesAttr().Get()
+    return torch.tensor(face_indices, dtype=torch.long, device=device).reshape(-1, 3)
 
 
 def _deformable_mean_vertex_distance_to_bounds(
