@@ -11,7 +11,7 @@ Transfer Policies Between PhysX and Newton
    :doc:`/source/overview/developer-guide/agent_skills`.
 
    First make every robot and object MJWarp-clean by following
-   :doc:`/source/overview/core-concepts/physical-backends/newton/migrating-assets-from-physx-to-newton`
+   :doc:`/source/how-to/prepare_asset_for_newton`
    and the ``isaaclab-preparing-assets-for-newton``
    `skill
    <https://github.com/isaac-sim/IsaacLab/blob/develop/skills/user/prepare-assets-for-newton/SKILL.md>`__.
@@ -108,7 +108,7 @@ playback, set **both** ``joint_ordering`` and ``body_ordering`` to the backend u
 ``physics=`` still selects the target backend. The task table below lists which tasks need the
 overrides and which do not.
 
-See :doc:`/source/overview/core-concepts/physical-backends/joint_and_body_ordering` for the full
+See :doc:`/source/overview/core-concepts/physical-backends/sim-to-sim-policy-transfer` for the full
 ordering contract, accepted values, and troubleshooting.
 
 A scrambled axis has a distinctive signature: a locomotion policy falls within a few dozen steps
@@ -134,8 +134,8 @@ position policy can alternate saturated commands and exploit one solver's drive 
 limit response. Armature is equally important in MJWarp: it adds reflected inertia to the
 generalized mass matrix and prevents small contact or drive impulses from producing excessive
 joint or angular velocity. Retune damping after increasing armature because the effective natural
-frequency and damping ratio change. See the asset migration guide for the equations, physical
-sourcing rules, and the zero-gravity object case.
+frequency and damping ratio change. See :ref:`prepare-asset-for-newton` for the actuator audit and
+physical sourcing guidance.
 
 
 Introducing domain randomization
@@ -323,6 +323,5 @@ See also
 
 * :doc:`/source/overview/reinforcement-learning/rl_existing_scripts`
 * :doc:`/source/features/hydra`
-* :doc:`/source/overview/core-concepts/physical-backends/joint_and_body_ordering`
-* :doc:`/source/overview/core-concepts/physical-backends/newton/mjwarp-solver`
-* :doc:`/source/overview/core-concepts/physical-backends/newton/supported-features`
+* :doc:`/source/how-to/solver_tuning/tune_mjwarp`
+* :ref:`physics-backends-newton`
