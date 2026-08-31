@@ -147,7 +147,7 @@ standalone :class:`~isaaclab_newton.physics.VBDSolverCfg`:
 Mixed rigid + cable scenes (for example a robot manipulating a cable) run the
 cable under a :class:`~isaaclab_contrib.coupling.CouplerProxyCfg` entry: define a
 named VBD entry that owns the cable segments and couple it to the rigid entry.
-See :doc:`using-vbd-solver`.
+See :ref:`tune-vbd`.
 
 
 Cable Material Parameters

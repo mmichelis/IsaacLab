@@ -219,46 +219,11 @@ The core ``Isaac-Lift-Soft-Franka`` and ``Isaac-Lift-Cloth-Franka`` tasks defaul
 to the ``newton_mjwarp_vbd_proxy`` preset backed by
 :class:`~isaaclab_contrib.coupling.CouplerProxyCfg` instead.
 
-Tuning the Franka Soft-Body Lift
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Tuning the coupled result
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune the coupled contact behavior before training a policy:
-
-* Start with ``coupling_mode="two_way"``. Compared with one-way coupling, two-way
-  coupling can prevent clipping more easily because body-particle contact
-  penalties can push the robot back instead of only moving the deformable.
-* Use a small scripted grasp/lift check before training to confirm that grasping
-  is possible and to inspect what clips when the grasp fails.
-* Lower the arm actuator stiffness enough that the arm can respond to contact
-  penalties. Prefer the arm being pushed back over the gripper clipping into the
-  deformable.
-* Tune :attr:`~isaaclab_newton.physics.NewtonSoftContactCfg.soft_contact_ke`
-  first. Increase it only as much as needed to prevent clipping, then adjust
-  :attr:`~isaaclab_newton.physics.NewtonSoftContactCfg.soft_contact_mu` so the
-  gripper can carry the object without requiring an obviously unphysical
-  friction value. Use
-  :attr:`~isaaclab_newton.physics.NewtonSoftContactCfg.soft_contact_kd` for
-  stabilization if contacts chatter.
-  Set this configuration on the outer
-  :attr:`~isaaclab_newton.physics.NewtonCfg.soft_contact_cfg` field.
-* Tune the ``soft_contact_*`` values together with the rigid shape contact
-  material, because the shape's ``ke``/``kd``/``mu`` also affect the effective
-  contact. Set shape defaults via
-  :class:`~isaaclab_newton.physics.NewtonShapeCfg` on ``NewtonCfg.default_shape_cfg``,
-  or override per asset through the asset's Newton contact material.
-* If ``soft_contact_ke`` is not sufficient, or ``soft_contact_mu`` must be
-  unphysically high, tune the Franka arm and hand actuator stiffness and maximum
-  effort. For the gripper command, fully close the fingers and let the actuator
-  maximum effort limit the actual squeeze.
-* If the deformable no longer visibly deforms, ``soft_contact_ke`` is likely too
-  high.
-* If contacts are unstable or missed, increase the deformable mesh resolution or
-  increase ``particle_radius`` in the deformable material so contact is detected
-  earlier from a larger distance.
-* If the rigid shapes still clip through the deformable, increase
-  :attr:`~isaaclab_newton.physics.VBDSolverCfg.iterations`; more VBD
-  iterations can improve contact convergence.
-
+Keep the default ``coupling_mode="two_way"``, then follow :ref:`tune-vbd` for
+the contact, material, and self-contact tuning order.
 
 When to Add a Coupled Manager
 -----------------------------

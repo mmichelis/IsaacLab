@@ -199,6 +199,20 @@ runtime and cannot repair an unstable entry. The generated
 </source/api/lab_contrib/isaaclab_contrib.coupling>` lists every field and
 default; Newton's concept page explains the underlying algorithms.
 
+.. important::
+
+    The coupler currently rejects
+    :class:`~isaaclab_newton.physics.KaminoPADMMSolverCfg` or
+    :class:`~isaaclab_newton.physics.KaminoDVISolverCfg` entries and
+    :class:`~isaaclab_newton.physics.MPMSolverCfg` entries configured with
+    ``project_outside_colliders=True``, as well as
+    :class:`~isaaclab_newton.physics.MJWarpSolverCfg` entries configured with
+    ``use_mujoco_cpu=True``. These configurations require manager-specific
+    build, forward-kinematics, reset, or per-step lifecycle hooks that are not
+    yet available to nested solvers. Use MPM with
+    ``project_outside_colliders=False`` and GPU MJWarp, or run these solvers
+    through their standalone managers until nested lifecycle support is added.
+
 
 Start from a maintained task
 ----------------------------
@@ -210,8 +224,6 @@ ownership and proxy selectors to the bodies that participate in the
 interaction.
 
 Current Isaac Lab limitations include no support for nested couplers or Newton
-contact sensors, and proxy coupling supports at most two entries. Some solver
-modes require manager-specific lifecycle work and cannot be nested in a
-coupler. Validate each entry independently before tuning the coupled result,
+contact sensors, and proxy coupling supports at most two entries. Validate each entry independently before tuning the coupled result,
 and consult the Newton concept page for current algorithm-level support and
 limitations.
