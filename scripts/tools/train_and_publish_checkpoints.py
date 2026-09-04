@@ -260,17 +260,14 @@ def _select_physics_variants(
     for backend in requested_backends:
         selector = None
         if variants:
-            if backend == "physx" and "isaacsim_physx" in variants:
-                selector = "isaacsim_physx"
-            elif backend == "newtonmjwarp":
-                selector = next(
-                    (
-                        candidate
-                        for candidate in ("newton_mjwarp", "newton_mjwarp_vbd", "newton_mjwarp_vbd_proxy")
-                        if candidate in variants
-                    ),
-                    None,
-                )
+            if backend == "physx":
+                # Every PhysX preset shares one backend name, so the concrete Isaac Sim preset
+                # is named outright instead of resolving through the automatic selector.
+                selector = "isaacsim_physx" if "isaacsim_physx" in variants else None
+            else:
+                # A Newton preset is named after the solver it configures, so presets the
+                # backend cannot publish, such as Newton Kamino, are excluded by that name.
+                selector = next((name for name in variants if name.replace("_", "").startswith(backend)), None)
             if selector is None:
                 continue
         elif backend != default_backend:
