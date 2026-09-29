@@ -22,17 +22,11 @@ from isaaclab.cloner import ClonePlan, PrototypeWorldTopology
 from isaaclab.cloner import path as cloner_path
 from isaaclab.physics import PhysicsManager
 from isaaclab.scene_data import SceneDataFormat
-from isaaclab.scene_data.deformable_discovery import (
-    deformable_geometry_batches,
-    deformable_prototypes,
-    expand_deformable_entries,
-)
+from isaaclab.scene_data.deformable_discovery import deformable_prototypes
 from isaaclab.sensors import SensorBaseCfg
 from isaaclab.sim import SpawnerCfg
-from isaaclab.sim.utils.queries import has_deformable_body_api
 
 from isaaclab_newton.cloner.newton_clone_utils import (
-    add_deformable_from_usd,
     build_source_builders,
     replicate_builder_mapping,
 )
@@ -141,14 +135,8 @@ def _replicate_newton(
     import_paths = (sim.cfg.physics_prim_path, *global_paths) if simulation else global_paths
     source_paths = list(dict.fromkeys(sources[index] for index in asset_prototype_ids if sources[index] is not None))
     if simulation:
-        deformable_paths = []
-        for source in source_paths:
-            prim = stage.GetPrimAtPath(source)
-            is_mesh_body = prim and not prim.IsA(UsdGeom.Points) and not prim.IsA(UsdGeom.BasisCurves)
-            if is_mesh_body and has_deformable_body_api(prim):
-                deformable_paths.append(source)
         ignore_paths = manager_cls._inject_terrain_heightfields(stage, builder, root_paths=import_paths)
-        ignore_paths.extend((*exclude_paths, *deformable_paths))
+        ignore_paths.extend(exclude_paths)
     else:
         entries = deformable_prototypes(stage, plan, exclude_paths=exclude_paths)
         ignore_paths = [*exclude_paths, *(entry.root_path for entry in entries)]
@@ -161,9 +149,7 @@ def _replicate_newton(
     options = dict(ignore_paths=ignore_paths, load_visual_shapes=load_visual_shapes)
     options.update(skip_mesh_approximation=not simulation, import_results_out=import_results)
     source_builders = build_source_builders(stage, source_paths, create_builder, schema_resolvers, **options)
-    if simulation:
-        entries = [add_deformable_from_usd(source_builders[path], stage, root_path=path) for path in deformable_paths]
-    else:
+    if not simulation:
         # Import visual meshes once into their owning prototypes, before the common native replication.
         for entry in entries:
             ancestors = reversed(Sdf.Path(entry.root_path).GetPrefixes())
@@ -171,8 +157,6 @@ def _replicate_newton(
             native = source_builders[source]
             pose = dict(pos=wp.vec3(*entry.init_pos), rot=wp.quat(*entry.init_rot), scale=1.0, vel=wp.vec3())
             surface = entry.deformable_type == "surface" or entry.vis_mesh_path != entry.sim_mesh_path
-            particle_start, tri_start = native.particle_count, len(native.tri_indices)
-            edge_start, tet_start = len(native.edge_indices), len(native.tet_indices)
             if surface:
                 add_mesh = native.add_cloth_mesh
                 mesh = dict(vertices=entry.vis_vertices, indices=entry.vis_indices, density=1.0)
@@ -182,13 +166,6 @@ def _replicate_newton(
                 mesh = dict(vertices=entry.vertices, indices=entry.indices, density=1000.0)
                 mesh.update(k_mu=1e5, k_lambda=1e5, k_damp=0.0)
             add_mesh(label=entry.vis_mesh_path, **mesh, **pose)
-            # Remove private recording when the pinned Newton includes #3326.
-            particle_range = particle_start, native.particle_count
-            if surface:
-                tri_range, edge_range = (tri_start, len(native.tri_indices)), (edge_start, len(native.edge_indices))
-                native._record_cloth_group(entry.vis_mesh_path, particle_range, tri_range, edge_range)
-            else:
-                native._record_soft_group(entry.vis_mesh_path, particle_range, (tet_start, len(native.tet_indices)))
 
     # Resolve native capsule indices once per source, not by rediscovering labels after cloning.
     source_cables = {}
@@ -242,18 +219,7 @@ def _replicate_newton(
     site_index_map.update((label, (None, per_world)) for label, per_world in local_site_map.items())
     if simulation:
         NewtonManager._cable_bindings = cable_bindings
-        geometry = expand_deformable_entries(entries, plan, env_ids, positions)
-        ranges = {
-            label: start
-            for family in ("cloth", "soft")
-            for label, start in zip(
-                getattr(builder, f"_{family}_label"), getattr(builder, f"_{family}_particle_start"), strict=True
-            )
-        }
-        offsets = [ranges[entry.root_path] for entry in geometry]
-        batches = deformable_geometry_batches(geometry, offsets, device=sim.device)
-        if visual_ranges:
-            batches.append((SceneDataFormat.Points(), visual_ranges))
+        batches = [(SceneDataFormat.Points(), visual_ranges)] if visual_ranges else []
         NewtonManager._scene_data_backend._geometry_batches = batches
         NewtonManager._cl_site_index_map = site_index_map
         NewtonManager._world_xforms = world_xforms

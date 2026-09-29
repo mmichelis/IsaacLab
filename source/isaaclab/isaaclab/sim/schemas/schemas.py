@@ -2304,7 +2304,7 @@ def define_deformable_body_properties(
 
     # define authors a fresh deformable setup; callers must clear any previous setup before calling this function.
     # We check the USD namespace to determine which API to use for the deformable body.
-    use_omni_physics_apis = getattr(cfg, "_usd_namespace", None) != "newton"
+    use_omni_physics_apis = getattr(cfg, "_usd_applied_schema", None) != "PhysicsDeformableBodyAPI"
 
     # create the backend-neutral simulation and visual meshes
     sim_mesh_prim_path = prim_path + "/sim_mesh" if sim_mesh_prim_path is None else sim_mesh_prim_path
@@ -2359,27 +2359,12 @@ def define_deformable_body_properties(
         if not root_prim.ApplyAPI("OmniPhysicsDeformableBodyAPI"):
             raise RuntimeError(f"Failed to set deformable body API on prim '{prim_path}'.")
     else:
-        # TODO: Temporary solution for Newton: Overwrite visual mesh with tet mesh surface points or copy
-        # surface sim mesh to vis mesh. In the future we can have separate visual from simulation mesh.
-        # This currently does not work if an asset is loaded where the visual mesh is not the simulation mesh surface.
-        vis_mesh = UsdGeom.Mesh(vis_mesh_prim)
-        if deformable_type == "volume":
-            tet_mesh_prim = UsdGeom.TetMesh(sim_mesh_prim)
-            surface_indices = tet_mesh_prim.GetSurfaceFaceVertexIndicesAttr().Get()
-            if surface_indices is None or len(surface_indices) == 0:
-                raise ValueError(
-                    f"Deformable body at '{prim_path}' has no surface indices on its TetMesh prim; "
-                    "cannot sync to visual mesh."
-                )
-            vis_mesh.GetPointsAttr().Set(tet_mesh_prim.GetPointsAttr().Get())
-            vis_mesh.GetFaceVertexIndicesAttr().Set(np.asarray(surface_indices).flatten())
-            vis_mesh.GetFaceVertexCountsAttr().Set([3] * len(surface_indices))
-        else:
-            sim_mesh = UsdGeom.Mesh(sim_mesh_prim)
-            vis_mesh.GetFaceVertexIndicesAttr().Set(sim_mesh.GetFaceVertexIndicesAttr().Get())
-            vis_mesh.GetFaceVertexCountsAttr().Set(sim_mesh.GetFaceVertexCountsAttr().Get())
-        if not root_prim.AddAppliedSchema("PhysicsDeformableBodyAPI"):
-            raise RuntimeError(f"Failed to set deformable body API on prim '{prim_path}'.")
+        from isaaclab.sim import SimulationContext  # noqa: PLC0415
+
+        sim = SimulationContext.instance()
+        if sim is None:
+            raise RuntimeError(f"Cannot create deformable body '{prim_path}' without an active simulation.")
+        sim.physics_manager.setup_deformable_body(root_prim, deformable_type, sim_mesh_prim, vis_mesh_prim)
 
     modify_deformable_body_properties(prim_path, cfg, stage)
 

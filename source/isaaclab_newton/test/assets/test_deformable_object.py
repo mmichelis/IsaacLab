@@ -6,16 +6,19 @@
 # ignore private usage of variables warning
 # pyright: reportPrivateUsage=none
 
+from isaaclab_newton.physics import NewtonCfg
+
+from isaaclab.sim import SimulationCfg
 from isaaclab.test.utils import launch_test_simulation
 
-launch_test_simulation()
+launch_test_simulation(SimulationCfg(physics=NewtonCfg()))
 
 import numpy as np
 import pytest
 import torch
 import warp as wp
 from flaky import flaky
-from isaaclab_newton.physics import NewtonBuilderCfg, NewtonCfg, NewtonManager, VBDSolverCfg
+from isaaclab_newton.physics import NewtonBuilderCfg, NewtonManager, VBDSolverCfg
 from isaaclab_newton.sim.schemas import NewtonDeformableBodyPropertiesCfg
 from isaaclab_newton.sim.spawners.materials import (
     NewtonDeformableBodyMaterialCfg,
@@ -28,7 +31,7 @@ import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import DeformableObject, DeformableObjectCfg
 from isaaclab.cloner import CloneCfg, clone_plan_from_env_0, replicate
-from isaaclab.sim import SimulationCfg, build_simulation_context
+from isaaclab.sim import build_simulation_context
 
 
 def _newton_sim_context(device="cuda:0", gravity_enabled=True, num_substeps=2, use_cuda_graph=True):
@@ -254,10 +257,11 @@ def test_surface_initialization_and_freefall(sim):
     assert torch.all(cloth_object.data.root_pos_w.torch[:, 2] < initial_root_z)
 
 
-def test_full_data_writes_selected_env(sim):
+@pytest.mark.parametrize("scene_factory", [generate_cubes_scene, generate_cloth_scene])
+def test_full_data_writes_selected_env(sim, scene_factory):
     """Test index, full-data, warp-input and mask writes update only the selected environment."""
     num_cubes = 3
-    cube_object = generate_cubes_scene(num_cubes=num_cubes)
+    cube_object = scene_factory(num_cubes)
 
     sim.reset()
 
@@ -431,8 +435,11 @@ def test_set_nodal_state_with_applied_transform():
 
 
 # One substep without CUDA graphs leaves an odd number of state swaps, so reads must use the current state.
-@pytest.mark.parametrize(("num_substeps", "use_cuda_graph"), [(2, True), (1, False)])
-def test_freefall_analytical(num_substeps, use_cuda_graph):
+@pytest.mark.parametrize(
+    ("scene_factory", "num_substeps", "use_cuda_graph"),
+    [(generate_cubes_scene, 2, True), (generate_cubes_scene, 1, False), (generate_cloth_scene, 1, False)],
+)
+def test_freefall_analytical(scene_factory, num_substeps, use_cuda_graph):
     """Test that one step of free-fall matches the inertia target prediction.
 
     VBD computes an inertia target per substep (h = sub_dt)::
@@ -461,10 +468,14 @@ def test_freefall_analytical(num_substeps, use_cuda_graph):
 
     with _newton_sim_context(num_substeps=num_substeps, use_cuda_graph=use_cuda_graph) as sim:
         sim._app_control_on_stop_handle = None
-        cube_object = generate_cubes_scene(num_cubes=1, height=5.0)
+        cube_object = scene_factory(2, height=5.0)
         sim.reset()
 
-        x0 = cube_object.data.nodal_pos_w.torch.clone()
+        data = cube_object.data
+        pos_proxy = data.nodal_pos_w
+        vel_proxy = data.nodal_vel_w
+        old_model = cube_object.root_view.model
+        x0 = pos_proxy.torch.clone()
         sim.step()
         cube_object.update(sim.cfg.dt)
         x1 = cube_object.data.nodal_pos_w.torch
@@ -482,10 +493,27 @@ def test_freefall_analytical(num_substeps, use_cuda_graph):
 
         sim.reset()
 
-        second_pos = initial_pos + torch.tensor([0.0, -0.1, 0.2], device=sim.device)
-        cube_object.write_nodal_pos_to_sim_index(second_pos)
+        assert cube_object.root_view.model is not old_model
+        assert cube_object.data is data
+        assert data.nodal_pos_w is pos_proxy
+        assert data.nodal_vel_w is vel_proxy
+        second_pos = initial_pos.clone()
+        second_pos[1] += torch.tensor([0.0, -0.1, 0.2], device=sim.device)
+        cube_object.write_nodal_pos_to_sim_index(second_pos, env_ids=[1], full_data=True)
+        velocity = torch.full_like(second_pos[1:2], 0.3)
+        cube_object.write_nodal_velocity_to_sim_index(velocity, env_ids=[1])
         cube_object.update(sim.cfg.dt)
         torch.testing.assert_close(cube_object.data.nodal_pos_w.torch, second_pos, rtol=1e-5, atol=1e-5)
+        sim.step()
+        cube_object.update(sim.cfg.dt)
+        expected = second_pos.clone()
+        expected[1] += 0.3 * dt
+        expected[..., 2] += expected_dz
+        torch.testing.assert_close(data.nodal_pos_w.torch, expected, rtol=1e-4, atol=1e-5)
+        expected_velocity = torch.zeros_like(second_pos)
+        expected_velocity[1] = 0.3
+        expected_velocity[..., 2] += g * dt
+        torch.testing.assert_close(data.nodal_vel_w.torch, expected_velocity, rtol=1e-3, atol=1e-4)
 
 
 def test_set_kinematic_targets(sim):

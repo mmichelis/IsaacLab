@@ -19,10 +19,7 @@ from isaaclab.utils import configclass
 
 @configclass
 class NewtonDeformableMaterialCfg:
-    """Newton-specific material properties for a deformable body.
-
-    These properties are set with the prefix ``newton:<property_name>``.
-    """
+    """Legacy Newton inputs translated into canonical USD material properties."""
 
     _usd_namespace: ClassVar[str | None] = "newton"
     _usd_applied_schema: ClassVar[str | None] = None
@@ -43,7 +40,13 @@ class NewtonDeformableBodyMaterialCfg(DeformableBodyMaterialBaseCfg, NewtonDefor
     _usd_applied_schema: ClassVar[str | None] = None
     _usd_field_exceptions: ClassVar[dict] = {}
 
-    func: Callable | str = "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
+    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
+
+    youngs_modulus: float | None = None
+    """Canonical Young's modulus [Pa], overriding the legacy Lamé pair."""
+
+    poissons_ratio: float | None = None
+    """Canonical Poisson's ratio [dimensionless]."""
 
     k_mu: float = 1e5
     """First Lame material parameter [Pa]. Defaults to 1e5 Pa."""
@@ -63,7 +66,19 @@ class NewtonSurfaceDeformableBodyMaterialCfg(SurfaceDeformableBodyMaterialBaseCf
     _usd_applied_schema: ClassVar[str | None] = None
     _usd_field_exceptions: ClassVar[dict] = {}
 
-    func: Callable | str = "isaaclab.sim.spawners.materials.physics_materials:spawn_deformable_body_material"
+    func: Callable | str = "{DIR}.physics_materials:spawn_deformable_body_material"
+
+    thickness: float | None = None
+    """Thickness [m]. When set, density is volumetric; otherwise legacy density is areal."""
+
+    stretch_stiffness: float | None = None
+    """Stretch modulus [Pa], overriding legacy triangle stiffness."""
+
+    shear_stiffness: float | None = None
+    """Shear modulus [Pa]."""
+
+    bend_stiffness: float | None = None
+    """Bending modulus [Pa], overriding legacy edge stiffness."""
 
     tri_ke: float = 1e4
     """Triangle area-preserving stiffness [Pa]. Used by Newton backend for cloth meshes."""
@@ -83,10 +98,18 @@ class NewtonSurfaceDeformableBodyMaterialCfg(SurfaceDeformableBodyMaterialBaseCf
 
 @configclass
 class NewtonVolumeDeformableMaterialCfg(DeformableMaterialFragment):
-    """``newton:*`` volume-deformable material attributes read by the Newton builder hooks."""
+    """Canonical volume material with legacy Lamé conversion and unsupported-field warnings."""
 
     _usd_namespace: ClassVar[str | None] = "newton"
     _usd_applied_schema: ClassVar[str | None] = None
+
+    func: Callable | str = "{DIR}.physics_materials:apply_deformable_material"
+
+    youngs_modulus: float | None = None
+    """Canonical Young's modulus [Pa], overriding the legacy Lamé pair."""
+
+    poissons_ratio: float | None = None
+    """Canonical Poisson's ratio [dimensionless]."""
 
     density: float | None = None
     """The material density [kg/m^3]."""
@@ -106,10 +129,29 @@ class NewtonVolumeDeformableMaterialCfg(DeformableMaterialFragment):
 
 @configclass
 class NewtonSurfaceDeformableMaterialCfg(DeformableMaterialFragment):
-    """``newton:*`` surface-deformable (cloth) material attributes read by the Newton builder hooks."""
+    """Canonical fields with legacy conversion and a deprecated material-thickness bridge.
+
+    Explicit thickness selects volumetric density. Area stiffness and damping have
+    no native USD equivalent and produce warnings instead of being applied.
+    Partial updates reuse authored material thickness unless thickness or radius is supplied.
+    """
 
     _usd_namespace: ClassVar[str | None] = "newton"
     _usd_applied_schema: ClassVar[str | None] = None
+
+    func: Callable | str = "{DIR}.physics_materials:apply_deformable_material"
+
+    thickness: float | None = None
+    """Thickness [m]. When set, density is volumetric; otherwise legacy density is areal."""
+
+    stretch_stiffness: float | None = None
+    """Stretch modulus [Pa], overriding legacy triangle stiffness."""
+
+    shear_stiffness: float | None = None
+    """Shear modulus [Pa]."""
+
+    bend_stiffness: float | None = None
+    """Bending modulus [Pa], overriding legacy edge stiffness."""
 
     density: float | None = None
     """The material areal density [kg/m^2]."""

@@ -33,14 +33,14 @@ from newton import (
     State,
     eval_fk,
 )
-from newton.selection import ArticulationView
+from newton.selection import ArticulationView, DeformableSurfaceView, DeformableVolumeView
 from newton.sensors import SensorContact as NewtonContactSensor
 from newton.sensors import SensorFrameTransform
 from newton.sensors import SensorIMU as NewtonSensorIMU
 from newton.solvers import SolverBase, SolverMuJoCo
 from newton.usd import SchemaResolver, SchemaResolverMjc, SchemaResolverNewton, SchemaResolverPhysx
 
-from pxr import Usd, UsdGeom
+from pxr import Sdf, Usd, UsdGeom
 
 import isaaclab.cloner as cloner
 from isaaclab.physics import CallbackHandle, PhysicsEvent, PhysicsManager
@@ -171,18 +171,54 @@ class NewtonBackend:
         builder = SimulationContext.instance().get_or_create_backend(NewtonBuilderCfg(physics_cfg=cfg.physics_cfg))
         self.model = builder.finalize(device=cfg.device)
         self.particle_ranges: dict[str, tuple[int, int]] = {}
-        # Newton 1.6 preserves groups through builder replication but not finalization.
-        # Remove this snapshot when the pinned Newton includes newton-physics/newton#3326.
-        self.deformable_ranges = {
-            label: (start, end - start, kind)
-            for family, kind in (("cloth", "surface"), ("soft", "volume"))
-            for label, start, end in zip(
-                getattr(builder, f"_{family}_label"),
-                getattr(builder, f"_{family}_particle_start"),
-                getattr(builder, f"_{family}_particle_end"),
-                strict=True,
-            )
+        self.deformable_ranges = {}
+        selections = []
+        for family, view_type in (("surface", DeformableSurfaceView), ("volume", DeformableVolumeView)):
+            labels, worlds = getattr(builder, f"{family}_label"), getattr(builder, f"{family}_world")
+            for global_objects in (True, False):
+                patterns = [
+                    re.escape(label)
+                    for label, world in zip(labels, worlds, strict=True)
+                    if (world == -1) == global_objects
+                ]
+                if not patterns:
+                    continue
+                view = view_type(self.model, re.compile("(?:" + "|".join(patterns) + ")"), verbose=False)
+                selections.append(view)
+                self.deformable_ranges.update(
+                    (label, (start, end - start, family))
+                    for label, (start, end) in zip(view.labels, view.ranges("particle"), strict=True)
+                )
+        self.deformable_visuals = self.model.deformable_visuals() if self.model.deformable_visual_meshes else None
+        self.deformable_visual_paths = {}
+        self.deformable_direct_ranges = {
+            path: (start, count) for path, (start, count, _) in self.deformable_ranges.items()
         }
+        # add_builder preserves source USD paths; finalized driver ranges identify each clone unambiguously.
+        for mesh in self.model.deformable_visual_meshes:
+            if not mesh.graphics_path or not mesh.body_path or not mesh.sim_path or mesh.vertex_count == 0:
+                continue
+            kind = {mesh.Kind.PARTICLE: "particle", mesh.Kind.TRIANGLE: "triangle", mesh.Kind.TET: "tetrahedron"}.get(
+                mesh.kind
+            )
+            if kind is None:
+                continue
+            parents = mesh.parent.numpy()
+            low, high = int(parents.min()), int(parents.max())
+            for view in selections:
+                if (kind == "triangle" and view.family != "surface") or (
+                    kind == "tetrahedron" and view.family != "volume"
+                ):
+                    continue
+                for label, (start, end) in zip(view.labels, view.ranges(kind), strict=True):
+                    if start <= low and high < end:
+                        body_path = label.removesuffix(mesh.sim_path.removeprefix(mesh.body_path))
+                        self.deformable_visual_paths[mesh.index] = body_path + mesh.graphics_path.removeprefix(
+                            mesh.body_path
+                        )
+                        self.deformable_direct_ranges.pop(label, None)
+            if mesh.index not in self.deformable_visual_paths:
+                raise ValueError(f"No deformable owns the visual binding for {mesh.graphics_path!r}.")
         self.model.num_envs = self.model.world_count
         simulation = isinstance(cfg.physics_cfg, NewtonCfg)
         soft_contact = cfg.physics_cfg.soft_contact_cfg if simulation else None
@@ -205,6 +241,9 @@ class NewtonBackend:
     def close(self) -> None:
         """Drop native handles after consumers release their bindings."""
         self.control = self.state_1 = self.state_0 = self.model = None
+        self.deformable_visuals = None
+        self.deformable_visual_paths = {}
+        self.deformable_direct_ranges = {}
         self.deformable_ranges.clear()
         self.particle_ranges = {}
         self.geometry_offsets = {}
@@ -304,10 +343,26 @@ class NewtonSceneDataBackend(SceneDataBackend):
         self.transforms_timestamp = 0
         self.geometry_timestamp = 0
         self._geometry_batches = []
+        self._deformable_geometry = []
+        self._direct_deformable_geometry = []
 
     def initialize_geometry(self) -> None:
         """Bind imported geometry paths to native particle ranges and capsule endpoints."""
         state = NewtonManager.get_state_0()
+        backend = NewtonManager.backend
+        self._deformable_geometry = []
+        self._direct_deformable_geometry = []
+        if backend.deformable_direct_ranges:
+            self._direct_deformable_geometry = [(SceneDataFormat.Points(), backend.deformable_direct_ranges)]
+        if backend.deformable_visuals is not None:
+            visuals = backend.deformable_visuals
+            source = SceneDataFormat.Points()
+            source.points = visuals.points
+            ranges = {
+                path: (visuals.mesh_ranges[index][0], visuals.mesh_ranges[index][1] - visuals.mesh_ranges[index][0])
+                for index, path in backend.deformable_visual_paths.items()
+            }
+            self._deformable_geometry.append((source, ranges))
         self._geometry_batches = [
             (source, ranges)
             for source, ranges in self._geometry_batches
@@ -342,13 +397,16 @@ class NewtonSceneDataBackend(SceneDataBackend):
     def get_geometry_batches(self, output_format=SceneDataFormat.Points):
         """Publish native arrays; SDP derives cable endpoints and applies destination layouts."""
         state = self.state
-        for source, _ in self._geometry_batches:
+        visuals = NewtonManager.backend.deformable_visuals
+        if visuals is not None:
+            self.model.update_deformable_visuals(state, visuals)
+        for source, _ in [*self._geometry_batches, *self._direct_deformable_geometry]:
             attribute = "transforms" if source._cls is SceneDataFormat.CapsuleEndpoints else "points"
             data = state.particle_q if attribute == "points" else state.body_q
             if getattr(source, attribute) is not data:
                 setattr(source, attribute, data)
                 self.geometry_timestamp += 1
-        return self._geometry_batches
+        return [*self._geometry_batches, *self._direct_deformable_geometry, *self._deformable_geometry]
 
     @property
     def transforms(self) -> SceneDataFormat.Transform:
@@ -437,29 +495,16 @@ class NewtonManager(PhysicsManager):
 
     @classmethod
     def setup_deformable_body(cls, prim: Any, deformable_type: str, sim_mesh_prim: Any, vis_mesh_prim: Any) -> None:
-        """Apply Newton's token deformable anchor schemas and sync the visual mesh geometry."""
+        """Author canonical deformable schemas without replacing the visual mesh."""
         sim_mesh_path = sim_mesh_prim.GetPath().pathString
         token = "PhysicsVolumeDeformableSimAPI" if deformable_type == "volume" else "PhysicsSurfaceDeformableSimAPI"
         if not sim_mesh_prim.AddAppliedSchema(token):
             raise RuntimeError(f"Failed to set {deformable_type} deformable sim API on prim '{sim_mesh_path}'.")
-        # Newton renders the simulation mesh directly: overwrite the visual mesh geometry until
-        # separate visual/simulation meshes are supported.
-        vis_mesh = UsdGeom.Mesh(vis_mesh_prim)
-        if deformable_type == "volume":
-            tet_mesh = UsdGeom.TetMesh(sim_mesh_prim)
-            surface_indices = tet_mesh.GetSurfaceFaceVertexIndicesAttr().Get()
-            if surface_indices is None or len(surface_indices) == 0:
-                raise ValueError(
-                    f"Deformable body at '{prim.GetPath().pathString}' has no surface indices on its TetMesh"
-                    " prim; cannot sync to visual mesh."
-                )
-            vis_mesh.GetPointsAttr().Set(tet_mesh.GetPointsAttr().Get())
-            vis_mesh.GetFaceVertexIndicesAttr().Set(np.asarray(surface_indices).flatten())
-            vis_mesh.GetFaceVertexCountsAttr().Set([3] * len(surface_indices))
-        else:
-            sim_mesh = UsdGeom.Mesh(sim_mesh_prim)
-            vis_mesh.GetFaceVertexIndicesAttr().Set(sim_mesh.GetFaceVertexIndicesAttr().Get())
-            vis_mesh.GetFaceVertexCountsAttr().Set(sim_mesh.GetFaceVertexCountsAttr().Get())
+        if deformable_type == "surface" and not any(
+            sim_mesh_prim.GetAttribute(name).HasAuthoredValueOpinion()
+            for name in ("physics:restBendAngles", "physics:restBendAnglesDefault")
+        ):
+            sim_mesh_prim.CreateAttribute("physics:restBendAnglesDefault", Sdf.ValueTypeNames.Token).Set("restShape")
         if not prim.AddAppliedSchema("PhysicsDeformableBodyAPI"):
             raise RuntimeError(f"Failed to set deformable body API on prim '{prim.GetPath().pathString}'.")
 

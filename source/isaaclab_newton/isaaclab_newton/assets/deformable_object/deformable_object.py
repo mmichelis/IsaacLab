@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 import warp as wp
+from newton.selection import DeformableSurfaceView, DeformableVolumeView
 
 from isaaclab.assets.deformable_object.base_deformable_object import BaseDeformableObject
 from isaaclab.markers import VisualizationMarkers
-from isaaclab.physics import PhysicsEvent
 from isaaclab.utils.warp import ProxyArray
 
 from ...physics.newton_manager import NewtonManager as SimulationManager
@@ -26,7 +26,6 @@ from .kernels import (
     enforce_kinematic_targets,
     gather_particles,
     scatter_particles_state_vec6f_mask,
-    scatter_particles_vec3f_index,
     scatter_particles_vec3f_mask,
     vec6f,
     write_nodal_kinematic_target_index,
@@ -64,6 +63,7 @@ class DeformableObject(BaseDeformableObject):
             cfg: A configuration instance.
         """
         super().__init__(cfg)
+        self._root_view: DeformableSurfaceView | DeformableVolumeView | None = None
 
         # Register custom vec6f type for nodal state validation.
         self._DTYPE_TO_TORCH_TRAILING_DIMS = {**self._DTYPE_TO_TORCH_TRAILING_DIMS, vec6f: (6,)}
@@ -75,6 +75,11 @@ class DeformableObject(BaseDeformableObject):
     @property
     def data(self) -> DeformableObjectData:
         return self._data
+
+    @property
+    def root_view(self) -> DeformableSurfaceView | DeformableVolumeView:
+        """Newton selection of this asset's deformable objects."""
+        return self._root_view
 
     @property
     def num_instances(self) -> int:
@@ -179,12 +184,11 @@ class DeformableObject(BaseDeformableObject):
             nodal_pos = wp.from_torch(nodal_pos.contiguous(), dtype=wp.vec3f)
 
         for state in self._iter_particle_states():
-            wp.launch(
-                scatter_particles_vec3f_index,
-                dim=(env_ids.shape[0], self._particles_per_body),
-                inputs=[nodal_pos, env_ids, self._particle_offsets, full_data],
-                outputs=[state.particle_q],
-                device=self.device,
+            self._root_view.set_particle_positions(
+                state,
+                nodal_pos,
+                deformable_object_indices=env_ids,
+                source_indices=env_ids if full_data else None,
             )
 
         SimulationManager._mark_particles_dirty()
@@ -218,12 +222,11 @@ class DeformableObject(BaseDeformableObject):
             nodal_vel = wp.from_torch(nodal_vel.contiguous(), dtype=wp.vec3f)
 
         for state in self._iter_particle_states():
-            wp.launch(
-                scatter_particles_vec3f_index,
-                dim=(env_ids.shape[0], self._particles_per_body),
-                inputs=[nodal_vel, env_ids, self._particle_offsets, full_data],
-                outputs=[state.particle_qd],
-                device=self.device,
+            self._root_view.set_particle_velocities(
+                state,
+                nodal_vel,
+                deformable_object_indices=env_ids,
+                source_indices=env_ids if full_data else None,
             )
 
         self._invalidate_nodal_vel_cache()
@@ -443,25 +446,44 @@ class DeformableObject(BaseDeformableObject):
 
     def _initialize_impl(self):
         """Initialize physics handles and buffers after the Newton model is ready."""
-        # Replace this selection with Newton's family views when the pinned version includes
-        # https://github.com/newton-physics/newton/pull/3326.
-        pattern = re.compile(self.cfg.prim_path)
-        selected = [
-            value for path, value in SimulationManager.backend.deformable_ranges.items() if pattern.fullmatch(path)
-        ]
-        if not selected:
+        pattern = re.compile(f"({self.cfg.prim_path})(?:/.*)?")
+        views = []
+        for view_type in (DeformableSurfaceView, DeformableVolumeView):
+            try:
+                views.append(view_type(SimulationManager.get_model(), pattern))
+            except KeyError:
+                continue
+        if not views:
             raise RuntimeError(f"No imported deformable matches '{self.cfg.prim_path}'.")
-        self._particles_per_body, self._deformable_type = selected[0][1:]
-        if any((count, kind) != selected[0][1:] for _, count, kind in selected):
+        if len(views) != 1:
             raise ValueError(f"Deformable selection '{self.cfg.prim_path}' requires equal particle counts and types.")
-        self._num_instances = len(selected)
+        view = views[0]
+        if len({pattern.fullmatch(label)[1] for label in view.labels}) != view.count:
+            raise ValueError(f"Deformable selection '{self.cfg.prim_path}' requires one simulation mesh per asset.")
+        particles_per_body = view.particles_per_deformable_object
+        if self._root_view is not None:
+            if (view.count, particles_per_body, view.family) != (
+                self._num_instances,
+                self._particles_per_body,
+                self._deformable_type,
+            ):
+                raise ValueError(f"Deformable selection '{self.cfg.prim_path}' changed shape or type after reset.")
+            self._root_view = view
+            self._particle_offsets = view.starts("particle")
+            self._data._create_simulation_bindings(view)
+            self._create_buffers()
+            return
+        self._root_view = view
+        self._particles_per_body = particles_per_body
+        self._deformable_type = view.family
+        self._num_instances = view.count
 
         logger.info("Newton deformable object initialized at: %s", self.cfg.prim_path)
         logger.info("Number of instances: %d", self._num_instances)
         logger.info("Particles per body: %d", self._particles_per_body)
 
         # Build particle offset array on device
-        self._particle_offsets = wp.array([offset for offset, _, _ in selected], dtype=wp.int32, device=self.device)
+        self._particle_offsets = view.starts("particle")
 
         # Create data container
         self._data = DeformableObjectData(
@@ -469,6 +491,7 @@ class DeformableObject(BaseDeformableObject):
             particles_per_body=self._particles_per_body,
             num_instances=self._num_instances,
             device=self.device,
+            deformable_view=view,
         )
 
         # Create buffers
@@ -476,13 +499,6 @@ class DeformableObject(BaseDeformableObject):
 
         # Update data once
         self.update(0.0)
-
-        # Register rebind callback for full resets
-        self._physics_ready_handle = SimulationManager.register_callback(
-            lambda _: self._data._create_simulation_bindings(),
-            PhysicsEvent.PHYSICS_READY,
-            name=f"deformable_object_rebind_{self.cfg.prim_path}",
-        )
 
     def _create_buffers(self):
         """Create buffers for storing data."""
@@ -545,9 +561,9 @@ class DeformableObject(BaseDeformableObject):
             positions = kinematic_target_torch[targets_enabled][..., :3]
         self.target_visualizer.visualize(positions)
 
-    def _clear_callbacks(self) -> None:
-        """Clears all registered callbacks."""
-        super()._clear_callbacks()
-        if hasattr(self, "_physics_ready_handle") and self._physics_ready_handle is not None:
-            self._physics_ready_handle.deregister()
-            self._physics_ready_handle = None
+    def _initialize_callback(self, event):
+        """Refresh model-dependent selections whenever physics becomes ready."""
+        if self._is_initialized:
+            self._initialize_impl()
+        else:
+            super()._initialize_callback(event)

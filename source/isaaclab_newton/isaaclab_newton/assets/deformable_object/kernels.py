@@ -30,31 +30,6 @@ def gather_particles(
 
 
 @wp.kernel
-def scatter_particles_vec3f_index(
-    src: wp.array2d(dtype=wp.vec3f),
-    env_ids: wp.array(dtype=wp.int32),
-    offsets: wp.array(dtype=wp.int32),
-    full_data: bool,
-    dst: wp.array(dtype=wp.vec3f),
-):
-    """Scatter per-instance particle data into the flat simulation array using indices.
-
-    Args:
-        src: Input 2D array. Shape is (len(env_ids), num_particles) or (num_instances, num_particles).
-        env_ids: Environment indices to scatter to. Shape is (num_selected,).
-        offsets: Per-instance start offset into the flat array. Shape is (num_instances,).
-        full_data: If True, index src with env_ids[i]; otherwise index src with i.
-        dst: Flat destination particle array. Shape is (total_particles,).
-    """
-    i, j = wp.tid()
-    env_id = env_ids[i]
-    if full_data:
-        dst[offsets[env_id] + j] = src[env_id, j]
-    else:
-        dst[offsets[env_id] + j] = src[i, j]
-
-
-@wp.kernel
 def scatter_particles_vec3f_mask(
     src: wp.array2d(dtype=wp.vec3f),
     env_mask: wp.array(dtype=wp.bool),
