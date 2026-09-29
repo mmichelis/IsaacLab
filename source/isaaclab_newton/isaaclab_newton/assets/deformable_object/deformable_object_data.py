@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import warp as wp
+from newton.selection import DeformableSurfaceView, DeformableVolumeView
 
 from isaaclab.assets.deformable_object.base_deformable_object_data import BaseDeformableObjectData
 from isaaclab.utils.buffers import TimestampedBuffer, reset_timestamps
@@ -20,13 +21,20 @@ class DeformableObjectData(BaseDeformableObjectData):
     """Data container for a deformable object (Newton backend).
 
     Newton stores all particles in flat arrays (``model.particle_q``, ``state.particle_qd``).
-    This data class builds a per-instance view by gathering from the flat arrays using
-    precomputed offsets.
+    Selected particles are copied into stable per-instance buffers.
 
     The data is lazily updated, meaning that the data is only updated when it is accessed.
     """
 
-    def __init__(self, particle_offsets: wp.array, particles_per_body: int, num_instances: int, device: str):
+    def __init__(
+        self,
+        particle_offsets: wp.array,
+        particles_per_body: int,
+        num_instances: int,
+        device: str,
+        *,
+        deformable_view: DeformableSurfaceView | DeformableVolumeView | None = None,
+    ):
         """Initialize the Newton deformable object data.
 
         Args:
@@ -35,11 +43,13 @@ class DeformableObjectData(BaseDeformableObjectData):
             particles_per_body: Number of particles per deformable body instance.
             num_instances: Number of deformable body instances.
             device: The device used for processing.
+            deformable_view: Native selection used for particle reads, when supplied.
         """
         super().__init__(device)
 
         # Store dimensions and indexing
         self._particle_offsets = particle_offsets
+        self._deformable_view = deformable_view
         self._particles_per_body = particles_per_body
         self._num_instances = num_instances
 
@@ -74,13 +84,18 @@ class DeformableObjectData(BaseDeformableObjectData):
     Shape is (num_instances, particles_per_body) with dtype vec4f.
     """
 
-    def _create_simulation_bindings(self) -> None:
+    def _create_simulation_bindings(
+        self, deformable_view: DeformableSurfaceView | DeformableVolumeView | None = None
+    ) -> None:
         """Invalidate gathered buffers after model reinitialization.
 
         Newton may swap :attr:`state_0` and :attr:`state_1` across substeps, so deformable data does not keep
         long-lived particle array bindings. Read properties query :meth:`SimulationManager.get_state_0` at gather time
         and materialize object-local views from the current flat particle arrays.
         """
+        if deformable_view is not None:
+            self._deformable_view = deformable_view
+            self._particle_offsets = deformable_view.starts("particle")
         reset_timestamps(
             (self._nodal_pos_w, self._nodal_vel_w, self._nodal_state_w, self._root_pos_w, self._root_vel_w)
         )
@@ -94,13 +109,16 @@ class DeformableObjectData(BaseDeformableObjectData):
         """Nodal positions in simulation world frame [m]. Shape is (num_instances, particles_per_body) vec3f."""
         if self._nodal_pos_w.timestamp < self._sim_timestamp:
             state = SimulationManager.get_state_0()
-            wp.launch(
-                gather_particles,
-                dim=(self._num_instances, self._particles_per_body),
-                inputs=[state.particle_q, self._particle_offsets],
-                outputs=[self._nodal_pos_w.data],
-                device=self.device,
-            )
+            if self._deformable_view is None:
+                wp.launch(
+                    gather_particles,
+                    dim=(self._num_instances, self._particles_per_body),
+                    inputs=[state.particle_q, self._particle_offsets],
+                    outputs=[self._nodal_pos_w.data],
+                    device=self.device,
+                )
+            else:
+                wp.copy(self._nodal_pos_w.data, self._deformable_view.get_particle_positions(state))
             self._nodal_pos_w.timestamp = self._sim_timestamp
         return self._nodal_pos_w_ta
 
@@ -109,13 +127,16 @@ class DeformableObjectData(BaseDeformableObjectData):
         """Nodal velocities in simulation world frame [m/s]. Shape is (num_instances, particles_per_body) vec3f."""
         if self._nodal_vel_w.timestamp < self._sim_timestamp:
             state = SimulationManager.get_state_0()
-            wp.launch(
-                gather_particles,
-                dim=(self._num_instances, self._particles_per_body),
-                inputs=[state.particle_qd, self._particle_offsets],
-                outputs=[self._nodal_vel_w.data],
-                device=self.device,
-            )
+            if self._deformable_view is None:
+                wp.launch(
+                    gather_particles,
+                    dim=(self._num_instances, self._particles_per_body),
+                    inputs=[state.particle_qd, self._particle_offsets],
+                    outputs=[self._nodal_vel_w.data],
+                    device=self.device,
+                )
+            else:
+                wp.copy(self._nodal_vel_w.data, self._deformable_view.get_particle_velocities(state))
             self._nodal_vel_w.timestamp = self._sim_timestamp
         return self._nodal_vel_w_ta
 

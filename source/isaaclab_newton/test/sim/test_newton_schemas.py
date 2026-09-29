@@ -340,6 +340,10 @@ def test_newton_deformable_schemas(kind):
     stage = Usd.Stage.CreateInMemory()
     body = UsdGeom.Xform.Define(stage, "/Body").GetPrim()
     visual = UsdGeom.Mesh.Define(stage, "/Body/visual")
+    visual_points = [(0.25, 0, 0), (0, 0.25, 0), (0, 0, 0.25)]
+    visual.CreatePointsAttr(visual_points)
+    visual.CreateFaceVertexIndicesAttr([2, 1, 0])
+    visual.CreateFaceVertexCountsAttr([3])
     mesh = UsdGeom.TetMesh.Define(stage, "/Body/sim") if kind == "volume" else UsdGeom.Mesh.Define(stage, "/Body/sim")
     mesh.CreatePointsAttr([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)])
     if kind == "volume":
@@ -347,17 +351,21 @@ def test_newton_deformable_schemas(kind):
         faces = UsdGeom.TetMesh.ComputeSurfaceFaces(mesh, Usd.TimeCode.Default())
         mesh.CreateSurfaceFaceVertexIndicesAttr(faces)
         material = NewtonVolumeDeformableMaterialCfg(k_mu=123.0, density=6.0)
-        attribute = "newton:kMu"
+        attribute = "physics:youngsModulus"
+        expected = 123.0 * (3.0 * 100000.0 + 2.0 * 123.0) / 100123.0
     else:
         mesh.CreateFaceVertexIndicesAttr([0, 1, 2])
         mesh.CreateFaceVertexCountsAttr([3])
         material = NewtonSurfaceDeformableMaterialCfg(tri_ke=123.0, density=6.0)
-        attribute = "newton:triKe"
+        attribute = "physics:surfaceStretchStiffness"
+        expected = 123.0
     NewtonManager.setup_deformable_body(body, kind, mesh.GetPrim(), visual.GetPrim())
     assert "PhysicsDeformableBodyAPI" in body.GetPrimTypeInfo().GetAppliedAPISchemas()
     assert f"Physics{kind.title()}DeformableSimAPI" in mesh.GetPrim().GetPrimTypeInfo().GetAppliedAPISchemas()
-    assert len(visual.GetFaceVertexIndicesAttr().Get()) == (12 if kind == "volume" else 3)
+    assert list(visual.GetPointsAttr().Get()) == visual_points
+    assert list(visual.GetFaceVertexIndicesAttr().Get()) == [2, 1, 0]
+    assert list(visual.GetFaceVertexCountsAttr().Get()) == [3]
     prim = spawn_physics_material_from_fragments("/Material", material, stage)
-    assert prim.GetAttribute(attribute).Get() == pytest.approx(123.0)
-    assert prim.GetAttribute("newton:density").Get() == pytest.approx(6.0)
+    assert prim.GetAttribute(attribute).Get() == pytest.approx(expected)
+    assert prim.GetAttribute("physics:density").Get() == pytest.approx(6.0 if kind == "volume" else 375.0)
     assert not prim.HasAPI(UsdPhysics.MaterialAPI)

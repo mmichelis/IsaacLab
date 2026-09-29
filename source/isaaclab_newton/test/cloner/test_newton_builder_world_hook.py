@@ -16,6 +16,7 @@ import warp as wp
 from isaaclab_newton.cloner import copy_newton_clone_source, newton_builder_world_hook
 from isaaclab_newton.physics import NewtonCfg, NewtonManager, VBDSolverCfg
 from isaaclab_newton.physics.newton_manager import NewtonSceneDataBackend
+from newton.selection import DeformableSurfaceView
 
 from pxr import Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdShade
 
@@ -98,9 +99,11 @@ def test_explicit_global_import_uses_global_world(
     native_mesh.CreatePointsAttr(points)
     native_mesh.CreateTetVertexIndicesAttr([(0, 1, 2, 3)])
     root = stage.GetPrimAtPath("/World/Native")
-    root.SetMetadata("apiSchemas", Sdf.TokenListOp.CreateExplicit(["OmniPhysicsDeformableBodyAPI"]))
+    root.SetMetadata("apiSchemas", Sdf.TokenListOp.CreateExplicit(["PhysicsDeformableBodyAPI"]))
     material = UsdShade.Material.Define(stage, "/World/Native/Material")
-    material.GetPrim().CreateAttribute("newton:density", Sdf.ValueTypeNames.Float).Set(1000.0)
+    native_mesh.GetPrim().AddAppliedSchema("PhysicsVolumeDeformableSimAPI")
+    material.GetPrim().AddAppliedSchema("PhysicsVolumeDeformableMaterialAPI")
+    material.GetPrim().CreateAttribute("physics:density", Sdf.ValueTypeNames.Float).Set(1000.0)
     UsdShade.MaterialBindingAPI.Apply(root).Bind(material, materialPurpose="physics")
     global_paths = ("/World/Ground", "/World/Light", "/World/Native")
 
@@ -157,7 +160,7 @@ def test_explicit_global_import_uses_global_world(
 
 def _author_deformable(stage, path, kind):
     root = UsdGeom.Xform.Define(stage, path).GetPrim()
-    root.SetMetadata("apiSchemas", Sdf.TokenListOp.CreateExplicit(["OmniPhysicsDeformableBodyAPI"]))
+    root.SetMetadata("apiSchemas", Sdf.TokenListOp.CreateExplicit(["PhysicsDeformableBodyAPI"]))
     points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
     if kind == "volume":
         mesh = UsdGeom.TetMesh.Define(stage, path + "/sim")
@@ -167,24 +170,36 @@ def _author_deformable(stage, path, kind):
         visual.CreatePointsAttr([(0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5)])
         visual.CreateFaceVertexCountsAttr([3])
         visual.CreateFaceVertexIndicesAttr([0, 1, 2])
-        schema = "OmniPhysicsVolumeDeformableSimAPI"
+        schema = "PhysicsVolumeDeformableSimAPI"
     else:
         mesh = UsdGeom.Mesh.Define(stage, path + "/sim")
         mesh.CreatePointsAttr(points[:3])
         mesh.CreateFaceVertexCountsAttr([3])
         mesh.CreateFaceVertexIndicesAttr([0, 1, 2])
-        schema = "OmniPhysicsSurfaceDeformableSimAPI"
+        schema = "PhysicsSurfaceDeformableSimAPI"
     mesh.GetPrim().SetMetadata("apiSchemas", Sdf.TokenListOp.CreateExplicit([schema]))
     material = UsdShade.Material.Define(stage, path + "/material")
-    for name, value in (("density", 6.0), ("triKe", 123.0), ("kMu", 456.0)):
-        material.GetPrim().CreateAttribute("newton:" + name, Sdf.ValueTypeNames.Float).Set(value)
+    material.GetPrim().AddAppliedSchema(
+        "PhysicsVolumeDeformableMaterialAPI" if kind == "volume" else "PhysicsSurfaceDeformableMaterialAPI"
+    )
+    for name, value in (
+        ("density", 6.0),
+        ("surfaceStretchStiffness", 123.0),
+        ("youngsModulus", 1185.6),
+        ("poissonsRatio", 0.3),
+    ):
+        material.GetPrim().CreateAttribute("physics:" + name, Sdf.ValueTypeNames.Float).Set(value)
     UsdShade.MaterialBindingAPI.Apply(root).Bind(material, materialPurpose="physics")
 
 
-@pytest.mark.parametrize("heterogeneous", [False, True], ids=["batched", "heterogeneous"])
-def test_imported_deformables_follow_plan_and_publish_geometry(heterogeneous):
+@pytest.mark.parametrize(
+    "heterogeneous,repeated",
+    [(False, False), (True, False), (False, True)],
+    ids=["batched", "heterogeneous", "repeated-source"],
+)
+def test_imported_deformables_follow_plan_and_publish_geometry(heterogeneous, repeated):
     """Import each prototype once and bind native/embedded visuals without inspecting generated clones."""
-    sim_cfg = SimulationCfg(device="cpu", physics=NewtonCfg(solver_cfg=VBDSolverCfg(), load_visual_shapes=False))
+    sim_cfg = SimulationCfg(device="cpu", physics=NewtonCfg(solver_cfg=VBDSolverCfg(), load_visual_shapes=True))
     with build_simulation_context(sim_cfg=sim_cfg) as sim:
         stage = sim.stage
         UsdGeom.SetStageUpAxis(stage, "Z")
@@ -204,7 +219,7 @@ def test_imported_deformables_follow_plan_and_publish_geometry(heterogeneous):
             AssetBaseCfg(prim_path="/World/env_[^/]+/Volume", spawn=SpawnerCfg(spawn_path=volume_path)),
             AssetBaseCfg(prim_path="/Shared/Cloth"),
         )
-        prototypes = ((0,), (1,)) if heterogeneous else ((0, 1),)
+        prototypes = ((0,), (1,)) if heterogeneous else ((0, 1, 1),) if repeated else ((0, 1),)
         layout = np.array([0, int(heterogeneous), 0])
         placement = dict(env_template="/World/env_{}", positions=positions)
         plan = make_clone_plan(
@@ -218,10 +233,10 @@ def test_imported_deformables_follow_plan_and_publish_geometry(heterogeneous):
         stage.RemovePrim("/World")
         stage.RemovePrim("/Shared")
 
-        expected_counts = [3, 4, 3] if heterogeneous else [7, 7, 7]
+        expected_counts = [3, 4, 3] if heterogeneous else [11, 11, 11] if repeated else [7, 7, 7]
         assert builder.particle_count == sum(expected_counts) + 3
         np.testing.assert_array_equal(np.bincount(np.asarray(builder.particle_world) + 1), [3, *expected_counts])
-        assert native.deformable_ranges["/Shared/Cloth"] == (0, 3, "surface")
+        assert native.deformable_ranges["/Shared/Cloth/sim"] == (0, 3, "surface")
         points = sim.get_scene_data_provider().get_geometry_points()
         expected_paths = {"/Shared/Cloth/sim"}
         local_vertices = np.asarray([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)], dtype=np.float32)
@@ -229,9 +244,11 @@ def test_imported_deformables_follow_plan_and_publish_geometry(heterogeneous):
             kinds = (
                 ("Volume",) if heterogeneous and world == 1 else ("Cloth",) if heterogeneous else ("Cloth", "Volume")
             )
+            if repeated:
+                kinds = (*kinds, "Volume_1")
             for name in kinds:
                 path = f"/World/env_{world}/{name}"
-                start, count, _ = native.deformable_ranges[path]
+                start, count, _ = native.deformable_ranges[path + "/sim"]
                 xform = wp.transform(positions[world], rotations[world])
                 expected = np.asarray([wp.transform_point(xform, wp.vec3(p)) for p in local_vertices[:count]])
                 np.testing.assert_allclose(
@@ -240,14 +257,21 @@ def test_imported_deformables_follow_plan_and_publish_geometry(heterogeneous):
                 visual_path = path + ("/sim" if name == "Cloth" else "/vis")
                 expected_paths.add(visual_path)
                 if name == "Cloth":
-                    assert points[visual_path].ptr == native.state_0.particle_q.ptr + start * 12
                     np.testing.assert_allclose(points[visual_path].numpy(), expected, atol=1e-6)
                 else:
                     np.testing.assert_allclose(points[visual_path].numpy(), (expected[1:] + expected[0]) / 2, atol=1e-6)
         assert set(points) == expected_paths
-        np.testing.assert_allclose(np.asarray(builder.tri_materials)[builder._cloth_tri_start, 0], 123.0)
+        for label in builder.surface_label:
+            for start, end in DeformableSurfaceView(native.model, label).ranges("triangle"):
+                np.testing.assert_allclose(np.asarray(builder.tri_materials)[start:end, 0], 123.0)
         np.testing.assert_allclose(np.asarray(builder.tet_materials)[:, 0], 456.0)
         for tet, pose in zip(builder.tet_indices, builder.tet_poses, strict=True):
             vertices = np.asarray(builder.particle_q)[tet]
             np.testing.assert_allclose((vertices[1:] - vertices[0]).T @ pose, np.eye(3), atol=1e-6)
-        np.testing.assert_allclose(builder.particle_radius, 0.008)
+        before = {path: value.numpy().copy() for path, value in points.items()}
+        native.state_1.particle_q.assign(native.state_0.particle_q.numpy() + (0, 0, 2))
+        native.state_0, native.state_1 = native.state_1, native.state_0
+        NewtonManager._mark_particles_dirty()
+        updated = sim.get_scene_data_provider().get_geometry_points()
+        for path in before:
+            np.testing.assert_allclose(updated[path].numpy(), before[path] + (0, 0, 2), atol=1e-6)

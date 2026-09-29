@@ -14,13 +14,13 @@ Setup:
         (per docs/source/setup/installation/index.rst; reinstall after the wheel install to select the CUDA build.)
     - (aarch64 only) export LD_PRELOAD=/lib/aarch64-linux-gnu/libgomp.so.1
 Tests:
-    - python -c "import importlib.metadata as m; assert m.version('newton') == '1.6.0'"
-        -> verify the wheel resolves the pinned Newton release
+    - python -c "import importlib.metadata as m, json; assert json.loads(m.distribution('newton').read_text('direct_url.json'))['vcs_info']['commit_id'] == 'a4eb2e610afe167adc1c4824c69a0a43c0379206'"
+        -> verify the wheel resolves the pinned Newton Git revision
     - uv run isaaclab train --rl_library rsl_rl --task Isaac-Cartpole-Direct --num_envs 16
         presets=newton_mjwarp --max_iterations 5; uv run isaaclab train --rl_library rsl_rl
         --task Isaac-Cartpole-Camera-Direct --num_envs 16 presets=newton_mjwarp,newton_renderer --max_iterations 2
  -> verify state training, camera rendering, and camera training work
-"""
+"""  # noqa: E501
 
 from __future__ import annotations
 
@@ -56,7 +56,13 @@ class Test_Uv_Pip_Install_Isaaclab_All_Trains_Cartpole(UV_Mixin):
             assert result.returncode == 0, f"uv pip install {wheel}[all] failed:\n{result.stdout}\n{result.stderr}"
 
             result = self.run_in_uv_env(
-                ["python", "-c", "import importlib.metadata as m; assert m.version('newton') == '1.6.0'"],
+                [
+                    "python",
+                    "-c",
+                    "import importlib.metadata as m, json; "
+                    "assert json.loads(m.distribution('newton').read_text('direct_url.json'))"
+                    "['vcs_info']['commit_id'] == 'a4eb2e610afe167adc1c4824c69a0a43c0379206'",
+                ],
                 cwd=isaaclab_root,
             )
             assert result.returncode == 0, (
