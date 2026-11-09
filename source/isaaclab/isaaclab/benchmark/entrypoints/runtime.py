@@ -100,6 +100,11 @@ def run(argv: list[str]) -> BenchmarkResult | None:
     import time
 
     imports_t0 = time.perf_counter_ns()
+
+    from isaaclab.cli import load_external_tasks
+
+    load_external_tasks()
+
     import contextlib
 
     import gymnasium as gym
