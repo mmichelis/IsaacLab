@@ -120,7 +120,7 @@ def test_cli_subcommand_dispatches_and_propagates_status(argv, module, runner, r
     run = mock.Mock(return_value=status)
     with (
         mock.patch.dict(sys.modules, {module: mock.Mock(**{runner: run})}),
-        mock.patch.object(cli, "load_external_tasks"),
+        mock.patch.object(cli, "load_external_tasks") as discover,
         mock.patch.object(sys, "argv", ["isaaclab", *argv]),
     ):
         if status:
@@ -131,6 +131,7 @@ def test_cli_subcommand_dispatches_and_propagates_status(argv, module, runner, r
             cli.cli()
 
     run.assert_called_once_with(runner_args)
+    discover.assert_not_called()
 
 
 def test_demo_catalog_lists_packaged_demos(capsys):
@@ -319,18 +320,16 @@ def test_cli_routes_program_without_loading_external_tasks(command_name, args):
     command.assert_called_once_with(args)
 
 
-def test_cli_loads_downstream_tasks_before_benchmark():
-    """Benchmarking must discover tasks from installed projects."""
-    task_entry_point = mock.Mock()
+def test_cli_leaves_benchmark_task_discovery_to_workflow():
+    """The benchmark workflow, not its router, owns task discovery."""
     with (
-        mock.patch.object(cli.importlib.metadata, "entry_points", return_value=[task_entry_point]) as entry_points,
+        mock.patch.object(cli, "load_external_tasks") as discover,
         mock.patch.object(cli, "benchmark") as benchmark,
         mock.patch.object(sys, "argv", ["isaaclab", "benchmark", "runtime", "--task", "Example"]),
     ):
         cli.cli()
 
-    entry_points.assert_called_once_with(group="isaaclab.tasks")
-    task_entry_point.load.assert_called_once_with()
+    discover.assert_not_called()
     benchmark.assert_called_once_with(["runtime", "--task", "Example"])
 
 

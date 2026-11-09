@@ -58,12 +58,6 @@ def run_play_cli(argv: list[str] | None = None) -> int:
 
 def run_export_cli(argv: list[str] | None = None) -> int:
     """Dispatch unified LEAPP export command-line arguments to a backend."""
-    # imported here so that importing the train and play entrypoints stays lightweight
-    import torch
-
-    # task registration imports decorated Isaac Lab math helpers, so disable TorchScript before
-    # resolving a task's default export backend
-    torch.jit._state.disable()
     return run_cli("export", argv)
 
 
@@ -89,9 +83,13 @@ def run_cli(action: str, argv: list[str] | None = None) -> int:
     """
     if action not in _BACKEND_MODULES:
         raise ValueError(f"Unsupported RL action {action!r}. Expected one of: {sorted(_BACKEND_MODULES)}.")
+    if action == "export":
+        import torch
+
+        # Task discovery can import scripted math helpers before the export backend.
+        torch.jit._state.disable()
     configure_console_logging()
     argv = _normalize_argv(argv)
-    # Distributed workers bypass the top-level CLI, including its task discovery.
     load_external_tasks()
     backends = _BACKEND_MODULES[action]
     parser = argparse.ArgumentParser(add_help=False)
