@@ -1,0 +1,1 @@
+* Fixed LEAPP export discovering external tasks before disabling TorchScript, which could produce constant action targets.
