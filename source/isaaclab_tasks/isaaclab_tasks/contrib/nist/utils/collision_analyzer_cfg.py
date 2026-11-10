@@ -19,10 +19,14 @@ if TYPE_CHECKING:
 class CollisionAnalyzerCfg(ManagerTermBaseCfg):
     """Configuration for :class:`CollisionAnalyzer`.
 
-    The analyzer samples a point cloud on the surface of the asset's collision
-    geometry, then queries signed distances against every obstacle mesh each
-    time it is called. An environment is considered collision-free when all
-    sampled points are at least :attr:`min_dist` away from every obstacle.
+    Rigid assets use sampled collision-surface points; deformable assets use all
+    current world-space nodes, ignoring :attr:`num_points` and body selections.
+    Every point must clear the configured obstacle meshes by :attr:`min_dist`.
+    This sampled geometric predicate can miss intersections between points; it
+    does not check native contacts, self-collision, or unlisted obstacles.
+    Obstacles may be rigid, articulated, or static scene assets (one root per
+    environment), but not deformable. Obstacle mesh geometry and scale are fixed
+    at construction; root and articulated body poses are refreshed on each call.
     """
 
     func: type[CollisionAnalyzer] | str = "{DIR}.collision_analyzer:CollisionAnalyzer"

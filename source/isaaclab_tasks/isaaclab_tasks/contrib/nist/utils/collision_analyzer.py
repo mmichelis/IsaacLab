@@ -12,7 +12,10 @@ import numpy as np
 import torch
 import warp as wp
 
+from isaaclab.assets import Asset
+from isaaclab.assets.deformable_object import BaseDeformableObject
 from isaaclab.sim.utils import resolve_matching_prims_from_source
+from isaaclab.sim.views import FrameView
 
 from isaaclab_tasks.contrib.nist.utils import mesh_ops as _mesh_ops
 from isaaclab_tasks.contrib.nist.utils.rigid_object_hasher import RigidObjectHasher
@@ -38,35 +41,41 @@ class CollisionAnalyzer:
         from pxr import UsdGeom, UsdPhysics
 
         self.cfg = cfg
-        self.asset: RigidObject = env.scene[cfg.asset_cfg.name]
-        self.obstacles: list[RigidObject] = [env.scene[cfg.name] for cfg in cfg.obstacle_cfgs]
+        self.asset: RigidObject | BaseDeformableObject = env.scene[cfg.asset_cfg.name]
+        self.obstacles: list[RigidObject | Asset] = [env.scene[cfg.name] for cfg in cfg.obstacle_cfgs]
         device = env.device
-        body_names = (
-            self.asset.body_names
-            if cfg.asset_cfg.body_names is None
-            else [self.asset.body_names[i] for i in cfg.asset_cfg.body_ids]
-        )
-        if isinstance(body_names, str):
-            body_names = [body_names]
-
-        self.body_ids = []
-        self.local_pts = []
-        for body_name in body_names:
-            _, prim_path_pattern = resolve_matching_prims_from_source(
-                self.asset.cfg.prim_path,
-                predicate=lambda p: p.GetName() == body_name and p.HasAPI(UsdPhysics.RigidBodyAPI),
-                expected_num_matches=1,
-            )[0]
-            local_pts = _mesh_ops.sample_object_point_cloud(
-                num_envs=env.num_envs,
-                num_points=cfg.num_points,
-                prim_path_pattern=prim_path_pattern,
-                device=device,
+        if isinstance(self.asset, BaseDeformableObject):
+            self.body_ids = [0]
+            self.local_pts = self.asset.data.nodal_pos_w.torch.unsqueeze(1)
+            self._node_body_pos = wp.zeros((env.num_envs, 1), dtype=wp.vec3, device=device)
+            self._node_body_quat = wp.full((env.num_envs, 1), wp.quat_identity(), dtype=wp.quat, device=device)
+        else:
+            body_names = (
+                self.asset.body_names
+                if cfg.asset_cfg.body_names is None
+                else [self.asset.body_names[i] for i in cfg.asset_cfg.body_ids]
             )
-            if local_pts is not None:
-                self.local_pts.append(local_pts.view(env.num_envs, 1, cfg.num_points, 3))
-                self.body_ids.append(self.asset.body_names.index(body_name))
-        self.local_pts = torch.cat(self.local_pts, dim=1).contiguous()
+            if isinstance(body_names, str):
+                body_names = [body_names]
+
+            self.body_ids = []
+            self.local_pts = []
+            for body_name in body_names:
+                _, prim_path_pattern = resolve_matching_prims_from_source(
+                    self.asset.cfg.prim_path,
+                    predicate=lambda p: p.GetName() == body_name and p.HasAPI(UsdPhysics.RigidBodyAPI),
+                    expected_num_matches=1,
+                )[0]
+                local_pts = _mesh_ops.sample_object_point_cloud(
+                    num_envs=env.num_envs,
+                    num_points=cfg.num_points,
+                    prim_path_pattern=prim_path_pattern,
+                    device=device,
+                )
+                if local_pts is not None:
+                    self.local_pts.append(local_pts.view(env.num_envs, 1, cfg.num_points, 3))
+                    self.body_ids.append(self.asset.body_names.index(body_name))
+            self.local_pts = torch.cat(self.local_pts, dim=1).contiguous()
         self._body_ids_i32 = torch.tensor(self.body_ids, dtype=torch.int32, device=device)
 
         num_obstacles = len(self.obstacles)
@@ -90,8 +99,15 @@ class CollisionAnalyzer:
         # recomposes world transforms from live body poses instead of the root pose.
         art_flat: dict[int, dict[str, torch.Tensor]] = {}
         self._meshes: dict[int, wp.Mesh] = {}
+        self._static_views: dict[int, FrameView] = {}
 
         for i, obstacle in enumerate(self.obstacles):
+            if isinstance(obstacle, BaseDeformableObject):
+                raise ValueError("Deformable obstacles are not supported by CollisionAnalyzer.")
+            if isinstance(obstacle, Asset):
+                self._static_views[i] = FrameView(obstacle.cfg.prim_path, device=device)
+                if self._static_views[i].count != env.num_envs:
+                    raise ValueError("Static obstacles must have one root per environment.")
             start = time.perf_counter()
             obs_h = RigidObjectHasher(num_envs, prim_path_pattern=obstacle.cfg.prim_path)
 
@@ -120,7 +136,7 @@ class CollisionAnalyzer:
             num_coll_per_obs_env[i] = torch.bincount(obs_h.collider_prim_env_ids, minlength=num_envs).to(device)
             obstacle_root_scales[i] = obs_h.root_prim_scales.to(device)
 
-            if len(obstacle.body_names) > 1:
+            if i not in self._static_views and len(obstacle.body_names) > 1:
                 xform_cache = UsdGeom.XformCache()
                 per_prim: dict[str, tuple[int, torch.Tensor, torch.Tensor]] = {}
                 body_ids_flat: list[int] = []
@@ -250,7 +266,7 @@ class CollisionAnalyzer:
 
         # Pre-allocate reusable buffers
         num_bodies = len(self.body_ids)
-        num_points = cfg.num_points
+        num_points = self.local_pts.shape[2]
         max_output = num_envs * num_bodies * num_points
         self.wp_signs = wp.zeros(max_output, dtype=float, device=device)
         self._env_ids_i32 = torch.empty(num_envs, dtype=torch.int32, device=device)
@@ -259,7 +275,13 @@ class CollisionAnalyzer:
         env_ids = env.scene._ALL_INDICES[env_ids]
         num_query_envs = len(env_ids)
         num_bodies = len(self.body_ids)
-        num_points = self.cfg.num_points
+        num_points = self.local_pts.shape[2]
+        if isinstance(self.asset, BaseDeformableObject):
+            # Rebind the live nodal view after writes; never query cached rest geometry.
+            self.wp_local_pts = wp.from_torch(self.asset.data.nodal_pos_w.torch.unsqueeze(1), dtype=wp.vec3)
+            body_pos, body_quat = self._node_body_pos, self._node_body_quat
+        else:
+            body_pos, body_quat = self.asset.data.body_link_pos_w, self.asset.data.body_link_quat_w
 
         for i, obs in enumerate(self.obstacles):
             art = self._articulated.get(i)
@@ -280,10 +302,14 @@ class CollisionAnalyzer:
                     device=env.device,
                 )
             else:
+                if i in self._static_views:
+                    root_pos, root_quat = self._static_views[i].get_world_poses()
+                else:
+                    root_pos, root_quat = obs.data.root_pos_w, obs.data.root_quat_w
                 wp.launch(
                     update_root_poses,
                     dim=env.num_envs,
-                    inputs=[self.wp_obs_root_pos, self.wp_obs_root_quat, obs.data.root_pos_w, obs.data.root_quat_w, i],
+                    inputs=[self.wp_obs_root_pos, self.wp_obs_root_quat, root_pos, root_quat, i],
                     device=env.device,
                 )
 
@@ -294,8 +320,8 @@ class CollisionAnalyzer:
             get_signed_distance_mega,
             dim=total_threads,
             inputs=[
-                self.asset.data.body_link_pos_w,
-                self.asset.data.body_link_quat_w,
+                body_pos,
+                body_quat,
                 self.wp_body_ids,
                 self.wp_local_pts,
                 wp_env_ids,
