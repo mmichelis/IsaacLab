@@ -11,20 +11,23 @@ from unittest import mock
 
 import newton
 import numpy as np
+import pytest
 import warp as wp
 from isaaclab_newton.cloner import NewtonReplicateContext
 from isaaclab_newton.cloner import newton_clone_utils as newton_clone_utils_module
 from isaaclab_newton.cloner import replicate as replicate_module
 from isaaclab_newton.cloner.newton_clone_utils import replicate_builder_mapping
-from isaaclab_newton.physics import NewtonBackendCfg
+from isaaclab_newton.physics import NewtonBackend, NewtonBackendCfg, NewtonCfg, NewtonManager
+from isaaclab_newton.physics.newton_scene_data import NewtonSceneDataBackend
 
 from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.cloner import ClonePlan, PrototypeWorldTopology, make_clone_plan
 from isaaclab.cloner import path as cloner_path
+from isaaclab.scene_data import SceneDataFormat, SceneDataProvider
 from isaaclab.sensors import SensorBaseCfg
-from isaaclab.sim import SimulationContext, SpawnerCfg
+from isaaclab.sim import SimulationCfg, SimulationContext, SpawnerCfg
 from isaaclab.sim.schemas import define_deformable_curve_properties
 
 
@@ -545,6 +548,88 @@ class TestReplicationNamesItsCopies(unittest.TestCase):
             builder.body_label,
             [f"/World/envs/env_{env_id}/Robot/{label}" for env_id in env_ids for label in ("base", "hook")],
         )
+
+
+@pytest.mark.kitless
+def test_periodic_cable_geometry_compiles_source_wrap_without_destination_prims(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stage = Usd.Stage.CreateInMemory()
+    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+    source, shared = "/Scene/copy_7/Rope", "/Scene/SharedRope"
+    points = np.asarray([(0, 0, 0), (0, 1, 0), (1, 1, 0)], dtype=np.float32)
+    for path in (source, shared):
+        curve = UsdGeom.BasisCurves.Define(stage, path)
+        curve.CreatePointsAttr(points)
+        curve.CreateCurveVertexCountsAttr([3])
+        curve.CreateTypeAttr(UsdGeom.Tokens.linear)
+        curve.CreateWrapAttr(UsdGeom.Tokens.periodic if path == source else UsdGeom.Tokens.nonperiodic)
+        curve.CreateWidthsAttr([0.02])
+        curve.SetWidthsInterpolation(UsdGeom.Tokens.constant)
+        define_deformable_curve_properties(path, stage)
+    sim = object.__new__(SimulationContext)
+    sim.stage, sim._backend_registry = stage, []
+    physics_cfg = NewtonCfg(load_visual_shapes=True)
+    sim.cfg = SimulationCfg(physics=physics_cfg, device="cpu")
+    manager = NewtonManager(physics_cfg)
+    manager._device = wp.get_device("cpu")
+    sim.backend_manager = manager
+    monkeypatch.setattr(SimulationContext, "instance", lambda: sim)
+    assets = (
+        AssetBaseCfg(prim_path="/Scene/copy_[^/]+/Rope", spawn=SpawnerCfg(spawn_path=source)),
+        AssetBaseCfg(prim_path=shared),
+    )
+    origins = np.asarray([(2, 0, 0), (5, 0, 0)], dtype=np.float32)
+    plan = make_clone_plan(assets, ((0,),), 2, shared_assets=(1,), positions=origins, env_template="/Scene/copy_{}")
+    try:
+        builder, _, _ = NewtonReplicateContext(sim).replicate(plan, (0, 1))
+        record = manager._clone
+        assert record is not None
+        assert record.cable_bindings == {
+            shared: [builder.shape_label.index(f"{shared}_edge_capsule_{i}") for i in range(2)]
+        }
+        [(compiled, ranges)] = record.geometry_batches
+        assert compiled._cls is SceneDataFormat.CapsuleEndpoints
+        assert ranges == {f"/Scene/copy_{i}/Rope": (3 * i, 3) for i in range(2)}
+        for world in range(2):
+            path = f"/Scene/copy_{world}/Rope"
+            assert not stage.GetPrimAtPath(path)
+            ids = np.asarray([builder.shape_label.index(f"{path}_edge_capsule_{i}") for i in range(3)])
+            assert ids.min() > 0  # The shared open curve occupies earlier shapes.
+            np.testing.assert_array_equal(
+                compiled.endpoints.numpy()[3 * world : 3 * world + 3],
+                np.column_stack((np.roll(ids, 1), np.ones(3), ids, -np.ones(3))),
+            )
+        # No CableObject or destination USD is needed to bind finalized native arrays and publish points.
+        backend = NewtonBackend(NewtonBackendCfg(physics_cfg=physics_cfg, device="cpu"), builder, dt=0.01)
+        manager.backend = backend
+        scene_data = NewtonSceneDataBackend(manager)
+        scene_data.initialize_geometry(record.geometry_batches, record.cable_bindings)
+        batches = scene_data.get_geometry_batches()
+        paths = [path for _, batch_ranges in batches for path in batch_ranges]
+        assert len(paths) == len(set(paths)) == 3
+        provider = SceneDataProvider(scene_data)
+        publication = provider.get_geometry_points()
+        assert isinstance(publication, dict)
+        np.testing.assert_allclose(publication[shared].numpy(), points, atol=1e-6)
+        for world in range(2):
+            np.testing.assert_allclose(
+                publication[f"/Scene/copy_{world}/Rope"].numpy(), points + origins[world], atol=1e-6
+            )
+        # Separate the seam's two capsule endpoints: vertex zero must average both, not duplicate an end.
+        seam_shape = builder.shape_label.index("/Scene/copy_1/Rope_edge_capsule_2")
+        poses = backend.state_0.body_q.numpy().copy()
+        poses[backend.model.shape_body.numpy()[seam_shape], 0] += 0.4
+        backend.state_0 = backend.model.state()
+        backend.state_0.body_q.assign(poses)
+        publication = provider.get_geometry_points()
+        assert isinstance(publication, dict)
+        expected = points + origins[1]
+        expected[[0, 2], 0] += 0.2
+        np.testing.assert_allclose(publication["/Scene/copy_1/Rope"].numpy(), expected, atol=1e-6)
+    finally:
+        for _, resource in tuple(sim._backend_registry):
+            sim.close_backend(resource)
 
 
 class TestRootJointNaming(unittest.TestCase):
