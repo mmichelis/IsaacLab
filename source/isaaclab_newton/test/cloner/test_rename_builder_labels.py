@@ -25,7 +25,7 @@ from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.cloner import ClonePlan, PrototypeWorldTopology, make_clone_plan
 from isaaclab.cloner import path as cloner_path
-from isaaclab.scene_data import SceneDataFormat, SceneDataProvider
+from isaaclab.scene_data import SceneDataProvider
 from isaaclab.sensors import SensorBaseCfg
 from isaaclab.sim import SimulationCfg, SimulationContext, SpawnerCfg
 from isaaclab.sim.schemas import define_deformable_curve_properties
@@ -551,7 +551,7 @@ class TestReplicationNamesItsCopies(unittest.TestCase):
 
 
 @pytest.mark.kitless
-def test_periodic_cable_geometry_compiles_source_wrap_without_destination_prims(
+def test_cable_geometry_uses_native_topology_without_destination_prims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stage = Usd.Stage.CreateInMemory()
@@ -585,21 +585,15 @@ def test_periodic_cable_geometry_compiles_source_wrap_without_destination_prims(
         builder, _, _ = NewtonReplicateContext(sim).replicate(plan, (0, 1))
         record = manager._clone
         assert record is not None
-        assert record.cable_bindings == {
-            shared: [builder.shape_label.index(f"{shared}_edge_capsule_{i}") for i in range(2)]
-        }
-        [(compiled, ranges)] = record.geometry_batches
-        assert compiled._cls is SceneDataFormat.CapsuleEndpoints
-        assert ranges == {f"/Scene/copy_{i}/Rope": (3 * i, 3) for i in range(2)}
+        assert record.geometry_batches == []
+        expected_bindings = {shared: [builder.shape_label.index(f"{shared}_edge_capsule_{i}") for i in range(2)]}
         for world in range(2):
             path = f"/Scene/copy_{world}/Rope"
             assert not stage.GetPrimAtPath(path)
             ids = np.asarray([builder.shape_label.index(f"{path}_edge_capsule_{i}") for i in range(3)])
             assert ids.min() > 0  # The shared open curve occupies earlier shapes.
-            np.testing.assert_array_equal(
-                compiled.endpoints.numpy()[3 * world : 3 * world + 3],
-                np.column_stack((np.roll(ids, 1), np.ones(3), ids, -np.ones(3))),
-            )
+            expected_bindings[path] = ids.tolist()
+        assert record.cable_bindings == expected_bindings
         # No CableObject or destination USD is needed to bind finalized native arrays and publish points.
         backend = NewtonBackend(NewtonBackendCfg(physics_cfg=physics_cfg, device="cpu"), builder, dt=0.01)
         manager.backend = backend

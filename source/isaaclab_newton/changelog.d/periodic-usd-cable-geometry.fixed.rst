@@ -1,1 +1,1 @@
-* Fixed periodic USD cable geometry publication through replicated capsule endpoints while preserving legacy open-cable bindings.
+* Fixed periodic USD cable geometry publication by inferring closure from finalized native topology while preserving list-valued open and periodic cable bindings.

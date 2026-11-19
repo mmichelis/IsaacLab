@@ -871,27 +871,49 @@ def test_legacy_cable_geometry_preserves_open_list_order(
 
 
 @pytest.mark.kitless
-def test_precompiled_cable_geometry_rebinds_models_and_state_swaps() -> None:
+def test_cable_geometry_uses_owned_rod_cycles_not_endpoint_adjacency() -> None:
+    builder = newton.ModelBuilder()
+    anchor = builder.add_body()
+    # Static and extra body shapes make native shape and body indices differ.
+    builder.add_shape_sphere(body=-1, radius=0.1)
+    builder.add_shape_sphere(body=anchor, radius=0.1)
+    builder.add_shape_sphere(body=anchor, radius=0.2)
+    loop_points = [(0.0, 0.0, 1.0), (0.0, 1.0, 1.0)]
+    loop, _ = builder.add_rod(rod=newton.Rod([*loop_points, loop_points[0]], radius=0.01, closed=True))
+    open_points = [(2.0, 0.0, 1.0), (2.0, 1.0, 1.0), (3.0, 1.0, 1.0)]
+    chain, _ = builder.add_rod(rod=newton.Rod(open_points, radius=0.01))
+    # Even a ROD joining the exact endpoints is not cable-owned topology when added afterward.
+    builder.add_joint_rod(parent=chain[-1], child=chain[0])
+    builder.add_joint_ball(parent=anchor, child=chain[-1])
+    manager = NewtonManager(NewtonCfg())
+    manager.backend = NewtonBackend(NewtonBackendCfg(physics_cfg=NewtonCfg(), device="cpu"), builder, dt=0.01)
+    scene_data = NewtonSceneDataBackend(manager)
+    bindings = {
+        "/Loop": [builder.body_shapes[body][0] for body in loop],
+        "/Open": [builder.body_shapes[body][0] for body in chain],
+    }
+    # Delayed binding must honor list mutation and infer the same closure for reordered bodies.
+    bindings["/Loop"].reverse()
+    bindings["/Open"].reverse()
+    scene_data.initialize_geometry([], bindings)
+    publication = SceneDataProvider(scene_data).get_geometry_points()
+    assert isinstance(publication, dict)
+    np.testing.assert_allclose(publication["/Loop"].numpy(), loop_points[::-1], atol=1e-6)
+    np.testing.assert_allclose(publication["/Open"].numpy(), [[2, 1, 1], [2.5, 0.5, 1], [2, 1, 1]], atol=1e-6)
+
+
+@pytest.mark.kitless
+def test_cable_geometry_reinitializes_models_and_state_swaps() -> None:
     manager = NewtonManager(NewtonCfg())
     scene_data = NewtonSceneDataBackend(manager)
     provider = SceneDataProvider(scene_data)
-    batches = []
-    for index in range(2):
-        source = SceneDataFormat.CapsuleEndpoints()
-        source.endpoints = wp.array([[0, -1, 0, -1], [1, 1, 1, 1]], dtype=wp.vec4i, device="cpu")
-        batches.append((source, {f"/Cable_{index}": (0, 2)}))
+    bindings = {"/Cable_0": [0, 1], "/Cable_1": [0, 1]}
 
     for offset in (0.0, 100.0):
         manager.backend = _capsule_geometry_backend(offset)
-        scene_data.initialize_geometry(batches, {})
+        scene_data.initialize_geometry([], bindings)
         model, state = manager.backend.model, manager.backend.state_0
-        for source, _ in batches:
-            assert source.transforms is state.body_q
-            assert source.shape_body is model.shape_body
-            assert source.shape_transform is model.shape_transform
-            assert source.shape_scale is model.shape_scale
-        assert scene_data.get_geometry_batches() == batches
-        expected = np.asarray([[30, 0, 0], [10, 0, 4]], dtype=np.float32)
+        expected = np.asarray([[30, 0, 0], [20, 0, 1], [10, 0, 4]], dtype=np.float32)
         expected[:, 0] += offset
         publication = provider.get_geometry_points()
         assert isinstance(publication, dict)
@@ -910,8 +932,6 @@ def test_precompiled_cable_geometry_rebinds_models_and_state_swaps() -> None:
         for points in publication.values():
             np.testing.assert_allclose(points.numpy(), expected + [0, 7, 0], atol=1e-6)
         assert scene_data.geometry_timestamp > timestamp
-        for source, _ in batches:
-            assert source.transforms is swapped.body_q
 
 
 # ----- Queries -----------------------------------------------------------------------------
