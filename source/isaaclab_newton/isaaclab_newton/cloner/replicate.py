@@ -201,21 +201,16 @@ def _replicate_newton(
             transform = wp.transform(frame.ExtractTranslation(), (*rotation.GetImaginary(), rotation.GetReal()))
         source_inverse[source] = np.asarray(transform, dtype=np.float32)
     # Resolve native capsule indices once per source, not by rediscovering labels after cloning.
-    source_cables = {source: {} for source in source_builders}
-    cable_sources = (
-        (source, imported["path_cable_map"])
-        for source, imported in import_results.items()
-        if simulation and imported["path_cable_map"]
-    )
-    for source, cable_map in cable_sources:
-        cables = source_cables[source]
+    source_cables = {}
+    for source, imported in import_results.items():
+        cables = source_cables[source] = {}
+        if not simulation or not imported["path_cable_map"]:
+            continue
         shapes = {label: index for index, label in enumerate(source_builders[source].shape_label)}
-        for path, (bodies, _) in cable_map.items():
-            curve = UsdGeom.BasisCurves(stage.GetPrimAtPath(path))
-            if len(curve.GetCurveVertexCountsAttr().Get()) != 1:
+        for path, (bodies, _) in imported["path_cable_map"].items():
+            if len(UsdGeom.BasisCurves(stage.GetPrimAtPath(path)).GetCurveVertexCountsAttr().Get()) != 1:
                 continue
-            ids = [shapes[f"{path}_edge_capsule_{segment}"] for segment in range(len(bodies))]
-            cables[path] = ids
+            cables[path] = [shapes[f"{path}_edge_capsule_{segment}"] for segment in range(len(bodies))]
     if simulation:
         for entry in entries:
             ancestors = reversed(Sdf.Path(entry.root_path).GetPrefixes())
@@ -235,7 +230,6 @@ def _replicate_newton(
         global_sites, source_sites, root_sites = {}, {}, {}
 
     particle_ranges, visual_ranges, cable_bindings = {}, {}, {}
-
     # The USD importer owns simulation ranges; MPM's spawner authors a separate visible point prim.
     particle_visual_paths = {
         path: path.removesuffix(_SIMULATION_POINTS_SUFFIX) + "/Particles"
