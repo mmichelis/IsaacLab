@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -17,6 +18,21 @@ from isaaclab.scene_data import SceneDataBackend, SceneDataFormat
 
 if TYPE_CHECKING:
     from .newton_manager import NewtonManager
+
+
+def _capsule_endpoint_indices(shape_ids: Sequence[int] | np.ndarray, *, periodic: bool) -> np.ndarray:
+    """Build int32 rows of (left shape, left sign, right shape, right sign) in curve order."""
+    ids = np.asarray(shape_ids, dtype=np.int32)
+    if periodic:
+        left, right = np.roll(ids, 1), ids
+    else:
+        left = np.concatenate((ids[:1], ids))
+        right = np.concatenate((ids, ids[-1:]))
+    left_sign = np.ones(len(left), dtype=np.int32)
+    right_sign = -np.ones(len(right), dtype=np.int32)
+    if not periodic:
+        left_sign[0], right_sign[-1] = -1, 1
+    return np.column_stack((left, left_sign, right, right_sign))
 
 
 class NewtonSceneDataBackend(SceneDataBackend):
@@ -42,31 +58,29 @@ class NewtonSceneDataBackend(SceneDataBackend):
         """Bind imported geometry paths to native particle ranges and capsule endpoints.
 
         Args:
-            geometry_batches: Deformable and particle geometry recorded by replication.
+            geometry_batches: Deformable, particle and capsule endpoint geometry recorded by replication.
             cable_bindings: Native capsule shape indices of each open cable.
         """
         self._geometry_batches = list(geometry_batches)
         endpoints, ranges = [], {}
         offset = 0
         for path, shapes in cable_bindings.items():
-            ids = np.asarray(shapes, dtype=np.int32)
-            left = np.concatenate((ids[:1], ids))
-            right = np.concatenate((ids, ids[-1:]))
-            left_sign = np.ones(len(left), dtype=np.int32)
-            right_sign = -np.ones(len(right), dtype=np.int32)
-            left_sign[0], right_sign[-1] = -1, 1
-            endpoints.append(np.column_stack((left, left_sign, right, right_sign)))
-            ranges[path] = (offset, len(left))
-            offset += len(left)
+            indices = _capsule_endpoint_indices(shapes, periodic=False)
+            endpoints.append(indices)
+            ranges[path] = (offset, len(indices))
+            offset += len(indices)
         if endpoints:
-            model = self.model
             source = SceneDataFormat.CapsuleEndpoints()
-            source.transforms = self._manager.backend.state_0.body_q
-            source.shape_body = model.shape_body
-            source.shape_transform = model.shape_transform
-            source.shape_scale = model.shape_scale
-            source.endpoints = wp.array(np.concatenate(endpoints), dtype=wp.vec4i, device=model.device)
+            source.endpoints = wp.array(np.concatenate(endpoints), dtype=wp.vec4i, device=self.model.device)
             self._geometry_batches.append((source, ranges))
+        # Replication records endpoint indices before the native model exists; rebind after every hard reset.
+        for source, _ in self._geometry_batches:
+            if source._cls is SceneDataFormat.CapsuleEndpoints:
+                source.transforms = self._manager.backend.state_0.body_q
+                source.shape_body = self.model.shape_body
+                source.shape_transform = self.model.shape_transform
+                source.shape_scale = self.model.shape_scale
+        self.geometry_timestamp += 1
 
     @property
     def native_geometry_formats(self) -> tuple[type, ...]:

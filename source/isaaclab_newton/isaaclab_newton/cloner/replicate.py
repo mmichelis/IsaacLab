@@ -39,6 +39,7 @@ from isaaclab_newton.cloner.newton_clone_utils import (
 )
 from isaaclab_newton.physics import NewtonBuilderCfg, NewtonCfg, NewtonCloneRecord
 from isaaclab_newton.physics.newton_builder import create_builder, inject_terrain_heightfields, usd_schema_resolvers
+from isaaclab_newton.physics.newton_scene_data import _capsule_endpoint_indices
 from isaaclab_newton.sim.spawners.mpm.mpm import _SIMULATION_POINTS_SUFFIX
 
 _PER_WORLD_BUILDER_HOOKS: list[Callable[[ModelBuilder, int, np.ndarray, np.ndarray], None]] = []
@@ -201,18 +202,21 @@ def _replicate_newton(
             transform = wp.transform(frame.ExtractTranslation(), (*rotation.GetImaginary(), rotation.GetReal()))
         source_inverse[source] = np.asarray(transform, dtype=np.float32)
     # Resolve native capsule indices once per source, not by rediscovering labels after cloning.
-    source_cables = {}
-    for source, imported in import_results.items():
-        cables = source_cables[source] = {}
-        if not simulation or not imported["path_cable_map"]:
-            continue
+    source_cables = {source: {} for source in source_builders}
+    cable_sources = (
+        (source, imported["path_cable_map"])
+        for source, imported in import_results.items()
+        if simulation and imported["path_cable_map"]
+    )
+    for source, cable_map in cable_sources:
+        cables = source_cables[source]
         shapes = {label: index for index, label in enumerate(source_builders[source].shape_label)}
-        for path, (bodies, _) in imported["path_cable_map"].items():
-            if imported["path_cable_attrs"][path]["closed"]:
+        for path, (bodies, _) in cable_map.items():
+            curve = UsdGeom.BasisCurves(stage.GetPrimAtPath(path))
+            if len(curve.GetCurveVertexCountsAttr().Get()) != 1:
                 continue
-            if len(UsdGeom.BasisCurves(stage.GetPrimAtPath(path)).GetCurveVertexCountsAttr().Get()) != 1:
-                continue
-            cables[path] = [shapes[f"{path}_edge_capsule_{segment}"] for segment in range(len(bodies))]
+            ids = [shapes[f"{path}_edge_capsule_{segment}"] for segment in range(len(bodies))]
+            cables[path] = (ids, curve.GetWrapAttr().Get() == UsdGeom.Tokens.periodic)
     if simulation:
         for entry in entries:
             ancestors = reversed(Sdf.Path(entry.root_path).GetPrefixes())
@@ -232,6 +236,7 @@ def _replicate_newton(
         global_sites, source_sites, root_sites = {}, {}, {}
 
     particle_ranges, visual_ranges, cable_bindings = {}, {}, {}
+    periodic_endpoints, periodic_ranges = [], {}
     # The USD importer owns simulation ranges; MPM's spawner authors a separate visible point prim.
     particle_visual_paths = {
         path: path.removesuffix(_SIMULATION_POINTS_SUFFIX) + "/Particles"
@@ -242,8 +247,15 @@ def _replicate_newton(
     }
 
     def record_geometry(source: str, destination: str, shape_offset: int, particle_offset: int) -> None:
-        for path, shapes in source_cables[source].items():
-            cable_bindings[cloner_path.rebase(path, source, destination)] = [shape_offset + shape for shape in shapes]
+        for path, (shapes, periodic) in source_cables[source].items():
+            target = cloner_path.rebase(path, source, destination)
+            ids = np.asarray(shapes, dtype=np.int32) + shape_offset
+            if periodic:
+                indices = _capsule_endpoint_indices(ids, periodic=periodic)
+                periodic_ranges[target] = (len(periodic_endpoints), len(indices))
+                periodic_endpoints.extend(indices)
+            else:
+                cable_bindings[target] = ids.tolist()
         for path, (start, end) in import_results[source]["path_particle_map"].items():
             native_range = (particle_offset + start, end - start)
             particle_ranges[cloner_path.rebase(path, source, destination)] = native_range
@@ -265,7 +277,11 @@ def _replicate_newton(
         ranges = dict(zip(builder.surface_label, builder._surface_particle_start, strict=True))
         ranges.update(zip(builder.volume_label, builder._volume_particle_start, strict=True))
         offsets = [ranges[entry.root_path] for entry in geometry]
-        batches = deformable_geometry_batches(geometry, offsets, device=sim.device)
+        batches: list = deformable_geometry_batches(geometry, offsets, device=sim.device)
+        if periodic_endpoints:
+            publication = SceneDataFormat.CapsuleEndpoints()
+            publication.endpoints = wp.array(periodic_endpoints, dtype=wp.vec4i, device=sim.device)
+            batches.append((publication, periodic_ranges))
         if visual_ranges:
             batches.append((SceneDataFormat.Points(), visual_ranges))
         record = NewtonCloneRecord(
