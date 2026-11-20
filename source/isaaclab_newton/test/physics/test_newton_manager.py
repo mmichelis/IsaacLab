@@ -38,6 +38,7 @@ from isaaclab_newton.physics import (
     create_builder,
     newton_backend,
 )
+from isaaclab_newton.physics.newton_backend import NewtonCloneRecord
 from isaaclab_newton.physics.newton_scene_data import NewtonSceneDataBackend
 from isaaclab_newton.renderers.newton_warp_renderer import NewtonWarpRenderer
 from isaaclab_newton.test.fixtures.mock_newton import backend_stub
@@ -809,6 +810,96 @@ def test_backends_with_different_solvers_step_side_by_side(device, execution):
         backend.forward()
     assert np.any(pair[0].state_0.body_q.numpy() != body_q[0], axis=1).tolist() == [True, False, True, False]
     np.testing.assert_array_equal(pair[1].state_0.body_q.numpy(), body_q[1])
+
+
+# ----- Cable geometry publication -----------------------------------------------------------
+
+
+def _capsule_geometry_backend(offset: float = 0.0) -> NewtonBackend:
+    """Three non-body-ordered capsules with distinct local offsets and half lengths."""
+    builder = newton.ModelBuilder()
+    for x in (10.0, 20.0, 30.0):
+        builder.add_body(xform=wp.transform(wp.vec3(x + offset, 0.0, 0.0), wp.quat_identity()))
+    for index, body in enumerate((2, 0, 1), start=1):
+        builder.add_shape_capsule(
+            body=body,
+            xform=wp.transform(wp.vec3(0.0, 0.0, float(index)), wp.quat_identity()),
+            radius=0.1,
+            half_height=float(index),
+        )
+    return NewtonBackend(NewtonBackendCfg(physics_cfg=NewtonCfg(), device="cpu"), builder, dt=0.01)
+
+
+@pytest.mark.kitless
+@pytest.mark.parametrize(
+    ("shapes", "endpoints", "expected"),
+    [
+        (
+            [0, 1],
+            [[0, -1, 0, -1], [0, 1, 1, -1], [1, 1, 1, 1]],
+            [[30, 0, 0], [20, 0, 1], [10, 0, 4]],
+        ),
+        (
+            [2, 0, 1],
+            [[2, -1, 2, -1], [2, 1, 0, -1], [0, 1, 1, -1], [1, 1, 1, 1]],
+            [[20, 0, 0], [25, 0, 3], [20, 0, 1], [10, 0, 4]],
+        ),
+    ],
+)
+def test_legacy_cable_geometry_preserves_open_list_order(
+    shapes: list[int], endpoints: list[list[int]], expected: list[list[float]]
+) -> None:
+    record = NewtonCloneRecord(
+        world_xforms=None,
+        source_builders={},
+        particle_ranges={},
+        cable_bindings={"/Cable": shapes},
+        geometry_batches=[],
+    )
+    manager = NewtonManager(NewtonCfg())
+    manager.backend = _capsule_geometry_backend()
+    scene_data = NewtonSceneDataBackend(manager)
+    scene_data.initialize_geometry(record.geometry_batches, record.cable_bindings)
+
+    [(source, ranges)] = scene_data.get_geometry_batches()
+    assert ranges == {"/Cable": (0, len(shapes) + 1)}
+    np.testing.assert_array_equal(source.endpoints.numpy(), endpoints)
+    publication = SceneDataProvider(scene_data).get_geometry_points()
+    assert isinstance(publication, dict)
+    np.testing.assert_allclose(publication["/Cable"].numpy(), expected, atol=1e-6)
+    assert record.geometry_batches == []
+
+
+@pytest.mark.kitless
+def test_cable_geometry_uses_owned_rod_cycles_not_endpoint_adjacency() -> None:
+    builder = newton.ModelBuilder()
+    anchor = builder.add_body()
+    # Static and extra body shapes make native shape and body indices differ.
+    builder.add_shape_sphere(body=-1, radius=0.1)
+    builder.add_shape_sphere(body=anchor, radius=0.1)
+    builder.add_shape_sphere(body=anchor, radius=0.2)
+    loop_points = [(0.0, 0.0, 1.0), (0.0, 1.0, 1.0)]
+    loop, _ = builder.add_rod(rod=newton.Rod([*loop_points, loop_points[0]], radius=0.01, closed=True))
+    open_points = [(2.0, 0.0, 1.0), (2.0, 1.0, 1.0), (3.0, 1.0, 1.0)]
+    chain, _ = builder.add_rod(rod=newton.Rod(open_points, radius=0.01))
+    # Even a ROD joining the exact endpoints is not cable-owned topology when added afterward.
+    builder.add_joint_rod(parent=chain[-1], child=chain[0])
+    builder.add_joint_ball(parent=anchor, child=chain[-1])
+    manager = NewtonManager(NewtonCfg())
+    manager.backend = NewtonBackend(NewtonBackendCfg(physics_cfg=NewtonCfg(), device="cpu"), builder, dt=0.01)
+    scene_data = NewtonSceneDataBackend(manager)
+    bindings = {
+        "/Loop": [builder.body_shapes[body][0] for body in loop],
+        "/Open": [builder.body_shapes[body][0] for body in chain],
+    }
+    # Delayed binding must honor list mutation and infer the same closure for reordered bodies.
+    bindings["/Loop"].reverse()
+    bindings["/Open"].reverse()
+    scene_data.initialize_geometry([], bindings)
+    publication = SceneDataProvider(scene_data).get_geometry_points()
+    assert isinstance(publication, dict)
+    np.testing.assert_allclose(publication["/Loop"].numpy(), loop_points[::-1], atol=1e-6)
+    np.testing.assert_allclose(publication["/Open"].numpy(), [[2, 1, 1], [2.5, 0.5, 1], [2, 1, 1]], atol=1e-6)
 
 
 # ----- Queries -----------------------------------------------------------------------------

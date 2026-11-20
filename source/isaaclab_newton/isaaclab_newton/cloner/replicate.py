@@ -208,8 +208,6 @@ def _replicate_newton(
             continue
         shapes = {label: index for index, label in enumerate(source_builders[source].shape_label)}
         for path, (bodies, _) in imported["path_cable_map"].items():
-            if imported["path_cable_attrs"][path]["closed"]:
-                continue
             if len(UsdGeom.BasisCurves(stage.GetPrimAtPath(path)).GetCurveVertexCountsAttr().Get()) != 1:
                 continue
             cables[path] = [shapes[f"{path}_edge_capsule_{segment}"] for segment in range(len(bodies))]
