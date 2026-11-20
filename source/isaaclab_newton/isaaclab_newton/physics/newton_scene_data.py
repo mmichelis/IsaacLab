@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -18,55 +17,6 @@ from isaaclab.scene_data import SceneDataBackend, SceneDataFormat
 
 if TYPE_CHECKING:
     from .newton_manager import NewtonManager
-
-
-def _periodic_curve_body_ranges(model: Model) -> set[tuple[int, int]]:
-    """Find native curves whose owned ROD joints form one directed cycle, excluding roots and attachments."""
-    periodic = set()
-    if not model.curve_label:
-        return periodic
-    joint_type = model.joint_type.numpy()
-    parent, child = model.joint_parent.numpy(), model.joint_child.numpy()
-    for start, end, joint_start, joint_end in zip(
-        model.curve_body_start.numpy(),
-        model.curve_body_end.numpy(),
-        model.curve_joint_start.numpy(),
-        model.curve_joint_end.numpy(),
-        strict=True,
-    ):
-        parents, children = parent[joint_start:joint_end], child[joint_start:joint_end]
-        internal = (joint_type[joint_start:joint_end] == JointType.ROD) & (parents >= start) & (parents < end)
-        internal &= (children >= start) & (children < end)
-        parents, children = parents[internal], children[internal]
-        bodies = np.arange(start, end)
-        if len(bodies) < 2 or not (
-            np.array_equal(np.sort(parents), bodies) and np.array_equal(np.sort(children), bodies)
-        ):
-            continue
-        # Degree alone would also accept multiple disconnected cycles in one native curve object.
-        successors = dict(zip(parents, children, strict=True))
-        visited, body = set(), start
-        while body not in visited:
-            visited.add(body)
-            body = successors[body]
-        if len(visited) == len(bodies):
-            periodic.add((int(start), int(end)))
-    return periodic
-
-
-def _capsule_endpoint_indices(shape_ids: Sequence[int] | np.ndarray, *, periodic: bool) -> np.ndarray:
-    """Build int32 rows of (left shape, left sign, right shape, right sign) in curve order."""
-    ids = np.asarray(shape_ids, dtype=np.int32)
-    if periodic:
-        left, right = np.roll(ids, 1), ids
-    else:
-        left = np.concatenate((ids[:1], ids))
-        right = np.concatenate((ids, ids[-1:]))
-    left_sign = np.ones(len(left), dtype=np.int32)
-    right_sign = -np.ones(len(right), dtype=np.int32)
-    if not periodic:
-        left_sign[0], right_sign[-1] = -1, 1
-    return np.column_stack((left, left_sign, right, right_sign))
 
 
 class NewtonSceneDataBackend(SceneDataBackend):
@@ -97,29 +47,68 @@ class NewtonSceneDataBackend(SceneDataBackend):
         """
         self._geometry_batches = list(geometry_batches)
         self.geometry_timestamp += 1
-        if not cable_bindings:
-            return
         endpoints, ranges = [], {}
         offset = 0
-        model = self.model
-        periodic_ranges = _periodic_curve_body_ranges(model)
-        shape_body = model.shape_body.numpy()
+        periodic_ranges = set()
+        if cable_bindings:
+            model = self.model
+            shape_body = model.shape_body.numpy()
+            if model.curve_label:
+                joint_type = model.joint_type.numpy()
+                parent, child = model.joint_parent.numpy(), model.joint_child.numpy()
+                for start, end, joint_start, joint_end in zip(
+                    model.curve_body_start.numpy(),
+                    model.curve_body_end.numpy(),
+                    model.curve_joint_start.numpy(),
+                    model.curve_joint_end.numpy(),
+                    strict=True,
+                ):
+                    parents, children = parent[joint_start:joint_end], child[joint_start:joint_end]
+                    internal = (
+                        (joint_type[joint_start:joint_end] == JointType.ROD) & (parents >= start) & (parents < end)
+                    )
+                    internal &= (children >= start) & (children < end)
+                    parents, children = parents[internal], children[internal]
+                    bodies = np.arange(start, end)
+                    if len(bodies) < 2 or not (
+                        np.array_equal(np.sort(parents), bodies) and np.array_equal(np.sort(children), bodies)
+                    ):
+                        continue
+                    # Degree alone would also accept multiple disconnected cycles in one native curve object.
+                    successors = dict(zip(parents, children, strict=True))
+                    visited, body = set(), start
+                    while body not in visited:
+                        visited.add(body)
+                        body = successors[body]
+                    if len(visited) == len(bodies):
+                        periodic_ranges.add((int(start), int(end)))
         for path, shapes in cable_bindings.items():
-            bodies = np.unique(shape_body[shapes])
+            ids = np.asarray(shapes, dtype=np.int32)
+            bodies = np.unique(shape_body[ids])
             # Match a complete native curve, independently of the caller's mutable shape ordering.
-            periodic = len(bodies) == len(shapes) and len(bodies) == bodies[-1] - bodies[0] + 1
+            periodic = len(bodies) == len(ids) and len(bodies) == bodies[-1] - bodies[0] + 1
             periodic = periodic and (int(bodies[0]), int(bodies[-1]) + 1) in periodic_ranges
-            indices = _capsule_endpoint_indices(shapes, periodic=periodic)
-            endpoints.append(indices)
-            ranges[path] = (offset, len(indices))
-            offset += len(indices)
-        source = SceneDataFormat.CapsuleEndpoints()
-        source.transforms = self._manager.backend.state_0.body_q
-        source.shape_body = model.shape_body
-        source.shape_transform = model.shape_transform
-        source.shape_scale = model.shape_scale
-        source.endpoints = wp.array(np.concatenate(endpoints), dtype=wp.vec4i, device=model.device)
-        self._geometry_batches.append((source, ranges))
+            if periodic:
+                left, right = np.roll(ids, 1), ids
+            else:
+                left = np.concatenate((ids[:1], ids))
+                right = np.concatenate((ids, ids[-1:]))
+            left_sign = np.ones(len(left), dtype=np.int32)
+            right_sign = -np.ones(len(right), dtype=np.int32)
+            if not periodic:
+                left_sign[0], right_sign[-1] = -1, 1
+            endpoints.append(np.column_stack((left, left_sign, right, right_sign)))
+            ranges[path] = (offset, len(left))
+            offset += len(left)
+        if endpoints:
+            model = self.model
+            source = SceneDataFormat.CapsuleEndpoints()
+            source.transforms = self._manager.backend.state_0.body_q
+            source.shape_body = model.shape_body
+            source.shape_transform = model.shape_transform
+            source.shape_scale = model.shape_scale
+            source.endpoints = wp.array(np.concatenate(endpoints), dtype=wp.vec4i, device=model.device)
+            self._geometry_batches.append((source, ranges))
 
     @property
     def native_geometry_formats(self) -> tuple[type, ...]:
