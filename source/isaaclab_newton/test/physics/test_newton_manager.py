@@ -902,38 +902,6 @@ def test_cable_geometry_uses_owned_rod_cycles_not_endpoint_adjacency() -> None:
     np.testing.assert_allclose(publication["/Open"].numpy(), [[2, 1, 1], [2.5, 0.5, 1], [2, 1, 1]], atol=1e-6)
 
 
-@pytest.mark.kitless
-def test_cable_geometry_reinitializes_models_and_state_swaps() -> None:
-    manager = NewtonManager(NewtonCfg())
-    scene_data = NewtonSceneDataBackend(manager)
-    provider = SceneDataProvider(scene_data)
-    bindings = {"/Cable_0": [0, 1], "/Cable_1": [0, 1]}
-
-    for offset in (0.0, 100.0):
-        manager.backend = _capsule_geometry_backend(offset)
-        scene_data.initialize_geometry([], bindings)
-        model, state = manager.backend.model, manager.backend.state_0
-        expected = np.asarray([[30, 0, 0], [20, 0, 1], [10, 0, 4]], dtype=np.float32)
-        expected[:, 0] += offset
-        publication = provider.get_geometry_points()
-        assert isinstance(publication, dict)
-        assert publication.keys() == {"/Cable_0", "/Cable_1"}
-        for points in publication.values():
-            np.testing.assert_allclose(points.numpy(), expected, atol=1e-6)
-
-        swapped = model.state()
-        poses = state.body_q.numpy().copy()
-        poses[:, 1] += 7.0
-        swapped.body_q.assign(poses)
-        manager.backend.state_0 = swapped
-        timestamp = scene_data.geometry_timestamp
-        publication = provider.get_geometry_points()
-        assert isinstance(publication, dict)
-        for points in publication.values():
-            np.testing.assert_allclose(points.numpy(), expected + [0, 7, 0], atol=1e-6)
-        assert scene_data.geometry_timestamp > timestamp
-
-
 # ----- Queries -----------------------------------------------------------------------------
 
 

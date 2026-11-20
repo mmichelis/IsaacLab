@@ -46,7 +46,6 @@ class NewtonSceneDataBackend(SceneDataBackend):
             cable_bindings: Native capsule shape indices of each open or periodic cable, in curve order.
         """
         self._geometry_batches = list(geometry_batches)
-        self.geometry_timestamp += 1
         endpoints, ranges = [], {}
         offset = 0
         periodic_ranges = set()
