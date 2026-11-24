@@ -38,6 +38,7 @@ from isaaclab_newton.physics import (
     create_builder,
     newton_backend,
 )
+from isaaclab_newton.physics.newton_backend import NewtonCloneRecord
 from isaaclab_newton.physics.newton_scene_data import NewtonSceneDataBackend
 from isaaclab_newton.renderers.newton_warp_renderer import NewtonWarpRenderer
 from isaaclab_newton.test.fixtures.mock_newton import backend_stub
@@ -809,6 +810,108 @@ def test_backends_with_different_solvers_step_side_by_side(device, execution):
         backend.forward()
     assert np.any(pair[0].state_0.body_q.numpy() != body_q[0], axis=1).tolist() == [True, False, True, False]
     np.testing.assert_array_equal(pair[1].state_0.body_q.numpy(), body_q[1])
+
+
+# ----- Cable geometry publication -----------------------------------------------------------
+
+
+def _capsule_geometry_backend(offset: float = 0.0) -> NewtonBackend:
+    """Three non-body-ordered capsules with distinct local offsets and half lengths."""
+    builder = newton.ModelBuilder()
+    for x in (10.0, 20.0, 30.0):
+        builder.add_body(xform=wp.transform(wp.vec3(x + offset, 0.0, 0.0), wp.quat_identity()))
+    for index, body in enumerate((2, 0, 1), start=1):
+        builder.add_shape_capsule(
+            body=body,
+            xform=wp.transform(wp.vec3(0.0, 0.0, float(index)), wp.quat_identity()),
+            radius=0.1,
+            half_height=float(index),
+        )
+    return NewtonBackend(NewtonBackendCfg(physics_cfg=NewtonCfg(), device="cpu"), builder, dt=0.01)
+
+
+@pytest.mark.kitless
+@pytest.mark.parametrize(
+    ("shapes", "endpoints", "expected"),
+    [
+        (
+            [0, 1],
+            [[0, -1, 0, -1], [0, 1, 1, -1], [1, 1, 1, 1]],
+            [[30, 0, 0], [20, 0, 1], [10, 0, 4]],
+        ),
+        (
+            [2, 0, 1],
+            [[2, -1, 2, -1], [2, 1, 0, -1], [0, 1, 1, -1], [1, 1, 1, 1]],
+            [[20, 0, 0], [25, 0, 3], [20, 0, 1], [10, 0, 4]],
+        ),
+    ],
+)
+def test_legacy_cable_geometry_preserves_open_list_order(
+    shapes: list[int], endpoints: list[list[int]], expected: list[list[float]]
+) -> None:
+    record = NewtonCloneRecord(
+        world_xforms=None,
+        source_builders={},
+        particle_ranges={},
+        cable_bindings={"/Cable": shapes},
+        geometry_batches=[],
+    )
+    manager = NewtonManager(NewtonCfg())
+    manager.backend = _capsule_geometry_backend()
+    scene_data = NewtonSceneDataBackend(manager)
+    scene_data.initialize_geometry(record.geometry_batches, record.cable_bindings)
+
+    [(source, ranges)] = scene_data.get_geometry_batches()
+    assert ranges == {"/Cable": (0, len(shapes) + 1)}
+    np.testing.assert_array_equal(source.endpoints.numpy(), endpoints)
+    publication = SceneDataProvider(scene_data).get_geometry_points()
+    assert isinstance(publication, dict)
+    np.testing.assert_allclose(publication["/Cable"].numpy(), expected, atol=1e-6)
+    assert record.geometry_batches == []
+
+
+@pytest.mark.kitless
+def test_precompiled_cable_geometry_rebinds_models_and_state_swaps() -> None:
+    manager = NewtonManager(NewtonCfg())
+    scene_data = NewtonSceneDataBackend(manager)
+    provider = SceneDataProvider(scene_data)
+    batches = []
+    for index in range(2):
+        source = SceneDataFormat.CapsuleEndpoints()
+        source.endpoints = wp.array([[0, -1, 0, -1], [1, 1, 1, 1]], dtype=wp.vec4i, device="cpu")
+        batches.append((source, {f"/Cable_{index}": (0, 2)}))
+
+    for offset in (0.0, 100.0):
+        manager.backend = _capsule_geometry_backend(offset)
+        scene_data.initialize_geometry(batches, {})
+        model, state = manager.backend.model, manager.backend.state_0
+        for source, _ in batches:
+            assert source.transforms is state.body_q
+            assert source.shape_body is model.shape_body
+            assert source.shape_transform is model.shape_transform
+            assert source.shape_scale is model.shape_scale
+        assert scene_data.get_geometry_batches() == batches
+        expected = np.asarray([[30, 0, 0], [10, 0, 4]], dtype=np.float32)
+        expected[:, 0] += offset
+        publication = provider.get_geometry_points()
+        assert isinstance(publication, dict)
+        assert publication.keys() == {"/Cable_0", "/Cable_1"}
+        for points in publication.values():
+            np.testing.assert_allclose(points.numpy(), expected, atol=1e-6)
+
+        swapped = model.state()
+        poses = state.body_q.numpy().copy()
+        poses[:, 1] += 7.0
+        swapped.body_q.assign(poses)
+        manager.backend.state_0 = swapped
+        timestamp = scene_data.geometry_timestamp
+        publication = provider.get_geometry_points()
+        assert isinstance(publication, dict)
+        for points in publication.values():
+            np.testing.assert_allclose(points.numpy(), expected + [0, 7, 0], atol=1e-6)
+        assert scene_data.geometry_timestamp > timestamp
+        for source, _ in batches:
+            assert source.transforms is swapped.body_q
 
 
 # ----- Queries -----------------------------------------------------------------------------
