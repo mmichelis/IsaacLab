@@ -61,6 +61,11 @@ integration available; ``physics=...`` selects it for the task:
 See :ref:`uv-run-training` and :ref:`installation-optional-extras` for the full
 extras model used by training and play.
 
+Run export in a fresh process. The unified export entrypoints disable TorchScript before
+discovering task packages, but cannot repair helpers already imported with TorchScript enabled.
+Embedded callers must export before importing tasks or math helpers, or launch the CLI in a
+separate process. Export changes process-wide JIT state; it does not restore a training session.
+
 
 Quick Start
 -----------

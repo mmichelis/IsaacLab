@@ -25,6 +25,36 @@ from isaaclab.benchmark.entrypoints import startup
 from isaaclab.benchmark.entrypoints.backends.rl_games.registry import register_scoped_rl_games_environment
 
 
+@pytest.mark.parametrize(
+    ("workflow", "backend"),
+    [("runtime", None), ("startup", None)]
+    + [(workflow, backend) for workflow in ("training", "play") for backend in ("rl_games", "rsl_rl", "sb3", "skrl")],
+)
+def test_workflow_discovers_tasks_before_parsing(workflow, backend, monkeypatch) -> None:
+    """CLI, typed requests and workers share the task-consuming leaf."""
+    import isaaclab.cli as cli
+
+    entrypoint = importlib.import_module(dispatch._workflow_module(workflow, backend))
+
+    class Discovered(Exception):
+        pass
+
+    profiling = []
+    if workflow == "startup":
+        profile = SimpleNamespace(enable=lambda: profiling.append(True))
+        monkeypatch.setattr(entrypoint.cProfile, "Profile", lambda: profile)
+
+    def discover():
+        if workflow == "startup":
+            assert profiling == [True]
+        raise Discovered
+
+    monkeypatch.setattr(cli, "load_external_tasks", discover)
+    monkeypatch.setattr(entrypoint, "_parse_args", lambda argv: pytest.fail("parsed before discovery"))
+    with pytest.raises(Discovered):
+        entrypoint.run(["--task", "Downstream-Only", "presets=downstream"])
+
+
 def test_training_request_builds_complete_cli() -> None:
     request = BenchmarkTrainingRequest(
         backend="rsl_rl",

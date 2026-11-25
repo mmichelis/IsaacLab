@@ -28,9 +28,6 @@ from isaaclab.envs.utils.spaces import sample_space
 from isaaclab.utils import math as math_utils
 from isaaclab.utils import validate
 
-import isaaclab_tasks  # noqa: F401
-from isaaclab_tasks.utils import resolve_task_config, setup_preset_cli
-
 from .common import (
     add_video_args,
     apply_env_overrides,
@@ -43,10 +40,6 @@ from .common import (
 )
 
 logger = logging.getLogger(__name__)
-
-# PLACEHOLDER: Extension template (do not remove this comment)
-with contextlib.suppress(ImportError):
-    import isaaclab_tasks_experimental  # noqa: F401
 
 PolicyName = Literal["zero", "random"]
 """Action policies supported by the checkpoint-free agents."""
@@ -71,6 +64,16 @@ def run(argv: list[str] | None = None, *, policy: PolicyName) -> None:
     """
     if policy not in _DESCRIPTIONS:
         raise ValueError(f"Unsupported policy {policy!r}. Expected one of: {sorted(_DESCRIPTIONS)}.")
+
+    from isaaclab.cli import load_external_tasks
+
+    load_external_tasks()
+
+    from isaaclab_tasks.utils import resolve_task_config
+
+    # PLACEHOLDER: Extension template (do not remove this comment)
+    with contextlib.suppress(ImportError):
+        import isaaclab_tasks_experimental  # noqa: F401
 
     args_cli = _parse_args(argv, policy)
     torch.manual_seed(_SEED)
@@ -252,6 +255,8 @@ def _unscale_action(command: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
 
 def _parse_args(argv: list[str] | None, policy: PolicyName) -> argparse.Namespace:
     """Parse the command line of a checkpoint-free agent and hand the remainder to Hydra."""
+    from isaaclab_tasks.utils import setup_preset_cli
+
     parser = argparse.ArgumentParser(description=_DESCRIPTIONS[policy])
     parser.add_argument(
         "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."

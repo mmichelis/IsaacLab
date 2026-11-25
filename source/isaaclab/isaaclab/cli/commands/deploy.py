@@ -14,9 +14,6 @@ from pathlib import Path
 
 import torch
 
-import isaaclab_tasks  # noqa: F401
-from isaaclab_tasks.utils.hydra import resolve_task_config
-
 from ...app import add_launcher_args, launch_simulation
 from ...app.sim_launcher import fuse_kit_args
 
@@ -32,6 +29,12 @@ def command_deploy_leapp(argv: list[str] | None = None) -> int:
     Returns:
         Process exit code.
     """
+    from isaaclab.cli import load_external_tasks
+
+    load_external_tasks()
+
+    from isaaclab_tasks.utils.hydra import resolve_task_config
+
     parser = argparse.ArgumentParser(
         description="Deploy a LEAPP-exported policy in simulation.",
         prog=f"{Path(sys.argv[0]).name} leapp deploy",

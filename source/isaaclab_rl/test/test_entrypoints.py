@@ -72,6 +72,22 @@ def test_public_namespaces_do_not_import_unrelated_frameworks(statement: str, un
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize("policy", ["zero", "random"])
+def test_simple_agent_discovers_tasks_before_presets(policy, monkeypatch) -> None:
+    discovered = []
+    monkeypatch.setattr(cli, "load_external_tasks", lambda: discovered.append(True))
+
+    def parse(argv, selected_policy):
+        assert discovered == [True]
+        assert selected_policy == policy
+        raise SystemExit(0)
+
+    monkeypatch.setattr(simple_agents, "_parse_args", parse)
+    with pytest.raises(SystemExit) as result:
+        simple_agents.run(["--task", "Downstream-Only", "presets=downstream"], policy=policy)
+    assert result.value.code == 0
+
+
 def test_zero_agent_infers_finite_manager_actions() -> None:
     """The zero agent holds absolute task-space targets and zeros all other action terms."""
 
@@ -303,7 +319,7 @@ def test_simple_agents_leave_the_device_to_the_launch(
         raise _ExpectedStop
 
     monkeypatch.setattr(simple_agents, "_parse_args", lambda argv, policy: args)
-    monkeypatch.setattr(simple_agents, "resolve_task_config", lambda task, agent: (_Cfg(), None))
+    monkeypatch.setattr("isaaclab_tasks.utils.resolve_task_config", lambda task, agent: (_Cfg(), None))
     monkeypatch.setattr(simple_agents, "launch_simulation", launch_simulation)
 
     with pytest.raises(_ExpectedStop):
@@ -322,7 +338,7 @@ def test_zero_agent_rejects_invalid_config_before_launch(monkeypatch: pytest.Mon
 
     args = SimpleNamespace(num_envs=None, device=None, disable_fabric=False, task="Invalid-Task")
     monkeypatch.setattr(simple_agents, "_parse_args", lambda argv, policy: args)
-    monkeypatch.setattr(simple_agents, "resolve_task_config", lambda task, agent: (_InvalidCfg(), None))
+    monkeypatch.setattr("isaaclab_tasks.utils.resolve_task_config", lambda task, agent: (_InvalidCfg(), None))
     monkeypatch.setattr(
         simple_agents,
         "launch_simulation",
@@ -361,7 +377,7 @@ def test_random_agent_closes_environment_after_keyboard_interrupt(monkeypatch, i
     getattr(env, interrupted_operation).side_effect = KeyboardInterrupt
     args = SimpleNamespace(max_steps=None, task="Example", device=None, num_envs=None)
     monkeypatch.setattr(simple_agents, "_parse_args", lambda argv, policy: args)
-    monkeypatch.setattr(simple_agents, "resolve_task_config", lambda task, agent: (cfg, None))
+    monkeypatch.setattr("isaaclab_tasks.utils.resolve_task_config", lambda task, agent: (cfg, None))
     monkeypatch.setattr(simple_agents, "launch_simulation", lambda cfg, launcher_args: contextlib.nullcontext())
     monkeypatch.setattr(simple_agents.gym, "make", lambda task, cfg: env)
     monkeypatch.setattr(simple_agents, "create_random_action_policy", lambda environment: lambda: None)
@@ -420,7 +436,7 @@ def test_simple_agent_video_step_budget(
     )
     launched = mock.Mock(return_value=contextlib.nullcontext())
     monkeypatch.setattr(simple_agents, "_parse_args", lambda argv, policy: args)
-    monkeypatch.setattr(simple_agents, "resolve_task_config", lambda task, agent: (cfg, None))
+    monkeypatch.setattr("isaaclab_tasks.utils.resolve_task_config", lambda task, agent: (cfg, None))
     monkeypatch.setattr(simple_agents, "launch_simulation", launched)
     monkeypatch.setattr(simple_agents.gym, "make", lambda task, cfg: env)
     monkeypatch.setattr(simple_agents, "create_random_action_policy", lambda environment: lambda: None)

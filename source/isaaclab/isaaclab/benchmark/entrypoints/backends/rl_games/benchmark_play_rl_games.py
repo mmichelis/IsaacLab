@@ -99,6 +99,10 @@ def run(argv: list[str]) -> BenchmarkResult:
         argv: Command-line arguments, excluding the script path (i.e. ``sys.argv[1:]``
             after the dispatcher has stripped ``--rl_library``).
     """
+    from isaaclab.cli import load_external_tasks
+
+    load_external_tasks()
+
     import contextlib
     import math
     import os

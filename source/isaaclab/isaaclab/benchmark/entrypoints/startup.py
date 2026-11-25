@@ -210,6 +210,10 @@ def run(argv: list[str]) -> BenchmarkResult | None:
     imports_time_begin = time.perf_counter_ns()
     imports_profile.enable()
 
+    from isaaclab.cli import load_external_tasks
+
+    load_external_tasks()
+
     args, hydra_args = _parse_args(argv)
 
     import gymnasium as gym
